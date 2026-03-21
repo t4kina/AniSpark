@@ -611,15 +611,11 @@ class _CharactersTab extends StatelessWidget {
       return const Center(
           child: Text('No character data', style: TextStyle(color: Colors.grey)));
     }
-    return GridView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 3.0,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-      ),
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
       itemCount: characters.length,
+      separatorBuilder: (_, _) =>
+          const Divider(height: 1, color: Color(0xFF1E1E3A)),
       itemBuilder: (_, i) {
         final edge = characters[i];
         final charNode = edge['node'] as Map<String, dynamic>? ?? {};
@@ -631,53 +627,47 @@ class _CharactersTab extends StatelessWidget {
         final vaName = va?['name']?['full'] as String? ?? '';
         final vaImg = va?['image']?['medium'] as String?;
 
-        return Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF161B22),
-            borderRadius: BorderRadius.circular(8),
-          ),
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
           child: Row(
             children: [
-              // Character
-              _charAvatar(charImg),
-              const SizedBox(width: 6),
+              // Character side
+              _avatar(charImg),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(charName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                            fontSize: 11, fontWeight: FontWeight.w600)),
+                            fontSize: 12, fontWeight: FontWeight.w600)),
                     Text(role.toLowerCase(),
                         style: const TextStyle(
-                            fontSize: 10, color: Colors.grey)),
+                            fontSize: 11, color: Colors.grey)),
                   ],
                 ),
               ),
-              // Voice actor (right side)
+              // VA side
               if (va != null) ...[
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(vaName,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           textAlign: TextAlign.right,
                           style: const TextStyle(
-                              fontSize: 11, fontWeight: FontWeight.w600)),
+                              fontSize: 12, fontWeight: FontWeight.w600)),
                       const Text('JP',
-                          style: TextStyle(
-                              fontSize: 10, color: Colors.grey)),
+                          style: TextStyle(fontSize: 11, color: Colors.grey)),
                     ],
                   ),
                 ),
-                const SizedBox(width: 6),
-                _charAvatar(vaImg),
+                const SizedBox(width: 8),
+                _avatar(vaImg),
               ],
             ],
           ),
@@ -686,21 +676,21 @@ class _CharactersTab extends StatelessWidget {
     );
   }
 
-  Widget _charAvatar(String? url) => ClipRRect(
-        borderRadius: const BorderRadius.all(Radius.circular(6)),
+  Widget _avatar(String? url) => ClipRRect(
+        borderRadius: BorderRadius.circular(4),
         child: url != null
             ? CachedNetworkImage(
                 imageUrl: url,
-                width: 42,
-                height: 60,
+                width: 40,
+                height: 56,
                 fit: BoxFit.cover,
-                memCacheWidth: 84,
+                memCacheWidth: 80,
                 placeholder: (_, _) =>
-                    Container(width: 42, height: 60, color: Colors.grey[800]),
+                    Container(width: 40, height: 56, color: const Color(0xFF1E1E3A)),
                 errorWidget: (_, _, _) =>
-                    Container(width: 42, height: 60, color: Colors.grey[800]),
+                    Container(width: 40, height: 56, color: const Color(0xFF1E1E3A)),
               )
-            : Container(width: 42, height: 60, color: Colors.grey[800]),
+            : Container(width: 40, height: 56, color: const Color(0xFF1E1E3A)),
       );
 }
 

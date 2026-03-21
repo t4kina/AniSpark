@@ -93,7 +93,7 @@ class AuthService extends ChangeNotifier {
     const query = '''
       query {
         Viewer {
-          id name avatar { large }
+          id name avatar { large } bannerImage
           statistics {
             anime {
               count episodesWatched meanScore minutesWatched

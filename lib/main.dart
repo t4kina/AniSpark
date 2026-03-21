@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'providers/anime_list_provider.dart';
 import 'services/auth_service.dart';
 import 'screens/home_screen.dart';
-import 'screens/search_screen.dart';
 import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/feed_screen.dart';
@@ -38,21 +37,33 @@ class MyAnimeApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF0D1117),
+        scaffoldBackgroundColor: const Color(0xFF0E0E2C),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF02A9FF),
-          surface: Color(0xFF161B22),
+          surface: Color(0xFF13132A),
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0D1117),
+          backgroundColor: Color(0xFF0E0E2C),
+          surfaceTintColor: Colors.transparent,
           elevation: 0,
-          centerTitle: false,
+          centerTitle: true,
         ),
-        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: Color(0xFF161B22),
-          selectedItemColor: Color(0xFF02A9FF),
-          unselectedItemColor: Colors.grey,
-          type: BottomNavigationBarType.fixed,
+        navigationBarTheme: NavigationBarThemeData(
+          backgroundColor: const Color(0xFF13132A),
+          indicatorColor: const Color(0xFF02A9FF).withValues(alpha: 0.2),
+          iconTheme: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const IconThemeData(color: Color(0xFF02A9FF));
+            }
+            return const IconThemeData(color: Colors.grey);
+          }),
+          labelTextStyle: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.selected)) {
+              return const TextStyle(
+                  color: Color(0xFF02A9FF), fontSize: 11, fontWeight: FontWeight.w600);
+            }
+            return const TextStyle(color: Colors.grey, fontSize: 11);
+          }),
         ),
         tabBarTheme: const TabBarThemeData(
           labelColor: Color(0xFF02A9FF),
@@ -60,14 +71,14 @@ class MyAnimeApp extends StatelessWidget {
           indicatorColor: Color(0xFF02A9FF),
         ),
         chipTheme: ChipThemeData(
-          backgroundColor: const Color(0xFF21262D),
+          backgroundColor: const Color(0xFF1E1E3A),
           labelStyle: const TextStyle(fontSize: 11),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
         cardTheme: CardThemeData(
-          color: const Color(0xFF161B22),
+          color: const Color(0xFF13132A),
           elevation: 0,
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12)),
@@ -75,7 +86,7 @@ class MyAnimeApp extends StatelessWidget {
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: const Color(0xFF21262D),
+          fillColor: const Color(0xFF1E1E3A),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide.none,
@@ -93,13 +104,13 @@ class MyAnimeApp extends StatelessWidget {
           hintStyle: const TextStyle(color: Colors.grey),
         ),
         listTileTheme: const ListTileThemeData(
-          tileColor: Color(0xFF161B22),
+          tileColor: Color(0xFF13132A),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(8)),
           ),
         ),
         dividerTheme: const DividerThemeData(
-          color: Color(0xFF21262D),
+          color: Color(0xFF1E1E3A),
           thickness: 1,
           space: 0,
         ),
@@ -127,9 +138,9 @@ class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
 
   final List<Widget> _screens = const [
+    AnimeListScreen(),
+    MangaListScreen(),
     HomeScreen(),
-    SearchScreen(),
-    MyListScreen(),
     FeedScreen(),
     ProfileScreen(),
   ];
@@ -141,29 +152,29 @@ class _MainNavigationState extends State<MainNavigation> {
         index: _currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (i) => setState(() => _currentIndex = i),
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.home_outlined),
-              activeIcon: Icon(Icons.home),
-              label: 'Home'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.search_outlined),
-              activeIcon: Icon(Icons.search),
-              label: 'Search'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.format_list_bulleted_outlined),
-              activeIcon: Icon(Icons.format_list_bulleted),
-              label: 'My List'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.people_outline),
-              activeIcon: Icon(Icons.people),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (i) => setState(() => _currentIndex = i),
+        destinations: const [
+          NavigationDestination(
+              icon: Icon(Icons.tv_outlined),
+              selectedIcon: Icon(Icons.tv),
+              label: 'Anime'),
+          NavigationDestination(
+              icon: Icon(Icons.menu_book_outlined),
+              selectedIcon: Icon(Icons.menu_book),
+              label: 'Manga'),
+          NavigationDestination(
+              icon: Icon(Icons.explore_outlined),
+              selectedIcon: Icon(Icons.explore),
+              label: 'Discover'),
+          NavigationDestination(
+              icon: Icon(Icons.whatshot_outlined),
+              selectedIcon: Icon(Icons.whatshot),
               label: 'Feed'),
-          BottomNavigationBarItem(
+          NavigationDestination(
               icon: Icon(Icons.person_outline),
-              activeIcon: Icon(Icons.person),
+              selectedIcon: Icon(Icons.person),
               label: 'Profile'),
         ],
       ),

@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
 
+enum _FeedType { following, global, personal }
+
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
 
@@ -16,6 +18,7 @@ class _FeedScreenState extends State<FeedScreen>
   final _service = AniListService();
   List<dynamic> _activities = [];
   bool _loading = true;
+  _FeedType _feedType = _FeedType.following;
 
   @override
   bool get wantKeepAlive => true;
@@ -32,7 +35,14 @@ class _FeedScreenState extends State<FeedScreen>
       setState(() => _loading = false);
       return;
     }
-    final activities = await _service.getActivityFeed(auth.token!);
+    setState(() => _loading = true);
+    final activities = await _service.getActivityFeed(
+      auth.token!,
+      isFollowing: _feedType == _FeedType.following,
+      userId: _feedType == _FeedType.personal
+          ? (auth.user?['id'] as int?)
+          : null,
+    );
     setState(() {
       _activities = activities;
       _loading = false;
@@ -47,6 +57,76 @@ class _FeedScreenState extends State<FeedScreen>
     return '${diff.inDays}d ago';
   }
 
+  String get _feedLabel {
+    switch (_feedType) {
+      case _FeedType.following:
+        return 'Following Feed';
+      case _FeedType.global:
+        return 'Global Feed';
+      case _FeedType.personal:
+        return 'Your Feed';
+    }
+  }
+
+  void _showFeedPicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF13132A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text('Choose an activity feed:',
+                    style: TextStyle(color: Colors.grey, fontSize: 13)),
+              ),
+              _feedOption('Your Feed', Icons.person, _FeedType.personal),
+              _feedOption('Following Feed', Icons.group, _FeedType.following),
+              _feedOption('Global Feed', Icons.public, _FeedType.global),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _feedOption(String label, IconData icon, _FeedType type) {
+    final isSelected = _feedType == type;
+    return ListTile(
+      leading: Icon(icon, color: isSelected ? const Color(0xFF02A9FF) : Colors.grey),
+      title: Text(label,
+          style: TextStyle(
+              color: isSelected ? Colors.white : Colors.grey,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal)),
+      trailing: isSelected
+          ? const Icon(Icons.check, color: Color(0xFF02A9FF), size: 18)
+          : null,
+      onTap: () {
+        Navigator.pop(context);
+        if (_feedType != type) {
+          setState(() => _feedType = type);
+          _load();
+        }
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
@@ -54,7 +134,7 @@ class _FeedScreenState extends State<FeedScreen>
 
     if (!auth.isLoggedIn) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Activity')),
+        appBar: AppBar(title: const Text('Feed')),
         body: const Center(
           child: Text('Login to see your friends activity',
               style: TextStyle(color: Colors.grey)),
@@ -64,17 +144,21 @@ class _FeedScreenState extends State<FeedScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Activity',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () {
-              setState(() => _loading = true);
-              _load();
-            },
+        title: GestureDetector(
+          onTap: _showFeedPicker,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _feedLabel,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+              const SizedBox(width: 4),
+              const Icon(Icons.keyboard_arrow_down, size: 20),
+            ],
           ),
-        ],
+        ),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -133,7 +217,7 @@ class _ActivityCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
+        color: const Color(0xFF13132A),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -144,7 +228,7 @@ class _ActivityCard extends StatelessWidget {
             backgroundImage: avatar != null
                 ? CachedNetworkImageProvider(avatar)
                 : null,
-            backgroundColor: Colors.grey[800],
+            backgroundColor: const Color(0xFF1E1E3A),
             child: avatar == null
                 ? const Icon(Icons.person, size: 18)
                 : null,
@@ -169,39 +253,41 @@ class _ActivityCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    if (coverImage != null)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: CachedNetworkImage(
-                          imageUrl: coverImage,
-                          width: 35,
-                          height: 50,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 70,
-                        ),
-                      ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: const TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w600),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
+                const SizedBox(height: 4),
+                Text(
+                  title,
+                  style: const TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w600),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
-                Text(timeAgo(createdAt),
-                    style:
-                        const TextStyle(fontSize: 11, color: Colors.grey)),
+                Row(
+                  children: [
+                    const Icon(Icons.access_time,
+                        size: 12, color: Colors.grey),
+                    const SizedBox(width: 3),
+                    Text(timeAgo(createdAt),
+                        style: const TextStyle(
+                            fontSize: 11, color: Colors.grey)),
+                  ],
+                ),
               ],
             ),
           ),
+          if (coverImage != null) ...[
+            const SizedBox(width: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: CachedNetworkImage(
+                imageUrl: coverImage,
+                width: 45,
+                height: 64,
+                fit: BoxFit.cover,
+                memCacheWidth: 90,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -214,7 +300,7 @@ class _ActivityCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
+        color: const Color(0xFF13132A),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -225,7 +311,7 @@ class _ActivityCard extends StatelessWidget {
             backgroundImage: avatar != null
                 ? CachedNetworkImageProvider(avatar)
                 : null,
-            backgroundColor: Colors.grey[800],
+            backgroundColor: const Color(0xFF1E1E3A),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -242,9 +328,16 @@ class _ActivityCard extends StatelessWidget {
                     style: const TextStyle(
                         color: Colors.grey, fontSize: 13)),
                 const SizedBox(height: 4),
-                Text(timeAgo(createdAt),
-                    style: const TextStyle(
-                        fontSize: 11, color: Colors.grey)),
+                Row(
+                  children: [
+                    const Icon(Icons.access_time,
+                        size: 12, color: Colors.grey),
+                    const SizedBox(width: 3),
+                    Text(timeAgo(createdAt),
+                        style: const TextStyle(
+                            fontSize: 11, color: Colors.grey)),
+                  ],
+                ),
               ],
             ),
           ),

@@ -193,6 +193,7 @@ class AniListService {
                 id title { romaji english }
                 coverImage { large }
                 episodes averageScore genres
+                nextAiringEpisode { episode timeUntilAiring }
               }
             }
           }
@@ -252,11 +253,17 @@ class AniListService {
     return result;
   }
 
-  Future<List<dynamic>> getActivityFeed(String token) async {
-    const query = '''
-      query {
+  Future<List<dynamic>> getActivityFeed(String token,
+      {bool isFollowing = true, int? userId}) async {
+    final variables = <String, dynamic>{
+      'isFollowing': isFollowing,
+      'userId': ?userId,
+    };
+    final userFilter = userId != null ? ', userId: \$userId' : '';
+    final query = '''
+      query(\$isFollowing: Boolean${userId != null ? ', \$userId: Int' : ''}) {
         Page(page: 1, perPage: 30) {
-          activities(isFollowing: true, sort: ID_DESC) {
+          activities(isFollowing: \$isFollowing$userFilter, sort: ID_DESC) {
             ... on ListActivity {
               id type status progress createdAt
               user { name avatar { large } }
@@ -273,12 +280,78 @@ class AniListService {
     final response = await http.post(
       Uri.parse(_baseUrl),
       headers: await _headers(token),
-      body: jsonEncode({'query': query}),
+      body: jsonEncode({'query': query, 'variables': variables}),
     );
     if (response.statusCode == 200) {
       return jsonDecode(response.body)['data']['Page']['activities'] ?? [];
     }
     return [];
+  }
+
+  /// Fetches user favourites (anime + characters) and bannerImage.
+  Future<Map<String, dynamic>> getUserProfileStats(
+      int userId, String token) async {
+    const query = '''
+      query(\$userId: Int) {
+        User(id: \$userId) {
+          id name bannerImage
+          favourites {
+            anime(perPage: 10) {
+              nodes { id title { romaji english } coverImage { large } }
+            }
+            characters(perPage: 10) {
+              nodes { id name { full } image { medium } }
+            }
+          }
+        }
+      }
+    ''';
+    final response = await http.post(
+      Uri.parse(_baseUrl),
+      headers: await _headers(token),
+      body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
+    );
+    if (response.statusCode == 200) {
+      final body = jsonDecode(response.body);
+      return {'user': body['data']?['User'] ?? {}};
+    }
+    return {};
+  }
+
+  /// Fetches followers and following counts for the user.
+  Future<Map<String, int>> getUserFollowCounts(
+      int userId, String token) async {
+    const query = '''
+      query(\$userId: Int) {
+        followersPage: Page(page: 1, perPage: 1) {
+          pageInfo { total }
+          followers(userId: \$userId) { id }
+        }
+        followingPage: Page(page: 1, perPage: 1) {
+          pageInfo { total }
+          following(userId: \$userId) { id }
+        }
+      }
+    ''';
+    final response = await http.post(
+      Uri.parse(_baseUrl),
+      headers: await _headers(token),
+      body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body)['data'];
+      return {
+        'followers':
+            (data?['followersPage']?['pageInfo']?['total'] as num?)
+                    ?.toInt() ??
+                0,
+        'following':
+            (data?['followingPage']?['pageInfo']?['total'] as num?)
+                    ?.toInt() ??
+                0,
+      };
+    }
+    return {'followers': 0, 'following': 0};
   }
 
   /// Returns a map of AniList status → entry count for the user's anime list.

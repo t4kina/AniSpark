@@ -48,3 +48,6 @@ app.*.map.json
 .env.json
 .env
 *.env
+
+# Design files
+/lib/design/

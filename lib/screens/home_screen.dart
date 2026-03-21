@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 import '../services/anilist_service.dart';
 import '../widgets/anime_card.dart';
+import 'search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -41,77 +42,110 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  String get _currentSeasonLabel {
+    final month = DateTime.now().month;
+    final year = DateTime.now().year;
+    String season;
+    if (month >= 1 && month <= 3) { season = 'WINTER'; }
+    else if (month >= 4 && month <= 6) { season = 'SPRING'; }
+    else if (month >= 7 && month <= 9) { season = 'SUMMER'; }
+    else { season = 'FALL'; }
+    return '$season $year';
+  }
+
+  String get _nextSeasonLabel {
+    final month = DateTime.now().month;
+    final year = DateTime.now().year;
+    if (month >= 10) return 'WINTER ${year + 1}';
+    if (month >= 7) return 'FALL $year';
+    if (month >= 4) return 'SUMMER $year';
+    return 'SPRING $year';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'AniSpark',
-          style: TextStyle(
-            color: Color(0xFF02A9FF),
-            fontWeight: FontWeight.bold,
-            fontSize: 24,
-            letterSpacing: 1,
-          ),
+          'Discover',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined, color: Colors.grey),
-            onPressed: () {},
-          ),
-        ],
       ),
-      body: _loading
-          ? _buildShimmer()
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const SizedBox(height: 8),
-                    _sectionHeader('Trending Now'),
-                    const SizedBox(height: 10),
-                    _buildHorizontalRow(_trending),
-                    const SizedBox(height: 20),
-                    _sectionHeader('This Season'),
-                    const SizedBox(height: 10),
-                    _buildHorizontalRow(_seasonal),
-                    const SizedBox(height: 20),
-                    _sectionHeader('Popular All Time'),
-                    const SizedBox(height: 10),
-                    _buildHorizontalRow(_popular),
-                    const SizedBox(height: 20),
-                    _sectionHeader('Top Airing'),
-                    const SizedBox(height: 10),
-                    _buildHorizontalRow(_topAiring),
-                    const SizedBox(height: 24),
-                  ],
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SearchScreen()),
+              ),
+              child: AbsorbPointer(
+                child: TextField(
+                  decoration: const InputDecoration(
+                    hintText: 'Search',
+                    prefixIcon:
+                        Icon(Icons.search, size: 20, color: Colors.grey),
+                  ),
                 ),
               ),
             ),
+          ),
+          Expanded(
+            child: _loading
+                ? _buildShimmer()
+                : RefreshIndicator(
+                    onRefresh: _load,
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 12),
+                          _sectionHeader('CURRENTLY TRENDING ANIME'),
+                          const SizedBox(height: 10),
+                          _buildHorizontalRow(_trending),
+                          const SizedBox(height: 20),
+                          _sectionHeader('CURRENT SEASON - $_currentSeasonLabel'),
+                          const SizedBox(height: 10),
+                          _buildHorizontalRow(_seasonal),
+                          const SizedBox(height: 20),
+                          _sectionHeader('UPCOMING SEASON - $_nextSeasonLabel'),
+                          const SizedBox(height: 10),
+                          _buildHorizontalRow(_popular),
+                          const SizedBox(height: 20),
+                          _sectionHeader('TOP AIRING'),
+                          const SizedBox(height: 10),
+                          _buildHorizontalRow(_topAiring),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _sectionHeader(String title) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-            ),
-          ],
+        child: Text(
+          title,
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.grey,
+            letterSpacing: 0.5,
+          ),
         ),
       );
 
   Widget _buildHorizontalRow(List<dynamic> items) => SizedBox(
-        height: 210,
+        height: 222,
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
           itemCount: items.length,
           itemBuilder: (_, i) => Padding(
             padding: const EdgeInsets.only(right: 10),
