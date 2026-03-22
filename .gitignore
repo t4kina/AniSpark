@@ -44,6 +44,11 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Claude Code / AI tooling
+.claude/
+.agents/
+skills-lock.json
+
 # Secrets — never commit these
 .env.json
 .env
