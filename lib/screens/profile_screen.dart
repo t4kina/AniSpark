@@ -3,6 +3,9 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../services/auth_service.dart';
 import '../services/anilist_service.dart';
+import '../utils/refresh_notifier.dart';
+import 'settings_screen.dart';
+import 'user_profile_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -34,7 +37,7 @@ class _LoginPrompt extends StatelessWidget {
                 width: 100,
                 height: 100,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF13132A),
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(50),
                 ),
                 child: const Icon(Icons.person,
@@ -110,12 +113,23 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   List<dynamic> _favoriteCharacters = [];
   String? _bannerImage;
   bool _statsLoaded = false;
+  Map<String, int> _activityDays = {};
+  List<dynamic> _following = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _fetchStats());
+    profileRefreshNotifier.addListener(_onRefresh);
   }
+
+  @override
+  void dispose() {
+    profileRefreshNotifier.removeListener(_onRefresh);
+    super.dispose();
+  }
+
+  void _onRefresh() => _fetchStats();
 
   Future<void> _fetchStats() async {
     final auth = context.read<AuthService>();
@@ -130,11 +144,15 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final results = await Future.wait([
       _service.getUserProfileStats(userId, auth.token!),
       _service.getUserFollowCounts(userId, auth.token!),
+      _service.getUserActivityDays(userId, auth.token!),
+      _service.getFollowing(userId, auth.token!),
     ]);
 
     if (!mounted) return;
-    final statsResult = results[0];
+    final statsResult = results[0] as Map<String, dynamic>;
     final followResult = results[1] as Map<String, int>;
+    final activityResult = results[2] as Map<String, int>;
+    final followingResult = results[3] as List<dynamic>;
 
     final user = statsResult['user'] as Map<String, dynamic>?;
     setState(() {
@@ -146,6 +164,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           (user?['favourites']?['characters']?['nodes'] as List<dynamic>?) ?? [];
       _followersCount = followResult['followers'] ?? 0;
       _followingCount = followResult['following'] ?? 0;
+      _activityDays = activityResult;
+      _following = followingResult;
       _statsLoaded = true;
     });
   }
@@ -168,6 +188,12 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         (mangaStats?['chaptersRead'] as num?)?.toInt() ?? 0;
     final totalAnime = (animeStats?['count'] as num?)?.toInt() ?? 0;
     final totalManga = (mangaStats?['count'] as num?)?.toInt() ?? 0;
+    final episodesWatched =
+        (animeStats?['episodesWatched'] as num?)?.toInt() ?? 0;
+    final animeMeanScore =
+        (animeStats?['meanScore'] as num?)?.toDouble() ?? 0.0;
+    final mangaMeanScore =
+        (mangaStats?['meanScore'] as num?)?.toDouble() ?? 0.0;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -175,13 +201,17 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
         leading: const SizedBox.shrink(),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 8),
             child: IconButton(
               icon: const Icon(Icons.settings_outlined, color: Colors.white),
-              onPressed: () {},
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              ),
             ),
           ),
         ],
@@ -190,55 +220,23 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         onRefresh: _fetchStats,
         child: CustomScrollView(
           slivers: [
-            // ── Banner + Avatar Header ─────────────────────────────────
+            // ── Banner + Avatar Header + Stats bar (single sliver to avoid seam) ──
             SliverToBoxAdapter(
-              child: _buildHeader(avatar, name, context, auth),
-            ),
-
-            // ── Stats bar ─────────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF13132A),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: const Color(0xFF2A2A4A)),
-                  ),
-                  child: Column(
-                    children: [
-                      IntrinsicHeight(
-                        child: Row(
-                          children: [
-                            _statItem('$totalAnime', 'Anime'),
-                            _statDividerV(),
-                            _statItem(daysWatched, 'Days Watched'),
-                            _statDividerV(),
-                            _statItem('$chaptersRead', 'Chapters Read'),
-                          ],
-                        ),
-                      ),
-                      const Divider(height: 1, color: Color(0xFF2A2A4A)),
-                      IntrinsicHeight(
-                        child: Row(
-                          children: [
-                            _statItem('$totalManga', 'Manga'),
-                            _statDividerV(),
-                            _statItem('$_followersCount', 'Followers'),
-                            _statDividerV(),
-                            _statItem('$_followingCount', 'Following'),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              child: _buildHeaderAndStats(
+                avatar, name, context,
+                totalAnime: totalAnime,
+                episodesWatched: episodesWatched,
+                daysWatched: daysWatched,
+                totalManga: totalManga,
+                chaptersRead: chaptersRead,
+                animeMeanScore: animeMeanScore,
+                mangaMeanScore: mangaMeanScore,
               ),
             ),
 
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
-            const SliverToBoxAdapter(
-              child: Divider(height: 1, color: Color(0xFF1E1E3A)),
+            SliverToBoxAdapter(
+              child: Builder(builder: (ctx) => Divider(height: 1, color: Theme.of(ctx).colorScheme.outline)),
             ),
 
             // ── Favorite Anime ─────────────────────────────────────────
@@ -305,34 +303,41 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                     ),
             ),
 
-            // ── Account ────────────────────────────────────────────────
+            // ── Following ──────────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Account',
-                        style: TextStyle(
-                            fontSize: 17, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 12),
-                    _settingsTile(
-                      context,
-                      icon: Icons.open_in_new,
-                      label: 'View on AniList',
-                      onTap: () {},
-                    ),
-                    _settingsTile(
-                      context,
-                      icon: Icons.logout,
-                      label: 'Logout',
-                      color: Colors.red,
-                      onTap: () => _confirmLogout(context, auth),
-                    ),
-                  ],
-                ),
+                padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
+                child: const Text('FOLLOWING',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey,
+                        letterSpacing: 0.5)),
               ),
             ),
+            SliverToBoxAdapter(
+              child: _following.isEmpty && _statsLoaded
+                  ? const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 16),
+                      child: Text('Not following anyone yet',
+                          style: TextStyle(color: Colors.grey, fontSize: 13)),
+                    )
+                  : SizedBox(
+                      height: 90,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: _following.length,
+                        itemBuilder: (_, i) => _followingCard(_following[i]),
+                      ),
+                    ),
+            ),
+
+            // ── Activity Graph ──────────────────────────────────────────
+            SliverToBoxAdapter(child: _buildActivityGraph()),
+
+            // ── Top Genres ─────────────────────────────────────────────
+            SliverToBoxAdapter(child: _buildTopGenres(animeStats)),
 
             const SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],
@@ -341,81 +346,156 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  Widget _buildHeader(
-      String? avatar, String name, BuildContext context, AuthService auth) {
+  Widget _buildHeaderAndStats(
+    String? avatar,
+    String name,
+    BuildContext context, {
+    required int totalAnime,
+    required int episodesWatched,
+    required String daysWatched,
+    required int totalManga,
+    required int chaptersRead,
+    required double animeMeanScore,
+    required double mangaMeanScore,
+  }) {
     final topPadding = MediaQuery.of(context).padding.top;
-    return Stack(
-      alignment: Alignment.bottomCenter,
-      children: [
-        // Banner image
-        SizedBox(
-          height: 200 + topPadding,
-          width: double.infinity,
-          child: _bannerImage != null
-              ? CachedNetworkImage(
-                  imageUrl: _bannerImage!,
-                  fit: BoxFit.cover,
-                  memCacheWidth: 800,
-                  placeholder: (_, _) =>
-                      Container(color: const Color(0xFF1E1E3A)),
-                  errorWidget: (_, _, _) =>
-                      Container(color: const Color(0xFF1E1E3A)),
-                )
-              : Container(color: const Color(0xFF1E1E3A)),
-        ),
-        // Gradient overlay
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.transparent,
-                  const Color(0xFF0E0E2C).withValues(alpha: 0.6),
-                  const Color(0xFF0E0E2C),
-                ],
-                stops: const [0.3, 0.7, 1.0],
-              ),
-            ),
-          ),
-        ),
-        // Avatar + name, positioned at bottom center
-        Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final outline = Theme.of(context).colorScheme.outline;
+    return ColoredBox(
+      color: bg,
+      child: Column(
+        children: [
+          // ── Banner + Avatar + Name ──────────────────────────────────
+          Stack(
+            alignment: Alignment.bottomCenter,
             children: [
-              Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                      color: const Color(0xFF0E0E2C), width: 3),
-                ),
-                child: CircleAvatar(
-                  radius: 40,
-                  backgroundColor: const Color(0xFF1E1E3A),
-                  backgroundImage: avatar != null
-                      ? CachedNetworkImageProvider(avatar)
-                      : null,
-                  child: avatar == null
-                      ? const Icon(Icons.person,
-                          size: 40, color: Colors.grey)
-                      : null,
+              // Banner image
+              SizedBox(
+                height: 200 + topPadding,
+                width: double.infinity,
+                child: _bannerImage != null
+                    ? CachedNetworkImage(
+                        imageUrl: _bannerImage!,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 800,
+                        placeholder: (ctx, _) => Container(
+                            color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
+                        errorWidget: (_, _, _) => Container(
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                      )
+                    : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+              ),
+              // Gradient overlay
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        bg.withValues(alpha: 0.6),
+                        bg,
+                      ],
+                      stops: const [0.3, 0.7, 1.0],
+                    ),
+                  ),
                 ),
               ),
-              const SizedBox(height: 10),
-              Text(
-                name,
-                style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white),
+              // Avatar + name
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: bg, width: 3),
+                      ),
+                      child: CircleAvatar(
+                        radius: 40,
+                        backgroundColor:
+                            Theme.of(context).colorScheme.surfaceContainerHighest,
+                        backgroundImage: avatar != null
+                            ? CachedNetworkImageProvider(avatar)
+                            : null,
+                        child: avatar == null
+                            ? const Icon(Icons.person, size: 40, color: Colors.grey)
+                            : null,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      name,
+                      style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Theme.of(context).colorScheme.onSurface),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-        ),
-      ],
+          // ── Stats card (same widget, no sliver boundary) ───────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: outline),
+              ),
+              child: Column(
+                children: [
+                  IntrinsicHeight(
+                    child: Row(
+                      children: [
+                        _statItem('$totalAnime', 'Anime'),
+                        _statDividerV(outline),
+                        _statItem('$episodesWatched', 'Episodes'),
+                        _statDividerV(outline),
+                        _statItem(daysWatched, 'Days Watched'),
+                      ],
+                    ),
+                  ),
+                  Divider(height: 1, color: outline),
+                  IntrinsicHeight(
+                    child: Row(
+                      children: [
+                        _statItem('$totalManga', 'Manga'),
+                        _statDividerV(outline),
+                        _statItem('$chaptersRead', 'Chapters'),
+                        _statDividerV(outline),
+                        _statItem(
+                          animeMeanScore > 0 ? animeMeanScore.toStringAsFixed(1) : '—',
+                          'Anime Score',
+                        ),
+                      ],
+                    ),
+                  ),
+                  Divider(height: 1, color: outline),
+                  IntrinsicHeight(
+                    child: Row(
+                      children: [
+                        _statItem('$_followersCount', 'Followers'),
+                        _statDividerV(outline),
+                        _statItem('$_followingCount', 'Following'),
+                        _statDividerV(outline),
+                        _statItem(
+                          mangaMeanScore > 0 ? mangaMeanScore.toStringAsFixed(1) : '—',
+                          'Manga Score',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -441,7 +521,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                       memCacheWidth: 200,
                     )
                   : Container(
-                      width: 100, height: 140, color: const Color(0xFF1E1E3A)),
+                      width: 100, height: 140, color: Theme.of(context).colorScheme.surfaceContainerHighest),
             ),
             const SizedBox(height: 4),
             Text(title,
@@ -476,7 +556,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                       memCacheWidth: 160,
                     )
                   : Container(
-                      width: 80, height: 80, color: const Color(0xFF1E1E3A)),
+                      width: 80, height: 80, color: Theme.of(context).colorScheme.surfaceContainerHighest),
             ),
             const SizedBox(height: 4),
             Text(name,
@@ -498,8 +578,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               Text(value,
                   style: const TextStyle(
                       fontSize: 17,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white)),
+                      fontWeight: FontWeight.bold)),
               const SizedBox(height: 2),
               Text(label,
                   textAlign: TextAlign.center,
@@ -510,45 +589,261 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         ),
       );
 
-  Widget _statDividerV() => const VerticalDivider(
-        width: 1, thickness: 1, color: Color(0xFF2A2A4A));
+  Widget _followingCard(dynamic u) {
+    final user = u as Map<String, dynamic>;
+    final id = user['id'] as int;
+    final name = user['name'] as String? ?? '';
+    final avatar = user['avatar']?['large'] as String?;
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => UserProfileScreen(userId: id, name: name, avatarUrl: avatar),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.only(right: 14),
+        child: Column(
+          children: [
+            CircleAvatar(
+              radius: 30,
+              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+              backgroundImage: avatar != null ? CachedNetworkImageProvider(avatar) : null,
+              child: avatar == null ? const Icon(Icons.person, color: Colors.grey) : null,
+            ),
+            const SizedBox(height: 5),
+            SizedBox(
+              width: 64,
+              child: Text(
+                name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 11),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-  Widget _settingsTile(BuildContext context,
-          {required IconData icon,
-          required String label,
-          Color? color,
-          required VoidCallback onTap}) =>
-      ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: Icon(icon, color: color ?? Colors.grey),
-        title:
-            Text(label, style: TextStyle(color: color ?? Colors.white)),
-        trailing: const Icon(Icons.chevron_right,
-            color: Colors.grey, size: 18),
-        onTap: onTap,
-      );
+  Widget _statDividerV(Color color) => VerticalDivider(
+        width: 1, thickness: 1, color: color);
 
-  void _confirmLogout(BuildContext context, AuthService auth) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF13132A),
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          TextButton(
-            onPressed: () {
-              auth.logout();
-              Navigator.pop(context);
-            },
-            child: const Text('Logout',
-                style: TextStyle(color: Colors.red)),
-          ),
+  Widget _buildActivityGraph() {
+    // Build a 52-week heatmap (oldest left → newest right)
+    final today = DateTime.now();
+    // Start from Monday of the week 52 weeks ago
+    final startRaw = today.subtract(const Duration(days: 364));
+    final startDay =
+        startRaw.subtract(Duration(days: startRaw.weekday - 1)); // Monday
+
+    final totalDays = today.difference(startDay).inDays + 1;
+    final totalWeeks = (totalDays / 7).ceil();
+
+    final maxCount = _activityDays.values.fold(0, (a, b) => a > b ? a : b);
+
+    Color cellColor(int count, BuildContext ctx) {
+      if (count == 0) return Theme.of(ctx).colorScheme.surfaceContainerHighest;
+      if (maxCount == 0) return const Color(0xFF02A9FF);
+      final ratio = count / maxCount;
+      if (ratio < 0.25) return const Color(0xFF02A9FF).withValues(alpha: 0.25);
+      if (ratio < 0.50) return const Color(0xFF02A9FF).withValues(alpha: 0.50);
+      if (ratio < 0.75) return const Color(0xFF02A9FF).withValues(alpha: 0.75);
+      return const Color(0xFF02A9FF);
+    }
+
+    const cellSize = 10.0;
+    const gap = 3.0;
+    const step = cellSize + gap;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ACTIVITY',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey,
+                  letterSpacing: 0.5)),
+          const SizedBox(height: 12),
+          Builder(builder: (ctx) {
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: totalWeeks * step,
+                height: 7 * step - gap,
+                child: CustomPaint(
+                  painter: _HeatmapPainter(
+                    startDay: startDay,
+                    today: today,
+                    totalWeeks: totalWeeks,
+                    activityDays: _activityDays,
+                    cellColor: (count) => cellColor(count, ctx),
+                    cellSize: cellSize,
+                    gap: gap,
+                  ),
+                ),
+              ),
+            );
+          }),
+          const SizedBox(height: 6),
+          Builder(builder: (ctx) => Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              const Text('Less', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              const SizedBox(width: 4),
+              ...List.generate(5, (i) {
+                final colors = [
+                  Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                  const Color(0xFF02A9FF).withValues(alpha: 0.25),
+                  const Color(0xFF02A9FF).withValues(alpha: 0.50),
+                  const Color(0xFF02A9FF).withValues(alpha: 0.75),
+                  const Color(0xFF02A9FF),
+                ];
+                return Container(
+                  width: cellSize,
+                  height: cellSize,
+                  margin: const EdgeInsets.only(left: 3),
+                  decoration: BoxDecoration(
+                    color: colors[i],
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                );
+              }),
+              const SizedBox(width: 4),
+              const Text('More', style: TextStyle(fontSize: 10, color: Colors.grey)),
+            ],
+          )),
         ],
       ),
     );
   }
+
+  Widget _buildTopGenres(Map<String, dynamic>? animeStats) {
+    final raw = animeStats?['genres'] as List<dynamic>?;
+    if (raw == null || raw.isEmpty) return const SizedBox.shrink();
+
+    final genres = raw
+        .cast<Map<String, dynamic>>()
+        .toList()
+      ..sort((a, b) =>
+          ((b['count'] as num?) ?? 0).compareTo((a['count'] as num?) ?? 0));
+    final top = genres.take(5).toList();
+    final maxCount = (top.first['count'] as num).toDouble();
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('TOP GENRES',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey,
+                  letterSpacing: 0.5)),
+          const SizedBox(height: 12),
+          ...top.map((g) {
+            final genre = g['genre'] as String? ?? '';
+            final count = (g['count'] as num?)?.toInt() ?? 0;
+            final score = (g['meanScore'] as num?)?.toDouble() ?? 0.0;
+            final ratio = maxCount > 0 ? count / maxCount : 0.0;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Builder(builder: (ctx) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(genre,
+                            style: const TextStyle(
+                                fontSize: 13, fontWeight: FontWeight.w500)),
+                        Text(
+                          '$count anime${score > 0 ? '  ·  ${score.toStringAsFixed(1)} ★' : ''}',
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: ratio,
+                        minHeight: 5,
+                        backgroundColor:
+                            Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                        valueColor: const AlwaysStoppedAnimation(
+                            Color(0xFF02A9FF)),
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+}
+
+class _HeatmapPainter extends CustomPainter {
+  final DateTime startDay;
+  final DateTime today;
+  final int totalWeeks;
+  final Map<String, int> activityDays;
+  final Color Function(int count) cellColor;
+  final double cellSize;
+  final double gap;
+
+  const _HeatmapPainter({
+    required this.startDay,
+    required this.today,
+    required this.totalWeeks,
+    required this.activityDays,
+    required this.cellColor,
+    required this.cellSize,
+    required this.gap,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final step = cellSize + gap;
+    final paint = Paint();
+
+    for (int week = 0; week < totalWeeks; week++) {
+      for (int dow = 0; dow < 7; dow++) {
+        final day = startDay.add(Duration(days: week * 7 + dow));
+        if (day.isAfter(today)) continue;
+
+        final key =
+            '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+        final count = activityDays[key] ?? 0;
+
+        paint.color = cellColor(count);
+        final rect = RRect.fromRectAndRadius(
+          Rect.fromLTWH(
+            week * step,
+            dow * step,
+            cellSize,
+            cellSize,
+          ),
+          const Radius.circular(2),
+        );
+        canvas.drawRRect(rect, paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_HeatmapPainter old) =>
+      old.activityDays != activityDays || old.today != today;
 }

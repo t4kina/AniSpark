@@ -40,7 +40,7 @@ class AniListService {
     query {
       Page(page: 1, perPage: 20) {
         media(sort: TRENDING_DESC, type: ANIME) {
-          id title { romaji english }
+          id title { romaji english native }
           coverImage { large } episodes averageScore genres
         }
       }
@@ -53,7 +53,7 @@ class AniListService {
       query(\$season: MediaSeason, \$seasonYear: Int) {
         Page(page: 1, perPage: 20) {
           media(season: \$season, seasonYear: \$seasonYear, type: ANIME, sort: POPULARITY_DESC) {
-            id title { romaji english }
+            id title { romaji english native }
             coverImage { large } episodes averageScore genres
           }
         }
@@ -61,22 +61,35 @@ class AniListService {
     ''', {'season': season, 'seasonYear': year});
   }
 
-  Future<List<dynamic>> getPopularAllTime() => _query('''
-    query {
-      Page(page: 1, perPage: 20) {
-        media(sort: POPULARITY_DESC, type: ANIME) {
-          id title { romaji english }
-          coverImage { large } episodes averageScore genres
+  static (String season, int year) _nextSeason() {
+    final (current, year) = _currentSeason();
+    return switch (current) {
+      'WINTER' => ('SPRING', year),
+      'SPRING' => ('SUMMER', year),
+      'SUMMER' => ('FALL', year),
+      _ => ('WINTER', year + 1), // FALL
+    };
+  }
+
+  Future<List<dynamic>> getNextSeason() {
+    final (season, year) = _nextSeason();
+    return _query('''
+      query(\$season: MediaSeason, \$seasonYear: Int) {
+        Page(page: 1, perPage: 20) {
+          media(season: \$season, seasonYear: \$seasonYear, type: ANIME, sort: POPULARITY_DESC) {
+            id title { romaji english native }
+            coverImage { large } episodes averageScore genres
+          }
         }
       }
-    }
-  ''');
+    ''', {'season': season, 'seasonYear': year});
+  }
 
   Future<List<dynamic>> getTopAiring() => _query('''
     query {
       Page(page: 1, perPage: 20) {
         media(status: RELEASING, sort: POPULARITY_DESC, type: ANIME) {
-          id title { romaji english }
+          id title { romaji english native }
           coverImage { large } episodes averageScore genres
         }
       }
@@ -104,7 +117,7 @@ class AniListService {
           media(search: \$search, type: ANIME,
                 genre: \$genre, format: \$format,
                 status: \$status, seasonYear: \$seasonYear, sort: \$sort) {
-            id title { romaji english }
+            id title { romaji english native }
             coverImage { large } episodes averageScore genres status
           }
         }
@@ -133,7 +146,7 @@ class AniListService {
           media(search: \$search, type: MANGA,
                 genre: \$genre, format: \$format,
                 status: \$status, seasonYear: \$seasonYear, sort: \$sort) {
-            id title { romaji english }
+            id title { romaji english native }
             coverImage { large } chapters averageScore genres status
           }
         }
@@ -141,18 +154,22 @@ class AniListService {
     ''', {...variables, 'sort': [sortValue]});
   }
 
-  Future<Map<String, dynamic>?> getAnimeDetail(int id) async {
+  Future<Map<String, dynamic>?> getAnimeDetail(int id, [String? token]) async {
     const query = '''
       query(\$id: Int) {
         Media(id: \$id) {
-          id title { romaji english }
+          id title { romaji english native }
           coverImage { large extraLarge } bannerImage
-          episodes averageScore genres status
+          episodes chapters averageScore genres status type
           format source
           description(asHtml: false)
           studios { nodes { name } }
           startDate { year month day }
           nextAiringEpisode { episode airingAt }
+          isFavourite
+          mediaListEntry {
+            id status progress score(format: POINT_10_DECIMAL)
+          }
           characters(sort: ROLE, perPage: 12) {
             edges {
               role
@@ -171,7 +188,7 @@ class AniListService {
     ''';
     final response = await http.post(
       Uri.parse(_baseUrl),
-      headers: await _headers(),
+      headers: await _headers(token),
       body: jsonEncode({'query': query, 'variables': {'id': id}}),
     );
     if (response.statusCode == 200) {
@@ -190,7 +207,7 @@ class AniListService {
             entries {
               mediaId progress score(format: POINT_10)
               media {
-                id title { romaji english }
+                id title { romaji english native }
                 coverImage { large }
                 episodes averageScore genres
                 nextAiringEpisode { episode timeUntilAiring }
@@ -227,7 +244,7 @@ class AniListService {
             entries {
               mediaId progress score(format: POINT_10)
               media {
-                id title { romaji english }
+                id title { romaji english native }
                 coverImage { large }
                 chapters averageScore genres
               }
@@ -266,12 +283,12 @@ class AniListService {
           activities(isFollowing: \$isFollowing$userFilter, sort: ID_DESC) {
             ... on ListActivity {
               id type status progress createdAt
-              user { name avatar { large } }
-              media { id title { romaji english } coverImage { large } type }
+              user { id name avatar { large } }
+              media { id title { romaji english native } coverImage { large } type }
             }
             ... on TextActivity {
               id type text createdAt
-              user { name avatar { large } }
+              user { id name avatar { large } }
             }
           }
         }
@@ -296,10 +313,10 @@ class AniListService {
         User(id: \$userId) {
           id name bannerImage
           favourites {
-            anime(perPage: 10) {
-              nodes { id title { romaji english } coverImage { large } }
+            anime(perPage: 25) {
+              nodes { id title { romaji english native } coverImage { large } }
             }
-            characters(perPage: 10) {
+            characters(perPage: 25) {
               nodes { id name { full } image { medium } }
             }
           }
@@ -352,6 +369,59 @@ class AniListService {
       };
     }
     return {'followers': 0, 'following': 0};
+  }
+
+  /// Returns the list of users that [userId] is following.
+  Future<List<dynamic>> getFollowing(int userId, String token) async {
+    const query = '''
+      query(\$userId: Int!) {
+        Page(page: 1, perPage: 50) {
+          following(userId: \$userId) {
+            id name
+            avatar { large }
+          }
+        }
+      }
+    ''';
+    final response = await http.post(
+      Uri.parse(_baseUrl),
+      headers: await _headers(token),
+      body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
+    );
+    if (response.statusCode != 200) return [];
+    final body = jsonDecode(response.body);
+    return (body['data']?['Page']?['following'] as List<dynamic>?) ?? [];
+  }
+
+  /// Fetches a public user profile (no token required).
+  Future<Map<String, dynamic>?> getPublicUserProfile(int userId) async {
+    const query = '''
+      query(\$userId: Int!) {
+        User(id: \$userId) {
+          id name bannerImage
+          avatar { large }
+          statistics {
+            anime { count meanScore minutesWatched episodesWatched }
+            manga { count chaptersRead meanScore }
+          }
+          favourites {
+            anime(perPage: 10) {
+              nodes { id title { romaji english native } coverImage { large } }
+            }
+            characters(perPage: 10) {
+              nodes { id name { full } image { medium } }
+            }
+          }
+        }
+      }
+    ''';
+    final response = await http.post(
+      Uri.parse(_baseUrl),
+      headers: await _headers(),
+      body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
+    );
+    if (response.statusCode != 200) return null;
+    return jsonDecode(response.body)['data']['User'] as Map<String, dynamic>?;
   }
 
   /// Returns a map of AniList status → entry count for the user's anime list.
@@ -414,5 +484,95 @@ class AniListService {
       return data['data']?['SaveMediaListEntry'] != null;
     }
     return false;
+  }
+
+  Future<bool> deleteListEntry({
+    required int entryId,
+    required String token,
+  }) async {
+    const mutation = '''
+      mutation(\$id: Int) {
+        DeleteMediaListEntry(id: \$id) {
+          deleted
+        }
+      }
+    ''';
+    final response = await http.post(
+      Uri.parse(_baseUrl),
+      headers: await _headers(token),
+      body: jsonEncode({
+        'query': mutation,
+        'variables': {'id': entryId},
+      }),
+    );
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['data']?['DeleteMediaListEntry']?['deleted'] == true;
+    }
+    return false;
+  }
+
+  /// Returns a map of "YYYY-MM-DD" → activity count for the past year.
+  Future<Map<String, int>> getUserActivityDays(
+      int userId, String token) async {
+    const query = '''
+      query(\$userId: Int!, \$page: Int!) {
+        Page(page: \$page, perPage: 50) {
+          activities(userId: \$userId, sort: ID_DESC, type: ANIME_LIST) {
+            ... on ListActivity { createdAt }
+          }
+        }
+      }
+    ''';
+    final cutoff =
+        DateTime.now().subtract(const Duration(days: 365)).millisecondsSinceEpoch ~/
+            1000;
+    final Map<String, int> result = {};
+    for (int page = 1; page <= 6; page++) {
+      final response = await http.post(
+        Uri.parse(_baseUrl),
+        headers: await _headers(token),
+        body: jsonEncode(
+            {'query': query, 'variables': {'userId': userId, 'page': page}}),
+      );
+      if (response.statusCode != 200) break;
+      final activities = jsonDecode(response.body)['data']['Page']
+          ['activities'] as List<dynamic>;
+      if (activities.isEmpty) break;
+      bool done = false;
+      for (final act in activities) {
+        final ts = act['createdAt'] as int?;
+        if (ts == null) continue;
+        if (ts < cutoff) { done = true; break; }
+        final d = DateTime.fromMillisecondsSinceEpoch(ts * 1000);
+        final key =
+            '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+        result[key] = (result[key] ?? 0) + 1;
+      }
+      if (done) break;
+    }
+    return result;
+  }
+
+  Future<bool> toggleFavourite({
+    required int animeId,
+    required String token,
+  }) async {
+    const mutation = '''
+      mutation(\$animeId: Int) {
+        ToggleFavourite(animeId: \$animeId) {
+          anime { nodes { id } }
+        }
+      }
+    ''';
+    final response = await http.post(
+      Uri.parse(_baseUrl),
+      headers: await _headers(token),
+      body: jsonEncode({
+        'query': mutation,
+        'variables': {'animeId': animeId},
+      }),
+    );
+    return response.statusCode == 200;
   }
 }

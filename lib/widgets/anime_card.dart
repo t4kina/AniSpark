@@ -49,12 +49,12 @@ class AnimeCard extends StatelessWidget {
                           imageUrl: image,
                           fit: BoxFit.cover,
                           memCacheWidth: 240,
-                          placeholder: (_, _) =>
-                              Container(color: Colors.grey[800]),
-                          errorWidget: (_, _, _) =>
-                              Container(color: Colors.grey[800]),
+                          placeholder: (ctx, _) =>
+                              Container(color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
+                          errorWidget: (ctx, _, _) =>
+                              Container(color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
                         )
-                      : Container(color: Colors.grey[800]),
+                      : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
                   if (localAnime != null && watched > 0)
                     Positioned(
                       bottom: 0,

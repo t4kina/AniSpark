@@ -30,7 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final results = await Future.wait([
       _service.getTrending(),
       _service.getThisSeason(),
-      _service.getPopularAllTime(),
+      _service.getNextSeason(),
       _service.getTopAiring(),
     ]);
     setState(() {
@@ -157,9 +157,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
 
-  Widget _buildShimmer() => Shimmer.fromColors(
-        baseColor: Colors.grey[800]!,
-        highlightColor: Colors.grey[600]!,
+  Widget _buildShimmer() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Shimmer.fromColors(
+        baseColor: isDark ? Colors.grey[800]! : Colors.grey[300]!,
+        highlightColor: isDark ? Colors.grey[600]! : Colors.grey[100]!,
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,6 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       );
+  }
 
   Widget _shimmerSection() => Column(
         crossAxisAlignment: CrossAxisAlignment.start,

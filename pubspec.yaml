@@ -34,6 +34,12 @@ dependencies:
   # Cache
   flutter_cache_manager: ^3.3.1
 
+  # SVG
+  flutter_svg: ^2.0.17
+
+  # Preferences
+  shared_preferences: ^2.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -43,3 +49,6 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/logo.jpg
+    - assets/bin.svg

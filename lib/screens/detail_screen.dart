@@ -5,6 +5,8 @@ import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
 import '../providers/anime_list_provider.dart';
 import '../models/anime.dart';
+import '../utils/refresh_notifier.dart';
+import '../providers/settings_provider.dart';
 
 class DetailScreen extends StatefulWidget {
   final int animeId;
@@ -35,7 +37,9 @@ class _DetailScreenState extends State<DetailScreen>
   }
 
   Future<void> _load() async {
-    final data = await _service.getAnimeDetail(widget.animeId);
+    final auth = context.read<AuthService>();
+    final token = auth.isLoggedIn ? auth.token : null;
+    final data = await _service.getAnimeDetail(widget.animeId, token);
     if (mounted) setState(() { _data = data; _loading = false; });
   }
 
@@ -50,22 +54,50 @@ class _DetailScreenState extends State<DetailScreen>
     _               => 'PLANNING',
   };
 
+  // Map AniList status → local status string
+  String _fromAniListStatus(String aniStatus) => switch (aniStatus) {
+    'CURRENT'   => 'watching',
+    'COMPLETED' => 'completed',
+    'PLANNING'  => 'plan_to_watch',
+    'DROPPED'   => 'dropped',
+    'PAUSED'    => 'on_hold',
+    'REPEATING' => 'rewatching',
+    _           => 'plan_to_watch',
+  };
+
   void _showEditModal(BuildContext context, AnimeListProvider provider) {
     final anime = Anime.fromApi(_data!);
+    final resolvedTitle = context.read<SettingsProvider>().resolveTitle(_data!['title'] as Map<String, dynamic>?);
+    final listEntry = _data!['mediaListEntry'] as Map<String, dynamic>?;
     final existing = provider.isInList(anime.id) ? provider.getAnime(anime.id) : null;
-    String selectedStatus = existing?.status ?? 'plan_to_watch';
-    int progress = existing?.episodesWatched ?? 0;
-    double score = (existing?.userScore ?? 0).toDouble();
-    final totalEps = _data!['episodes'] as int?;
+
+    // Prefer AniList data, fall back to local
+    String selectedStatus;
+    int progress;
+    double score;
+    if (listEntry != null) {
+      selectedStatus = _fromAniListStatus(listEntry['status'] as String? ?? 'PLANNING');
+      progress = (listEntry['progress'] as num?)?.toInt() ?? 0;
+      score = (listEntry['score'] as num?)?.toDouble() ?? 0;
+    } else if (existing != null) {
+      selectedStatus = existing.status;
+      progress = existing.episodesWatched;
+      score = (existing.userScore ?? 0).toDouble();
+    } else {
+      selectedStatus = 'plan_to_watch';
+      progress = 0;
+      score = 0;
+    }
+    final totalEps = (_data!['episodes'] ?? _data!['chapters']) as int?;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF1C2128),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => StatefulBuilder(
+      builder: (sheetContext) => StatefulBuilder(
         builder: (ctx, setModal) => Padding(
           padding: EdgeInsets.only(
             left: 24, right: 24, top: 24,
@@ -87,7 +119,7 @@ class _DetailScreenState extends State<DetailScreen>
                 ),
               ),
               Text(
-                anime.title,
+                resolvedTitle,
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -102,17 +134,17 @@ class _DetailScreenState extends State<DetailScreen>
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _statusChip('Watching', 'watching', selectedStatus,
+                  _statusChip(ctx, 'Watching', 'watching', selectedStatus,
                       (v) => setModal(() => selectedStatus = v)),
-                  _statusChip('Completed', 'completed', selectedStatus,
+                  _statusChip(ctx, 'Completed', 'completed', selectedStatus,
                       (v) => setModal(() => selectedStatus = v)),
-                  _statusChip('Plan to Watch', 'plan_to_watch', selectedStatus,
+                  _statusChip(ctx, 'Plan to Watch', 'plan_to_watch', selectedStatus,
                       (v) => setModal(() => selectedStatus = v)),
-                  _statusChip('On Hold', 'on_hold', selectedStatus,
+                  _statusChip(ctx, 'On Hold', 'on_hold', selectedStatus,
                       (v) => setModal(() => selectedStatus = v)),
-                  _statusChip('Dropped', 'dropped', selectedStatus,
+                  _statusChip(ctx, 'Dropped', 'dropped', selectedStatus,
                       (v) => setModal(() => selectedStatus = v)),
-                  _statusChip('Rewatching', 'rewatching', selectedStatus,
+                  _statusChip(ctx, 'Rewatching', 'rewatching', selectedStatus,
                       (v) => setModal(() => selectedStatus = v)),
                 ],
               ),
@@ -124,7 +156,7 @@ class _DetailScreenState extends State<DetailScreen>
               const SizedBox(height: 8),
               Row(
                 children: [
-                  _counterBtn(Icons.remove, () {
+                  _counterBtn(ctx, Icons.remove, () {
                     if (progress > 0) setModal(() => progress--);
                   }),
                   const SizedBox(width: 12),
@@ -139,7 +171,7 @@ class _DetailScreenState extends State<DetailScreen>
                     ),
                   ),
                   const SizedBox(width: 12),
-                  _counterBtn(Icons.add, () {
+                  _counterBtn(ctx, Icons.add, () {
                     if (totalEps == null || progress < totalEps) {
                       setModal(() => progress++);
                     }
@@ -154,7 +186,7 @@ class _DetailScreenState extends State<DetailScreen>
               const SizedBox(height: 8),
               Row(
                 children: [
-                  _counterBtn(Icons.remove, () {
+                  _counterBtn(ctx, Icons.remove, () {
                     if (score > 0) setModal(() => score = (score - 0.5).clamp(0, 10));
                   }),
                   const SizedBox(width: 12),
@@ -167,7 +199,7 @@ class _DetailScreenState extends State<DetailScreen>
                     ),
                   ),
                   const SizedBox(width: 12),
-                  _counterBtn(Icons.add, () {
+                  _counterBtn(ctx, Icons.add, () {
                     if (score < 10) setModal(() => score = (score + 0.5).clamp(0, 10));
                   }),
                 ],
@@ -194,15 +226,17 @@ class _DetailScreenState extends State<DetailScreen>
                         // Sync to AniList if logged in
                         final auth = context.read<AuthService>();
                         if (auth.isLoggedIn) {
-                          _service.saveListEntry(
+                          await _service.saveListEntry(
                             mediaId: anime.id,
                             status: _toAniListStatus(selectedStatus),
                             progress: progress,
                             score: score,
                             token: auth.token!,
                           );
+                          _load(); // silent reload to sync mediaListEntry
                         }
 
+                        if (!context.mounted) return;
                         Navigator.pop(context);
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(content: Text('${anime.title} saved!')),
@@ -231,30 +265,31 @@ class _DetailScreenState extends State<DetailScreen>
     );
   }
 
-  Widget _counterBtn(IconData icon, VoidCallback onTap) => GestureDetector(
+  Widget _counterBtn(BuildContext context, IconData icon, VoidCallback onTap) => GestureDetector(
         onTap: onTap,
         child: Container(
           width: 36,
           height: 36,
           decoration: BoxDecoration(
-            color: const Color(0xFF21262D),
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(icon, size: 18, color: Colors.white),
+          child: Icon(icon, size: 18),
         ),
       );
 
-  Widget _statusChip(String label, String value, String selected,
+  Widget _statusChip(BuildContext context, String label, String value, String selected,
       Function(String) onTap) {
     final isSelected = value == selected;
     return GestureDetector(
       onTap: () => onTap(value),
       child: Chip(
         label: Text(label),
-        backgroundColor:
-            isSelected ? const Color(0xFF02A9FF) : const Color(0xFF21262D),
+        backgroundColor: isSelected
+            ? const Color(0xFF02A9FF)
+            : Theme.of(context).colorScheme.surfaceContainerHighest,
         labelStyle: TextStyle(
-            color: isSelected ? Colors.white : Colors.grey, fontSize: 12),
+            color: isSelected ? Colors.white : null, fontSize: 12),
         padding: const EdgeInsets.symmetric(horizontal: 4),
       ),
     );
@@ -271,8 +306,8 @@ class _DetailScreenState extends State<DetailScreen>
       return const Scaffold(body: Center(child: Text('Failed to load')));
     }
 
-    final title =
-        _data!['title']['english'] ?? _data!['title']['romaji'] ?? 'Unknown';
+    final settings = context.read<SettingsProvider>();
+    final title = settings.resolveTitle(_data!['title'] as Map<String, dynamic>?);
     final cover = _data!['coverImage']?['extraLarge'] ??
         _data!['coverImage']?['large'];
     final banner = _data!['bannerImage'];
@@ -294,7 +329,7 @@ class _DetailScreenState extends State<DetailScreen>
     final staff =
         (_data!['staff']?['edges'] as List? ?? []).cast<Map<String, dynamic>>();
 
-    final inList = provider.isInList(widget.animeId);
+    final inList = _data!['mediaListEntry'] != null || provider.isInList(widget.animeId);
 
     return Scaffold(
       body: NestedScrollView(
@@ -305,15 +340,29 @@ class _DetailScreenState extends State<DetailScreen>
             flexibleSpace: FlexibleSpaceBar(
               background: banner != null
                   ? CachedNetworkImage(imageUrl: banner, fit: BoxFit.cover)
-                  : Container(color: const Color(0xFF1C2128)),
+                  : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
             ),
             actions: [
-              IconButton(
-                icon: Icon(
-                  inList ? Icons.bookmark : Icons.bookmark_border,
-                  color: const Color(0xFF02A9FF),
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: IconButton(
+                  icon: Icon(
+                    (_data!['isFavourite'] == true) ? Icons.favorite : Icons.favorite_border,
+                    color: (_data!['isFavourite'] == true) ? Colors.red : Colors.white,
+                  ),
+                  onPressed: () async {
+                    final auth = context.read<AuthService>();
+                    if (!auth.isLoggedIn) return;
+                    final ok = await _service.toggleFavourite(
+                      animeId: widget.animeId,
+                      token: auth.token!,
+                    );
+                    if (ok) {
+                      _load();
+                      profileRefreshNotifier.value++;
+                    }
+                  },
                 ),
-                onPressed: () => _showEditModal(context, provider),
               ),
             ],
           ),
@@ -499,7 +548,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
 
   @override
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => Container(
-        color: const Color(0xFF0D1117),
+        color: Theme.of(context).colorScheme.surface,
         child: tabBar,
       );
 
@@ -536,9 +585,9 @@ class _OverviewTab extends StatelessWidget {
               runSpacing: 4,
               children: [
                 if (studios.isNotEmpty)
-                  _infoChip(Icons.business, studios.first),
+                  _infoChip(context, Icons.business, studios.first),
                 if (source != null)
-                  _infoChip(Icons.book, _sourceLabel(source!)),
+                  _infoChip(context, Icons.book, _sourceLabel(source!)),
               ],
             ),
           ),
@@ -551,7 +600,7 @@ class _OverviewTab extends StatelessWidget {
                 .map((g) => Chip(
                       label: Text(g,
                           style: const TextStyle(fontSize: 11)),
-                      backgroundColor: const Color(0xFF21262D),
+                      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
                       padding: EdgeInsets.zero,
                     ))
                 .toList(),
@@ -570,10 +619,10 @@ class _OverviewTab extends StatelessWidget {
     );
   }
 
-  Widget _infoChip(IconData icon, String label) => Container(
+  Widget _infoChip(BuildContext context, IconData icon, String label) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
-          color: const Color(0xFF21262D),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Row(
@@ -614,8 +663,8 @@ class _CharactersTab extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 80),
       itemCount: characters.length,
-      separatorBuilder: (_, _) =>
-          const Divider(height: 1, color: Color(0xFF1E1E3A)),
+      separatorBuilder: (ctx, _) =>
+          Divider(height: 1, color: Theme.of(ctx).colorScheme.outline),
       itemBuilder: (_, i) {
         final edge = characters[i];
         final charNode = edge['node'] as Map<String, dynamic>? ?? {};
@@ -685,12 +734,12 @@ class _CharactersTab extends StatelessWidget {
                 height: 56,
                 fit: BoxFit.cover,
                 memCacheWidth: 80,
-                placeholder: (_, _) =>
-                    Container(width: 40, height: 56, color: const Color(0xFF1E1E3A)),
-                errorWidget: (_, _, _) =>
-                    Container(width: 40, height: 56, color: const Color(0xFF1E1E3A)),
+                placeholder: (ctx, _) =>
+                    Container(width: 40, height: 56, color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
+                errorWidget: (ctx, _, _) =>
+                    Container(width: 40, height: 56, color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
               )
-            : Container(width: 40, height: 56, color: const Color(0xFF1E1E3A)),
+            : Builder(builder: (ctx) => Container(width: 40, height: 56, color: Theme.of(ctx).colorScheme.surfaceContainerHighest)),
       );
 }
 
@@ -709,8 +758,8 @@ class _StaffTab extends StatelessWidget {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       itemCount: staff.length,
-      separatorBuilder: (_, _) =>
-          const Divider(color: Color(0xFF21262D), height: 1),
+      separatorBuilder: (ctx, _) =>
+          Divider(color: Theme.of(ctx).colorScheme.outline, height: 1),
       itemBuilder: (_, i) {
         final edge = staff[i];
         final node = edge['node'] as Map<String, dynamic>? ?? {};
@@ -722,7 +771,7 @@ class _StaffTab extends StatelessWidget {
           contentPadding: const EdgeInsets.symmetric(vertical: 4),
           leading: CircleAvatar(
             radius: 24,
-            backgroundColor: const Color(0xFF21262D),
+            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
             backgroundImage:
                 img != null ? CachedNetworkImageProvider(img) : null,
             child: img == null

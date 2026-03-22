@@ -114,7 +114,7 @@ class _SearchScreenState extends State<SearchScreen>
     final draft = _filters.copy();
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF161B22),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -383,9 +383,9 @@ class _FilterSheetState extends State<_FilterSheet> {
               label: Text(opt,
                   style: TextStyle(
                       fontSize: 11,
-                      color: isSelected ? Colors.white : Colors.grey)),
+                      color: isSelected ? Colors.white : null)),
               backgroundColor:
-                  isSelected ? const Color(0xFF02A9FF) : const Color(0xFF21262D),
+                  isSelected ? const Color(0xFF02A9FF) : Theme.of(context).colorScheme.surfaceContainerHighest,
               padding:
                   const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
             ),

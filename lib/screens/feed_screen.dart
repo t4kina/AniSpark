@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
+import 'user_profile_screen.dart';
 
 enum _FeedType { following, global, personal }
 
@@ -71,7 +72,7 @@ class _FeedScreenState extends State<FeedScreen>
   void _showFeedPicker() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF13132A),
+      backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -112,7 +113,7 @@ class _FeedScreenState extends State<FeedScreen>
       leading: Icon(icon, color: isSelected ? const Color(0xFF02A9FF) : Colors.grey),
       title: Text(label,
           style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey,
+              color: isSelected ? null : Colors.grey,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal)),
       trailing: isSelected
           ? const Icon(Icons.check, color: Color(0xFF02A9FF), size: 18)
@@ -187,21 +188,47 @@ class _ActivityCard extends StatelessWidget {
 
   const _ActivityCard({required this.activity, required this.timeAgo});
 
+  void _openUserProfile(BuildContext context, Map? user) {
+    final id = user?['id'] as int?;
+    final name = user?['name'] as String? ?? 'Unknown';
+    final avatar = user?['avatar']?['large'] as String?;
+    if (id == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => UserProfileScreen(userId: id, name: name, avatarUrl: avatar),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final type = activity['type'] as String?;
-    final user = activity['user'];
+    final user = activity['user'] as Map?;
     final avatar = user?['avatar']?['large'] as String?;
     final username = user?['name'] as String? ?? 'Unknown';
     final createdAt = activity['createdAt'] as int? ?? 0;
 
     if (type == 'TEXT') {
-      return _buildTextActivity(avatar, username, createdAt);
+      return _buildTextActivity(context, user, avatar, username, createdAt);
     }
-    return _buildListActivity(avatar, username, createdAt);
+    return _buildListActivity(context, user, avatar, username, createdAt);
   }
 
-  Widget _buildListActivity(String? avatar, String username, int createdAt) {
+  Widget _userAvatar(BuildContext context, Map? user, String? avatar) =>
+      GestureDetector(
+        onTap: () => _openUserProfile(context, user),
+        child: CircleAvatar(
+          radius: 18,
+          backgroundImage:
+              avatar != null ? CachedNetworkImageProvider(avatar) : null,
+          backgroundColor:
+              Theme.of(context).colorScheme.surfaceContainerHighest,
+          child: avatar == null ? const Icon(Icons.person, size: 18) : null,
+        ),
+      );
+
+  Widget _buildListActivity(BuildContext context, Map? user, String? avatar, String username, int createdAt) {
     final media = activity['media'] as Map<String, dynamic>?;
     final status = activity['status'] as String? ?? '';
     final progress = activity['progress'];
@@ -209,69 +236,56 @@ class _ActivityCard extends StatelessWidget {
     final title = (media?['title']?['english'] ??
         media?['title']?['romaji'] ??
         'Unknown') as String;
-
-    final actionText =
-        progress != null ? '$status $progress of' : status;
+    final actionText = progress != null ? '$status $progress of' : status;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF13132A),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundImage: avatar != null
-                ? CachedNetworkImageProvider(avatar)
-                : null,
-            backgroundColor: const Color(0xFF1E1E3A),
-            child: avatar == null
-                ? const Icon(Icons.person, size: 18)
-                : null,
-          ),
+          _userAvatar(context, user, avatar),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                RichText(
-                  text: TextSpan(
-                    style: const TextStyle(fontSize: 13),
-                    children: [
-                      TextSpan(
-                          text: username,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF02A9FF))),
-                      TextSpan(
-                          text: ' $actionText',
-                          style: const TextStyle(color: Colors.grey)),
-                    ],
+                GestureDetector(
+                  onTap: () => _openUserProfile(context, user),
+                  child: RichText(
+                    text: TextSpan(
+                      style: const TextStyle(fontSize: 13),
+                      children: [
+                        TextSpan(
+                            text: username,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF02A9FF))),
+                        TextSpan(
+                            text: ' $actionText',
+                            style: const TextStyle(color: Colors.grey)),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  title,
-                  style: const TextStyle(
-                      fontSize: 13, fontWeight: FontWeight.w600),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.access_time,
-                        size: 12, color: Colors.grey),
-                    const SizedBox(width: 3),
-                    Text(timeAgo(createdAt),
-                        style: const TextStyle(
-                            fontSize: 11, color: Colors.grey)),
-                  ],
-                ),
+                Row(children: [
+                  const Icon(Icons.access_time, size: 12, color: Colors.grey),
+                  const SizedBox(width: 3),
+                  Text(timeAgo(createdAt),
+                      style:
+                          const TextStyle(fontSize: 11, color: Colors.grey)),
+                ]),
               ],
             ),
           ),
@@ -293,51 +307,45 @@ class _ActivityCard extends StatelessWidget {
     );
   }
 
-  Widget _buildTextActivity(String? avatar, String username, int createdAt) {
+  Widget _buildTextActivity(BuildContext context, Map? user, String? avatar, String username, int createdAt) {
     final text = activity['text'] as String? ?? '';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF13132A),
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          CircleAvatar(
-            radius: 18,
-            backgroundImage: avatar != null
-                ? CachedNetworkImageProvider(avatar)
-                : null,
-            backgroundColor: const Color(0xFF1E1E3A),
-          ),
+          _userAvatar(context, user, avatar),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(username,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF02A9FF),
-                        fontSize: 13)),
+                GestureDetector(
+                  onTap: () => _openUserProfile(context, user),
+                  child: Text(username,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF02A9FF),
+                          fontSize: 13)),
+                ),
                 const SizedBox(height: 4),
                 Text(text,
-                    style: const TextStyle(
-                        color: Colors.grey, fontSize: 13)),
+                    style:
+                        const TextStyle(color: Colors.grey, fontSize: 13)),
                 const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.access_time,
-                        size: 12, color: Colors.grey),
-                    const SizedBox(width: 3),
-                    Text(timeAgo(createdAt),
-                        style: const TextStyle(
-                            fontSize: 11, color: Colors.grey)),
-                  ],
-                ),
+                Row(children: [
+                  const Icon(Icons.access_time, size: 12, color: Colors.grey),
+                  const SizedBox(width: 3),
+                  Text(timeAgo(createdAt),
+                      style:
+                          const TextStyle(fontSize: 11, color: Colors.grey)),
+                ]),
               ],
             ),
           ),

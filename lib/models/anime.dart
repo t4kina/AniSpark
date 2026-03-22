@@ -59,7 +59,7 @@ class Anime extends HiveObject {
 
     return Anime(
       id: data['id'],
-      title: data['title']['english'] ?? data['title']['romaji'] ?? 'Unknown',
+      title: data['title']['english'] ?? data['title']['romaji'] ?? data['title']['native'] ?? 'Unknown',
       coverImage: data['coverImage']?['large'] ?? data['coverImage']?['extraLarge'],
       episodes: data['episodes'],
       description: data['description'],

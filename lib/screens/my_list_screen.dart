@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
 import '../screens/detail_screen.dart';
+import '../main.dart';
+import '../providers/settings_provider.dart';
+import '../utils/translations.dart' show tr;
+import '../utils/refresh_notifier.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
 
@@ -49,31 +54,36 @@ class _ListTabScreenState extends State<_ListTabScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
+    final settings = context.watch<SettingsProvider>();
+    final lang = settings.language;
     final avatar = auth.user?['avatar']?['large'] as String?;
-    final title = widget.type == 'ANIME' ? 'Anime' : 'Manga';
+    final title = widget.type == 'ANIME' ? tr('nav_anime', lang) : tr('nav_manga', lang);
 
     return Scaffold(
       appBar: AppBar(
-        leadingWidth: 64,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 20),
-          child: Center(
-            child: SizedBox(
-              width: 32,
-              height: 32,
-              child: ClipOval(
-                child: avatar != null
-                    ? CachedNetworkImage(
-                        imageUrl: avatar,
-                        width: 32,
-                        height: 32,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 64,
-                      )
-                    : Container(
-                        color: const Color(0xFF1E1E3A),
-                        child: const Icon(Icons.person, size: 16, color: Colors.grey),
-                      ),
+        titleSpacing: 0,
+        leading: GestureDetector(
+          onTap: () => MainNavigation.navigateToTab(4),
+          child: Padding(
+            padding: const EdgeInsets.only(left: 16),
+            child: Center(
+              child: SizedBox(
+                width: 32,
+                height: 32,
+                child: ClipOval(
+                  child: avatar != null
+                      ? CachedNetworkImage(
+                          imageUrl: avatar,
+                          width: 32,
+                          height: 32,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 64,
+                        )
+                      : Container(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          child: const Icon(Icons.person, size: 16, color: Colors.grey),
+                        ),
+                ),
               ),
             ),
           ),
@@ -82,17 +92,19 @@ class _ListTabScreenState extends State<_ListTabScreen> {
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 8),
+            padding: const EdgeInsets.only(right: 16),
             child: PopupMenuButton<_SortMode>(
-            icon: const Icon(Icons.swap_vert, color: Colors.grey),
-            color: const Color(0xFF13132A),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            icon: const Icon(Icons.swap_vert, color: Colors.grey, size: 22),
+            color: Theme.of(context).colorScheme.surface,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             onSelected: (mode) => setState(() => _sortMode = mode),
             itemBuilder: (_) => [
-              _sortItem(_SortMode.lastUpdated, 'Last Updated', Icons.history),
-              _sortItem(_SortMode.alphabetical, 'Alphabetical (A–Z)', Icons.sort_by_alpha),
-              _sortItem(_SortMode.ratingHigh, 'Rating (Highest)', Icons.star),
-              _sortItem(_SortMode.ratingLow, 'Rating (Lowest)', Icons.star_outline),
+              _sortItem(_SortMode.lastUpdated, tr('last_updated', lang), Icons.history),
+              _sortItem(_SortMode.alphabetical, tr('alphabetical', lang), Icons.sort_by_alpha),
+              _sortItem(_SortMode.ratingHigh, tr('rating_high', lang), Icons.star),
+              _sortItem(_SortMode.ratingLow, tr('rating_low', lang), Icons.star_outline),
             ],
           ),
           ),
@@ -105,7 +117,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Filter by name',
+                hintText: tr('filter_by_name', lang),
                 prefixIcon: const Icon(Icons.search, size: 20, color: Colors.grey),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
@@ -142,7 +154,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
             const SizedBox(width: 10),
             Text(label,
                 style: TextStyle(
-                    color: _sortMode == mode ? const Color(0xFF02A9FF) : Colors.white,
+                    color: _sortMode == mode ? const Color(0xFF02A9FF) : null,
                     fontSize: 13)),
           ],
         ),
@@ -181,28 +193,35 @@ class _MediaListState extends State<_MediaList>
     'REPEATING',
   ];
 
-  final _animeStatusLabels = {
-    'CURRENT': 'Watching',
-    'COMPLETED': 'Completed',
-    'PAUSED': 'On Hold',
-    'DROPPED': 'Dropped',
-    'PLANNING': 'Plan to Watch',
-    'REPEATING': 'Rewatching',
+  Map<String, String> _animeStatusLabels(String lang) => {
+    'CURRENT': tr('watching', lang),
+    'COMPLETED': tr('completed', lang),
+    'PAUSED': tr('on_hold', lang),
+    'DROPPED': tr('dropped', lang),
+    'PLANNING': tr('plan_to_watch', lang),
+    'REPEATING': tr('rewatching', lang),
   };
 
-  final _mangaStatusLabels = {
-    'CURRENT': 'Reading',
-    'COMPLETED': 'Completed',
-    'PAUSED': 'On Hold',
-    'DROPPED': 'Dropped',
-    'PLANNING': 'Plan to Read',
-    'REPEATING': 'Rereading',
+  Map<String, String> _mangaStatusLabels(String lang) => {
+    'CURRENT': tr('reading', lang),
+    'COMPLETED': tr('completed', lang),
+    'PAUSED': tr('on_hold', lang),
+    'DROPPED': tr('dropped', lang),
+    'PLANNING': tr('plan_to_read', lang),
+    'REPEATING': tr('rereading', lang),
   };
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    listRefreshNotifier.addListener(_silentReload);
+  }
+
+  @override
+  void dispose() {
+    listRefreshNotifier.removeListener(_silentReload);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -240,6 +259,75 @@ class _MediaListState extends State<_MediaList>
         _loading = false;
         _error = e.toString();
       });
+    }
+  }
+
+  void _silentReload() {
+    final auth = context.read<AuthService>();
+    if (!auth.isLoggedIn) return;
+    final userId = auth.user?['id'];
+    if (userId == null) return;
+
+    () async {
+      try {
+        final raw = widget.type == 'ANIME'
+            ? await _service.getUserAnimeList(userId, auth.token!)
+            : await _service.getUserMangaList(userId, auth.token!);
+        if (!mounted) return;
+        final typed = raw.map(
+          (k, v) => MapEntry(k, v.cast<Map<String, dynamic>>()),
+        );
+        setState(() => _lists = typed);
+      } catch (_) {}
+    }();
+  }
+
+  Future<void> _incrementEpisode(Map<String, dynamic> entry) async {
+    final auth = context.read<AuthService>();
+    if (!auth.isLoggedIn) return;
+    final media = entry['media'] as Map<String, dynamic>? ?? {};
+    final mediaId = media['id'] as int?;
+    if (mediaId == null) return;
+
+    final progress = (entry['progress'] as num?)?.toInt() ?? 0;
+    final total = widget.type == 'ANIME'
+        ? media['episodes'] as int?
+        : media['chapters'] as int?;
+    if (total != null && progress >= total) return;
+
+    final newProgress = progress + 1;
+    final status = (entry['status'] as String?) ?? 'CURRENT';
+    final score = (entry['score'] as num?)?.toDouble() ?? 0;
+
+    final ok = await _service.saveListEntry(
+      mediaId: mediaId,
+      status: status,
+      progress: newProgress,
+      score: score,
+      token: auth.token!,
+    );
+    if (ok) {
+      setState(() => entry['progress'] = newProgress);
+      _silentReload();
+    }
+  }
+
+  Future<void> _removeEntry(Map<String, dynamic> entry) async {
+    final auth = context.read<AuthService>();
+    if (!auth.isLoggedIn) return;
+    final entryId = entry['id'] as int?;
+    if (entryId == null) return;
+
+    final status = (entry['status'] as String?) ?? 'CURRENT';
+    final ok = await _service.deleteListEntry(
+      entryId: entryId,
+      token: auth.token!,
+    );
+    if (ok) {
+      setState(() {
+        _lists[status]?.removeWhere((e) => e['id'] == entryId);
+      });
+      _silentReload();
     }
   }
 
@@ -306,8 +394,9 @@ class _MediaListState extends State<_MediaList>
       return const Center(child: Text('Nothing here yet'));
     }
 
+    final lang = context.read<SettingsProvider>().language;
     final labels =
-        widget.type == 'ANIME' ? _animeStatusLabels : _mangaStatusLabels;
+        widget.type == 'ANIME' ? _animeStatusLabels(lang) : _mangaStatusLabels(lang);
 
     // Build a flat item list: headers + entries (only when expanded)
     final items = <({bool isHeader, String? status, String? label, int? count, Map<String, dynamic>? entry})>[];
@@ -363,19 +452,41 @@ class _MediaListState extends State<_MediaList>
             );
           }
           if (item.entry == null) return const SizedBox(height: 4);
-          return _ListRow(entry: item.entry!, type: widget.type);
+          final mediaId = item.entry!['media']?['id'] as int?;
+          final entryId = item.entry!['id'] as int?;
+          return _SwipeableRow(
+            key: ValueKey(mediaId ?? entryId ?? i),
+            entry: item.entry!,
+            type: widget.type,
+            onAddEpisode: () => _incrementEpisode(item.entry!),
+            onRemove: () => _removeEntry(item.entry!),
+          );
         },
       ),
     );
   }
 }
 
-// ─── List Row ──────────────────────────────────────────────────────────────
+// ─── Swipeable Row ──────────────────────────────────────────────────────────
 
-class _ListRow extends StatelessWidget {
+class _SwipeableRow extends StatefulWidget {
   final Map<String, dynamic> entry;
   final String type;
-  const _ListRow({required this.entry, required this.type});
+  final VoidCallback onAddEpisode;
+  final VoidCallback onRemove;
+  const _SwipeableRow({
+    super.key,
+    required this.entry,
+    required this.type,
+    required this.onAddEpisode,
+    required this.onRemove,
+  });
+
+  @override
+  State<_SwipeableRow> createState() => _SwipeableRowState();
+}
+
+class _SwipeableRowState extends State<_SwipeableRow> {
 
   String _timeUntilAiring(int seconds) {
     final days = seconds ~/ 86400;
@@ -386,117 +497,187 @@ class _ListRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final media = entry['media'] as Map<String, dynamic>? ?? {};
-    final progress = (entry['progress'] as num?)?.toInt() ?? 0;
-    final score = (entry['score'] as num?)?.toDouble() ?? 0;
-    final title = (media['title']?['english'] ??
-        media['title']?['romaji'] ??
-        'Unknown') as String;
+    final settings = context.watch<SettingsProvider>();
+    final lang = settings.language;
+    final media = widget.entry['media'] as Map<String, dynamic>? ?? {};
+    final progress = (widget.entry['progress'] as num?)?.toInt() ?? 0;
+    final score = (widget.entry['score'] as num?)?.toDouble() ?? 0;
+    final title = settings.resolveTitle(media['title'] as Map<String, dynamic>?);
     final image = media['coverImage']?['large'] as String?;
-    final total = type == 'ANIME'
+    final total = widget.type == 'ANIME'
         ? media['episodes'] as int?
         : media['chapters'] as int?;
     final id = media['id'] as int?;
     final nextAiring = media['nextAiringEpisode'] as Map<String, dynamic>?;
+    final unitLabel = widget.type == 'ANIME' ? tr('episode', lang) : tr('chapter', lang);
 
-    return InkWell(
-      onTap: id != null
-          ? () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => DetailScreen(animeId: id)),
-              )
-          : null,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+    return Dismissible(
+      key: widget.key ?? ValueKey(id),
+      confirmDismiss: (direction) async {
+        if (direction == DismissDirection.startToEnd) {
+          widget.onAddEpisode();
+          return false; // don't dismiss, just trigger the action
+        } else {
+          widget.onRemove();
+          return false;
+        }
+      },
+      background: Container(
+        alignment: Alignment.centerLeft,
+        padding: const EdgeInsets.only(left: 24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [const Color(0xFF4CAF50).withValues(alpha: 0.9), const Color(0xFF4CAF50).withValues(alpha: 0.0)],
+            stops: const [0.0, 0.8],
+          ),
+        ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: image != null
-                  ? CachedNetworkImage(
-                      imageUrl: image,
-                      width: 80,
-                      height: 115,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 160,
-                      placeholder: (_, _) => Container(
-                          width: 80,
-                          height: 115,
-                          color: const Color(0xFF1E1E3A)),
-                      errorWidget: (_, _, _) => Container(
-                          width: 80,
-                          height: 115,
-                          color: const Color(0xFF1E1E3A)),
-                    )
-                  : Container(
-                      width: 80,
-                      height: 115,
-                      color: const Color(0xFF1E1E3A)),
+            const Padding(
+              padding: EdgeInsets.only(top: 2),
+              child: Icon(Icons.add, color: Colors.white, size: 20),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const SizedBox(height: 2),
-                  Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '$progress${total != null ? ' / $total' : ''} ${type == 'ANIME' ? 'episodes' : 'chapters'}',
-                    style: const TextStyle(
-                        fontSize: 12, color: Colors.grey),
-                  ),
-                  if (score > 0) ...[
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.star,
-                            size: 13, color: Color(0xFFFFC107)),
-                        const SizedBox(width: 3),
-                        Text(
-                          score.toStringAsFixed(1),
-                          style: const TextStyle(
-                              fontSize: 12, color: Colors.grey),
-                        ),
-                      ],
-                    ),
-                  ],
-                  if (nextAiring != null) ...[
-                    const SizedBox(height: 6),
-                    Builder(builder: (_) {
-                      final nextEp = nextAiring['episode'] as int;
-                      final behindBy = (nextEp - 1) - progress;
-                      final color = behindBy >= 1
-                          ? const Color(0xFFFFC107)
-                          : const Color(0xFF4CAF50);
-                      return Row(
-                        children: [
-                          const Text('ﾒ', style: TextStyle(fontSize: 11)),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              'Episode $nextEp airs in ${_timeUntilAiring((nextAiring['timeUntilAiring'] as num).toInt())}',
-                              style: TextStyle(fontSize: 12, color: color),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      );
-                    }),
-                  ],
-                ],
+            const SizedBox(width: 6),
+            Text(
+              unitLabel,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
               ),
             ),
           ],
         ),
+      ),
+      secondaryBackground: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 24),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [const Color(0xFFF44336).withValues(alpha: 0.0), const Color(0xFFF44336).withValues(alpha: 0.9)],
+            stops: const [0.2, 1.0],
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              tr('remove', lang),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(width: 6),
+            SvgPicture.asset('assets/bin.svg', width: 22, height: 22, colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn)),
+          ],
+        ),
+      ),
+      child: Container(
+        color: Theme.of(context).scaffoldBackgroundColor,
+        child: InkWell(
+        onTap: id != null
+            ? () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => DetailScreen(animeId: id)),
+                )
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: image != null
+                    ? CachedNetworkImage(
+                        imageUrl: image,
+                        width: 80,
+                        height: 115,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 160,
+                        placeholder: (_, _) => Container(
+                            width: 80,
+                            height: 115,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                        errorWidget: (_, _, _) => Container(
+                            width: 80,
+                            height: 115,
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                      )
+                    : Container(
+                        width: 80,
+                        height: 115,
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 2),
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '$progress${total != null ? ' / $total' : ''} ${widget.type == 'ANIME' ? tr('episodes', lang) : tr('chapters', lang)}',
+                      style: const TextStyle(
+                          fontSize: 12, color: Colors.grey),
+                    ),
+                    if (score > 0) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.star,
+                              size: 13, color: Color(0xFFFFC107)),
+                          const SizedBox(width: 3),
+                          Text(
+                            score.toStringAsFixed(1),
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ],
+                    if (nextAiring != null) ...[
+                      const SizedBox(height: 6),
+                      Builder(builder: (_) {
+                        final nextEp = nextAiring['episode'] as int;
+                        final behindBy = (nextEp - 1) - progress;
+                        final color = behindBy >= 1
+                            ? const Color(0xFFFFC107)
+                            : const Color(0xFF4CAF50);
+                        return Row(
+                          children: [
+                            const Text('ﾒ', style: TextStyle(fontSize: 11)),
+                            const SizedBox(width: 4),
+                            Expanded(
+                              child: Text(
+                                'Episode $nextEp airs in ${_timeUntilAiring((nextAiring['timeUntilAiring'] as num).toInt())}',
+                                style: TextStyle(fontSize: 12, color: color),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
+                        );
+                      }),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
       ),
     );
   }
