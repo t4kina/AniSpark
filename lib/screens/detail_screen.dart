@@ -133,35 +133,11 @@ class _DetailScreenState extends State<DetailScreen> {
         ? (episodes - watched) * duration : null;
 
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          // ── Transparent AppBar (overlay on banner) ──
-          SliverAppBar(
-            pinned: true,
-            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-            elevation: 0,
-            surfaceTintColor: Colors.transparent,
-            actions: [
-              IconButton(
-                icon: Icon(
-                  d['isFavourite'] == true ? Icons.favorite : Icons.favorite_border,
-                  color: d['isFavourite'] == true ? Colors.red : null,
-                ),
-                onPressed: () async {
-                  final auth = context.read<AuthService>();
-                  if (!auth.isLoggedIn) return;
-                  final ok = await _service.toggleFavourite(animeId: widget.animeId, token: auth.token!);
-                  if (ok) { _load(); profileRefreshNotifier.value++; }
-                },
-              ),
-              IconButton(
-                icon: const Icon(Icons.more_horiz),
-                onPressed: () => _showEditModal(context, provider, listStatus, listProgress, listScore),
-              ),
-            ],
-          ),
-
-          SliverToBoxAdapter(
+      body: Stack(
+        children: [
+          CustomScrollView(
+            slivers: [
+              SliverToBoxAdapter(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -176,9 +152,11 @@ class _DetailScreenState extends State<DetailScreen> {
                       height: 200,
                       width: double.infinity,
                       child: banner != null
-                          ? ImageFiltered(
-                              imageFilter: ui.ImageFilter.blur(sigmaX: 3, sigmaY: 3),
-                              child: CachedNetworkImage(imageUrl: banner, fit: BoxFit.cover),
+                          ? ClipRect(
+                              child: ImageFiltered(
+                                imageFilter: ui.ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+                                child: CachedNetworkImage(imageUrl: banner, fit: BoxFit.cover),
+                              ),
                             )
                           : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
                     ),
@@ -192,9 +170,10 @@ class _DetailScreenState extends State<DetailScreen> {
                             begin: Alignment.topCenter,
                             end: Alignment.bottomCenter,
                             colors: [
-                              Colors.transparent,
+                              Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0),
                               Theme.of(context).scaffoldBackgroundColor,
                             ],
+                            stops: const [0.4, 1.0],
                           ),
                         ),
                       ),
@@ -705,6 +684,40 @@ class _DetailScreenState extends State<DetailScreen> {
                 ],
 
                 const SizedBox(height: 32),
+              ],
+            ),
+          ),
+        ],
+      ),
+
+          // ── Overlay buttons ──
+          Positioned(
+            top: MediaQuery.of(context).padding.top,
+            left: 4,
+            right: 4,
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: Icon(
+                    d['isFavourite'] == true ? Icons.favorite : Icons.favorite_border,
+                    color: d['isFavourite'] == true ? Colors.red : Colors.white,
+                  ),
+                  onPressed: () async {
+                    final auth = context.read<AuthService>();
+                    if (!auth.isLoggedIn) return;
+                    final ok = await _service.toggleFavourite(animeId: widget.animeId, token: auth.token!);
+                    if (ok) { _load(); profileRefreshNotifier.value++; }
+                  },
+                ),
+                IconButton(
+                  icon: const Icon(Icons.more_horiz, color: Colors.white),
+                  onPressed: () => _showEditModal(context, provider, listStatus, listProgress, listScore),
+                ),
               ],
             ),
           ),

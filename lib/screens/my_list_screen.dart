@@ -678,7 +678,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Padding(
-                              padding: const EdgeInsets.only(top: 3),
+                              padding: const EdgeInsets.only(top: 2),
                               child: Icon(Icons.wifi_rounded, size: 13, color: color),
                             ),
                             const SizedBox(width: 4),
