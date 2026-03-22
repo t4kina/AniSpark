@@ -8,6 +8,8 @@ workflows:
       cocoapods: default
       vars:
         BUNDLE_ID: "com.example.anispark"
+      groups:
+        - anilist_secrets
     scripts:
       - name: Get Flutter packages
         script: flutter pub get
