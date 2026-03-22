@@ -9,6 +9,7 @@ import '../main.dart';
 import '../providers/settings_provider.dart';
 import '../utils/translations.dart' show tr;
 import '../utils/refresh_notifier.dart';
+import '../services/notification_service.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
 
@@ -274,6 +275,10 @@ class _MediaListState extends State<_MediaList>
         _lists = typed;
         _loading = false;
       });
+      if (widget.type == 'ANIME' && mounted) {
+        final settings = context.read<SettingsProvider>();
+        NotificationService().scheduleForAnimeList(typed, settings);
+      }
     } catch (e) {
       setState(() {
         _loading = false;
@@ -494,10 +499,12 @@ class _SwipeableRow extends StatefulWidget {
 
 class _SwipeableRowState extends State<_SwipeableRow> {
 
-  String _timeUntilAiring(int seconds) {
-    final days = seconds ~/ 86400;
+  String? _timeUntilAiring(int airingAt) {
+    final remaining = airingAt - DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    if (remaining <= 0) return null; // already aired — hide the row
+    final days = remaining ~/ 86400;
     if (days > 0) return '$days day${days == 1 ? '' : 's'}';
-    final hours = seconds ~/ 3600;
+    final hours = remaining ~/ 3600;
     return '$hours hour${hours == 1 ? '' : 's'}';
   }
 
@@ -654,29 +661,38 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                         ],
                       ),
                     ],
-                    if (nextAiring != null) ...[
-                      const SizedBox(height: 6),
-                      Builder(builder: (_) {
-                        final nextEp = nextAiring['episode'] as int;
-                        final behindBy = (nextEp - 1) - progress;
-                        final color = behindBy >= 1
-                            ? const Color(0xFFFFC107)
-                            : const Color(0xFF4CAF50);
-                        return Row(
+                    if (nextAiring != null) Builder(builder: (_) {
+                      final nextEp = nextAiring['episode'] as int?;
+                      final airingAtRaw = nextAiring['airingAt'];
+                      if (nextEp == null || airingAtRaw == null) return const SizedBox.shrink();
+                      final airingAt = (airingAtRaw as num).toInt();
+                      final timeStr = _timeUntilAiring(airingAt);
+                      if (timeStr == null) return const SizedBox.shrink();
+                      final behindBy = (nextEp - 1) - progress;
+                      final color = behindBy >= 1
+                          ? const Color(0xFFFFC107)
+                          : const Color(0xFF4CAF50);
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            const Text('ﾒ', style: TextStyle(fontSize: 11)),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 3),
+                              child: Icon(Icons.wifi_rounded, size: 13, color: color),
+                            ),
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
-                                'Episode $nextEp airs in ${_timeUntilAiring((nextAiring['timeUntilAiring'] as num).toInt())}',
+                                'Episode $nextEp airs in $timeStr',
                                 style: TextStyle(fontSize: 12, color: color),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
-                        );
-                      }),
-                    ],
+                        ),
+                      );
+                    }),
                   ],
                 ),
               ),

@@ -5,10 +5,14 @@ class SettingsProvider extends ChangeNotifier {
   String _language = 'English';
   String _appearance = 'Dark';
   String _titleLanguage = 'English';
+  bool _pushNotifications = true;
+  bool _newEpisodeAlerts = true;
 
   String get language => _language;
   String get appearance => _appearance;
   String get titleLanguage => _titleLanguage;
+  bool get pushNotifications => _pushNotifications;
+  bool get newEpisodeAlerts => _newEpisodeAlerts;
 
   ThemeMode get themeMode => switch (_appearance) {
     'Light' => ThemeMode.light,
@@ -33,6 +37,8 @@ class SettingsProvider extends ChangeNotifier {
     _language = prefs.getString('language') ?? 'English';
     _appearance = prefs.getString('appearance') ?? 'Dark';
     _titleLanguage = prefs.getString('titleLanguage') ?? 'English';
+    _pushNotifications = prefs.getBool('pushNotifications') ?? true;
+    _newEpisodeAlerts = prefs.getBool('newEpisodeAlerts') ?? true;
     notifyListeners();
   }
 
@@ -54,6 +60,20 @@ class SettingsProvider extends ChangeNotifier {
     _titleLanguage = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('titleLanguage', value);
+    notifyListeners();
+  }
+
+  Future<void> setPushNotifications(bool value) async {
+    _pushNotifications = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('pushNotifications', value);
+    notifyListeners();
+  }
+
+  Future<void> setNewEpisodeAlerts(bool value) async {
+    _newEpisodeAlerts = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('newEpisodeAlerts', value);
     notifyListeners();
   }
 }

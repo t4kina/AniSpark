@@ -40,6 +40,13 @@ dependencies:
   # Preferences
   shared_preferences: ^2.2.2
 
+  # Notifications
+  flutter_local_notifications: ^18.0.1
+  timezone: ^0.9.4
+
+  # License
+  crypto: ^3.0.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -52,3 +59,4 @@ flutter:
   assets:
     - assets/logo.jpg
     - assets/bin.svg
+    - assets/wifi.svg

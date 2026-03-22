@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -6,6 +7,8 @@ import '../services/auth_service.dart';
 import '../utils/translations.dart';
 import '../utils/refresh_notifier.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import '../services/notification_service.dart';
+import '../services/license_service.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -14,6 +17,7 @@ class SettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
     final auth = context.watch<AuthService>();
+    final license = context.watch<LicenseService>();
     final lang = settings.language;
     final username = auth.user?['name'] as String?;
 
@@ -76,8 +80,44 @@ class SettingsScreen extends StatelessWidget {
 
           // ── Notifications ──
           _sectionHeader(tr('notifications', lang)),
-          _tile(icon: Icons.notifications_outlined, label: tr('push_notifications', lang), onTap: () {}),
-          _tile(icon: Icons.new_releases_outlined, label: tr('new_episode_alerts', lang), onTap: () {}),
+          _switchTile(
+            icon: Icons.notifications_outlined,
+            label: tr('push_notifications', lang),
+            value: settings.pushNotifications,
+            onChanged: (v) async {
+              await context.read<SettingsProvider>().setPushNotifications(v);
+              if (v) {
+                final granted = await NotificationService().requestPermission();
+                if (!granted && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Enable notifications in System Settings'),
+                  ));
+                }
+              } else {
+                await NotificationService().cancelAll();
+              }
+            },
+          ),
+          _switchTile(
+            icon: Icons.new_releases_outlined,
+            label: tr('new_episode_alerts', lang),
+            value: settings.newEpisodeAlerts,
+            onChanged: (v) async {
+              await context.read<SettingsProvider>().setNewEpisodeAlerts(v);
+              if (v) {
+                final granted = await NotificationService().requestPermission();
+                if (!granted && context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Enable notifications in System Settings'),
+                  ));
+                } else {
+                  listRefreshNotifier.value++;
+                }
+              } else {
+                await NotificationService().cancelAll();
+              }
+            },
+          ),
 
           const SizedBox(height: 8),
           const Divider(height: 1),
@@ -100,6 +140,30 @@ class SettingsScreen extends StatelessWidget {
 
           // ── Account ──
           _sectionHeader(tr('account', lang)),
+          ListTile(
+            leading: Icon(
+              license.isPremium ? Icons.verified : Icons.lock_outline,
+              color: license.isPremium ? const Color(0xFF02A9FF) : Colors.grey,
+              size: 22,
+            ),
+            title: Text(
+              license.isPremium ? 'Premium' : 'Free Plan',
+              style: TextStyle(
+                fontSize: 14,
+                color: license.isPremium ? const Color(0xFF02A9FF) : null,
+              ),
+            ),
+            subtitle: license.isPremium
+                ? Text(
+                    license.expiresAt == null
+                        ? 'Lifetime access'
+                        : 'Expires ${license.expiresAt!.year}-${license.expiresAt!.month.toString().padLeft(2, '0')}-${license.expiresAt!.day.toString().padLeft(2, '0')}',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  )
+                : null,
+            trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 18),
+            onTap: () => _showLicenseDialog(context, license),
+          ),
           _tile(
             icon: Icons.open_in_new,
             label: tr('view_on_anilist', lang),
@@ -145,6 +209,26 @@ class SettingsScreen extends StatelessWidget {
         child: Text(title,
             style: const TextStyle(
                 fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
+      );
+
+  static Widget _switchTile({
+    required IconData icon,
+    required String label,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) =>
+      ListTile(
+        leading: Icon(icon, color: Colors.grey, size: 22),
+        title: Text(label, style: const TextStyle(fontSize: 14)),
+        trailing: Transform.scale(
+          scale: 0.75,
+          child: CupertinoSwitch(
+            value: value,
+            onChanged: onChanged,
+            activeTrackColor: const Color(0xFF02A9FF),
+          ),
+        ),
+        onTap: () => onChanged(!value),
       );
 
   static Widget _tile({
@@ -211,6 +295,13 @@ class SettingsScreen extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  static void _showLicenseDialog(BuildContext context, LicenseService license) {
+    showDialog(
+      context: context,
+      builder: (_) => _LicenseDialog(license: license),
     );
   }
 
@@ -329,6 +420,132 @@ class SettingsScreen extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _LicenseDialog extends StatefulWidget {
+  final LicenseService license;
+  const _LicenseDialog({required this.license});
+
+  @override
+  State<_LicenseDialog> createState() => _LicenseDialogState();
+}
+
+class _LicenseDialogState extends State<_LicenseDialog> {
+  final _controller = TextEditingController();
+  String? _errorMessage;
+  bool _loading = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _activate() async {
+    final navigator = Navigator.of(context);
+    setState(() { _loading = true; _errorMessage = null; });
+    final result = await widget.license.activateKey(_controller.text.trim());
+    if (!mounted) return;
+    setState(() { _loading = false; });
+    switch (result) {
+      case LicenseResult.ok:
+        navigator.pop();
+      case LicenseResult.invalidFormat:
+        setState(() => _errorMessage = 'Invalid key format');
+      case LicenseResult.invalidSignature:
+        setState(() => _errorMessage = 'Invalid key');
+      case LicenseResult.expired:
+        setState(() => _errorMessage = 'Key has expired');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isPremium = widget.license.isPremium;
+    return AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: Text(isPremium ? 'Premium Active' : 'Enter License Key',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+      content: isPremium ? _premiumContent() : _freeContent(),
+      actions: isPremium
+          ? [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close', style: TextStyle(color: Colors.grey)),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final nav = Navigator.of(context);
+                  await widget.license.deactivate();
+                  nav.pop();
+                },
+                child: const Text('Remove', style: TextStyle(color: Colors.red)),
+              ),
+            ]
+          : [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+              ),
+              TextButton(
+                onPressed: _loading ? null : _activate,
+                child: _loading
+                    ? const SizedBox(
+                        width: 16, height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Activate',
+                        style: TextStyle(color: Color(0xFF02A9FF))),
+              ),
+            ],
+    );
+  }
+
+  Widget _premiumContent() {
+    final expires = widget.license.expiresAt;
+    final expiryText = expires == null
+        ? 'Never (Lifetime)'
+        : '${expires.year}-${expires.month.toString().padLeft(2, '0')}-${expires.day.toString().padLeft(2, '0')}';
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(children: [
+          const Icon(Icons.verified, color: Color(0xFF02A9FF), size: 18),
+          const SizedBox(width: 8),
+          const Text('Premium', style: TextStyle(color: Color(0xFF02A9FF), fontSize: 14)),
+        ]),
+        const SizedBox(height: 12),
+        Text('Expires: $expiryText',
+            style: const TextStyle(color: Colors.grey, fontSize: 13)),
+        if (widget.license.activeKey != null) ...[
+          const SizedBox(height: 6),
+          Text(widget.license.activeKey!,
+              style: const TextStyle(color: Colors.grey, fontSize: 11,
+                  fontFamily: 'monospace')),
+        ],
+      ],
+    );
+  }
+
+  Widget _freeContent() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: _controller,
+          decoration: InputDecoration(
+            hintText: 'ANSP-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX',
+            hintStyle: const TextStyle(fontSize: 12, color: Colors.grey),
+            errorText: _errorMessage,
+          ),
+          style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
+          autocorrect: false,
+          textCapitalization: TextCapitalization.characters,
+          onSubmitted: (_) => _activate(),
+        ),
+      ],
     );
   }
 }

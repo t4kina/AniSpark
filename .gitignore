@@ -49,6 +49,9 @@ app.*.map.json
 .agents/
 skills-lock.json
 
+# License key generator — contains the HMAC secret
+/tools/keygen.dart
+
 # Secrets — never commit these
 .env.json
 .env

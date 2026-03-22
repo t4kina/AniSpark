@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'providers/anime_list_provider.dart';
 import 'providers/settings_provider.dart';
 import 'services/auth_service.dart';
+import 'services/notification_service.dart';
+import 'services/license_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
@@ -18,8 +20,13 @@ void main() async {
   final authService = AuthService();
   await authService.init();
 
+  await NotificationService().init();
+
   final settingsProvider = SettingsProvider();
   await settingsProvider.load();
+
+  final licenseService = LicenseService();
+  await licenseService.init();
 
   runApp(
     MultiProvider(
@@ -27,6 +34,7 @@ void main() async {
         ChangeNotifierProvider.value(value: animeProvider),
         ChangeNotifierProvider.value(value: authService),
         ChangeNotifierProvider.value(value: settingsProvider),
+        ChangeNotifierProvider.value(value: licenseService),
       ],
       child: const MyAnimeApp(),
     ),

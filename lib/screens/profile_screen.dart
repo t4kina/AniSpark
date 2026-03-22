@@ -119,8 +119,31 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _fetchStats());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = context.read<AuthService>();
+      final cached = auth.profileExtras;
+      if (cached != null) {
+        _loadFromCache(cached);
+      } else {
+        _fetchStats();
+      }
+    });
     profileRefreshNotifier.addListener(_onRefresh);
+  }
+
+  void _loadFromCache(Map<String, dynamic> cached) {
+    if (!mounted) return;
+    setState(() {
+      _bannerImage = cached['bannerImage'] as String?;
+      _favoriteAnime = List<dynamic>.from(cached['favoriteAnime'] as List? ?? []);
+      _favoriteCharacters = List<dynamic>.from(cached['favoriteCharacters'] as List? ?? []);
+      _followersCount = (cached['followersCount'] as num?)?.toInt() ?? 0;
+      _followingCount = (cached['followingCount'] as num?)?.toInt() ?? 0;
+      _activityDays = (cached['activityDays'] as Map<String, dynamic>? ?? {})
+          .map((k, v) => MapEntry(k, (v as num).toInt()));
+      _following = List<dynamic>.from(cached['following'] as List? ?? []);
+      _statsLoaded = true;
+    });
   }
 
   @override
@@ -155,18 +178,32 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final followingResult = results[3] as List<dynamic>;
 
     final user = statsResult['user'] as Map<String, dynamic>?;
+    final newBanner = (user?['bannerImage'] as String?) ?? _bannerImage;
+    final newFavAnime = (user?['favourites']?['anime']?['nodes'] as List<dynamic>?) ?? [];
+    final newFavChars = (user?['favourites']?['characters']?['nodes'] as List<dynamic>?) ?? [];
+    final newFollowers = followResult['followers'] ?? 0;
+    final newFollowing = followResult['following'] ?? 0;
+
     setState(() {
-      _bannerImage =
-          (user?['bannerImage'] as String?) ?? _bannerImage;
-      _favoriteAnime =
-          (user?['favourites']?['anime']?['nodes'] as List<dynamic>?) ?? [];
-      _favoriteCharacters =
-          (user?['favourites']?['characters']?['nodes'] as List<dynamic>?) ?? [];
-      _followersCount = followResult['followers'] ?? 0;
-      _followingCount = followResult['following'] ?? 0;
+      _bannerImage = newBanner;
+      _favoriteAnime = newFavAnime;
+      _favoriteCharacters = newFavChars;
+      _followersCount = newFollowers;
+      _followingCount = newFollowing;
       _activityDays = activityResult;
       _following = followingResult;
       _statsLoaded = true;
+    });
+
+    // Persist so next launch loads instantly without re-fetching
+    auth.saveProfileExtras({
+      'bannerImage': newBanner,
+      'favoriteAnime': newFavAnime,
+      'favoriteCharacters': newFavChars,
+      'followersCount': newFollowers,
+      'followingCount': newFollowing,
+      'activityDays': activityResult,
+      'following': followingResult,
     });
   }
 
@@ -188,12 +225,6 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         (mangaStats?['chaptersRead'] as num?)?.toInt() ?? 0;
     final totalAnime = (animeStats?['count'] as num?)?.toInt() ?? 0;
     final totalManga = (mangaStats?['count'] as num?)?.toInt() ?? 0;
-    final episodesWatched =
-        (animeStats?['episodesWatched'] as num?)?.toInt() ?? 0;
-    final animeMeanScore =
-        (animeStats?['meanScore'] as num?)?.toDouble() ?? 0.0;
-    final mangaMeanScore =
-        (mangaStats?['meanScore'] as num?)?.toDouble() ?? 0.0;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -225,12 +256,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               child: _buildHeaderAndStats(
                 avatar, name, context,
                 totalAnime: totalAnime,
-                episodesWatched: episodesWatched,
                 daysWatched: daysWatched,
                 totalManga: totalManga,
                 chaptersRead: chaptersRead,
-                animeMeanScore: animeMeanScore,
-                mangaMeanScore: mangaMeanScore,
               ),
             ),
 
@@ -351,12 +379,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     String name,
     BuildContext context, {
     required int totalAnime,
-    required int episodesWatched,
     required String daysWatched,
     required int totalManga,
     required int chaptersRead,
-    required double animeMeanScore,
-    required double mangaMeanScore,
   }) {
     final topPadding = MediaQuery.of(context).padding.top;
     final bg = Theme.of(context).scaffoldBackgroundColor;
@@ -454,24 +479,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                       children: [
                         _statItem('$totalAnime', 'Anime'),
                         _statDividerV(outline),
-                        _statItem('$episodesWatched', 'Episodes'),
-                        _statDividerV(outline),
                         _statItem(daysWatched, 'Days Watched'),
-                      ],
-                    ),
-                  ),
-                  Divider(height: 1, color: outline),
-                  IntrinsicHeight(
-                    child: Row(
-                      children: [
+                        _statDividerV(outline),
                         _statItem('$totalManga', 'Manga'),
-                        _statDividerV(outline),
-                        _statItem('$chaptersRead', 'Chapters'),
-                        _statDividerV(outline),
-                        _statItem(
-                          animeMeanScore > 0 ? animeMeanScore.toStringAsFixed(1) : '—',
-                          'Anime Score',
-                        ),
                       ],
                     ),
                   ),
@@ -479,14 +489,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                   IntrinsicHeight(
                     child: Row(
                       children: [
+                        _statItem('$chaptersRead', 'Chapters Read'),
+                        _statDividerV(outline),
                         _statItem('$_followersCount', 'Followers'),
                         _statDividerV(outline),
                         _statItem('$_followingCount', 'Following'),
-                        _statDividerV(outline),
-                        _statItem(
-                          mangaMeanScore > 0 ? mangaMeanScore.toStringAsFixed(1) : '—',
-                          'Manga Score',
-                        ),
                       ],
                     ),
                   ),

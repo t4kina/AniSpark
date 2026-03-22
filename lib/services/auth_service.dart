@@ -14,19 +14,31 @@ class AuthService extends ChangeNotifier {
 
   String? _token;
   Map<String, dynamic>? _user;
+  Map<String, dynamic>? _profileExtras;
   late Box _box;
 
   String? get token => _token;
   Map<String, dynamic>? get user => _user;
+  Map<String, dynamic>? get profileExtras => _profileExtras;
   bool get isLoggedIn => _token != null;
 
   Future<void> init() async {
     _box = await Hive.openBox('auth');
     _token = _box.get('token');
+    final rawExtras = _box.get('profileExtras');
+    if (rawExtras != null) {
+      _profileExtras = Map<String, dynamic>.from(
+          jsonDecode(rawExtras as String) as Map);
+    }
     if (_token != null) {
       notifyListeners();
       fetchUser(); // Run in background — don't block runApp()
     }
+  }
+
+  Future<void> saveProfileExtras(Map<String, dynamic> data) async {
+    _profileExtras = data;
+    await _box.put('profileExtras', jsonEncode(data));
   }
 
   Future<void> login() async {
@@ -143,7 +155,9 @@ class AuthService extends ChangeNotifier {
   Future<void> logout() async {
     _token = null;
     _user = null;
+    _profileExtras = null;
     await _box.delete('token');
+    await _box.delete('profileExtras');
     notifyListeners();
   }
 }

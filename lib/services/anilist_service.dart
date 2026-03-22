@@ -160,15 +160,25 @@ class AniListService {
         Media(id: \$id) {
           id title { romaji english native }
           coverImage { large extraLarge } bannerImage
-          episodes chapters averageScore genres status type
-          format source
+          episodes chapters averageScore popularity favourites trending
+          genres status type format source duration synonyms
           description(asHtml: false)
-          studios { nodes { name } }
+          studios { nodes { name isAnimationStudio } }
           startDate { year month day }
+          endDate { year month day }
+          season seasonYear
           nextAiringEpisode { episode airingAt }
+          rankings { rank type allTime season year }
+          tags { name isMediaSpoiler }
           isFavourite
           mediaListEntry {
             id status progress score(format: POINT_10_DECIMAL)
+          }
+          relations {
+            edges {
+              relationType
+              node { id title { romaji english native } coverImage { large } type }
+            }
           }
           characters(sort: ROLE, perPage: 12) {
             edges {
@@ -183,6 +193,18 @@ class AniListService {
               node { id name { full } image { medium } }
             }
           }
+          recommendations(perPage: 8) {
+            nodes {
+              rating
+              mediaRecommendation {
+                id title { romaji english native }
+                coverImage { large }
+              }
+            }
+          }
+          trailer { id site }
+          externalLinks { url site color icon type }
+          streamingEpisodes { title thumbnail url site }
         }
       }
     ''';
@@ -210,7 +232,7 @@ class AniListService {
                 id title { romaji english native }
                 coverImage { large }
                 episodes averageScore genres
-                nextAiringEpisode { episode timeUntilAiring }
+                nextAiringEpisode { episode airingAt }
               }
             }
           }
