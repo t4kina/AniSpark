@@ -26,7 +26,8 @@ void main() async {
   await settingsProvider.load();
 
   final licenseService = LicenseService();
-  await licenseService.init();
+  final userId = (authService.user?['id'] as num?)?.toInt();
+  await licenseService.init(userId);
 
   runApp(
     MultiProvider(

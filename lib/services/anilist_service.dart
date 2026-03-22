@@ -96,29 +96,56 @@ class AniListService {
     }
   ''');
 
+  Future<List<dynamic>> getTrendingManga() => _query('''
+    query {
+      Page(page: 1, perPage: 20) {
+        media(sort: TRENDING_DESC, type: MANGA, format_not: NOVEL) {
+          id title { romaji english native }
+          coverImage { large } chapters averageScore genres
+        }
+      }
+    }
+  ''');
+
+  Future<List<dynamic>> getTopManga() => _query('''
+    query {
+      Page(page: 1, perPage: 20) {
+        media(sort: SCORE_DESC, type: MANGA, format_not: NOVEL) {
+          id title { romaji english native }
+          coverImage { large } chapters averageScore genres
+        }
+      }
+    }
+  ''');
+
+  Future<List<dynamic>> getManhwa() => _query('''
+    query {
+      Page(page: 1, perPage: 20) {
+        media(sort: POPULARITY_DESC, type: MANGA, countryOfOrigin: "KR") {
+          id title { romaji english native }
+          coverImage { large } chapters averageScore genres
+        }
+      }
+    }
+  ''');
+
   Future<List<dynamic>> searchAnime(
     String search, {
-    String? genre,
-    String? format,
-    String? status,
+    List<String>? genres,
     String? sort,
-    int? year,
   }) {
     final variables = <String, dynamic>{'search': search};
-    if (genre != null) variables['genre'] = genre;
-    if (format != null) variables['format'] = format;
-    if (status != null) variables['status'] = status;
-    if (year != null) variables['seasonYear'] = year;
+    if (genres != null && genres.isNotEmpty) variables['genres'] = genres;
     final sortValue = sort ?? 'SEARCH_MATCH';
     return _query('''
-      query(\$search: String, \$genre: String, \$format: MediaFormat,
-            \$status: MediaStatus, \$seasonYear: Int, \$sort: [MediaSort]) {
+      query(\$search: String, \$genres: [String], \$sort: [MediaSort]) {
         Page(page: 1, perPage: 30) {
           media(search: \$search, type: ANIME,
-                genre: \$genre, format: \$format,
-                status: \$status, seasonYear: \$seasonYear, sort: \$sort) {
+                genre_in: \$genres, sort: \$sort) {
             id title { romaji english native }
-            coverImage { large } episodes averageScore genres status
+            coverImage { large } bannerImage
+            episodes averageScore genres status format
+            description(asHtml: false)
           }
         }
       }
@@ -127,27 +154,21 @@ class AniListService {
 
   Future<List<dynamic>> searchManga(
     String search, {
-    String? genre,
-    String? format,
-    String? status,
+    List<String>? genres,
     String? sort,
-    int? year,
   }) {
     final variables = <String, dynamic>{'search': search};
-    if (genre != null) variables['genre'] = genre;
-    if (format != null) variables['format'] = format;
-    if (status != null) variables['status'] = status;
-    if (year != null) variables['seasonYear'] = year;
+    if (genres != null && genres.isNotEmpty) variables['genres'] = genres;
     final sortValue = sort ?? 'SEARCH_MATCH';
     return _query('''
-      query(\$search: String, \$genre: String, \$format: MediaFormat,
-            \$status: MediaStatus, \$seasonYear: Int, \$sort: [MediaSort]) {
+      query(\$search: String, \$genres: [String], \$sort: [MediaSort]) {
         Page(page: 1, perPage: 30) {
           media(search: \$search, type: MANGA,
-                genre: \$genre, format: \$format,
-                status: \$status, seasonYear: \$seasonYear, sort: \$sort) {
+                genre_in: \$genres, sort: \$sort) {
             id title { romaji english native }
-            coverImage { large } chapters averageScore genres status
+            coverImage { large } bannerImage
+            chapters averageScore genres status format
+            description(asHtml: false)
           }
         }
       }

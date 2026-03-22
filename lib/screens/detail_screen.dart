@@ -996,6 +996,7 @@ class _DetailScreenState extends State<DetailScreen> {
                           mediaId: anime.id, status: _toAniListStatus(selectedStatus),
                           progress: progress, score: score, token: auth.token!);
                       _load();
+                      listRefreshNotifier.value++;
                     }
                     if (!context.mounted) return;
                     Navigator.pop(context);

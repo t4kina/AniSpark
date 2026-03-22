@@ -80,44 +80,61 @@ class SettingsScreen extends StatelessWidget {
 
           // ── Notifications ──
           _sectionHeader(tr('notifications', lang)),
-          _switchTile(
-            icon: Icons.notifications_outlined,
-            label: tr('push_notifications', lang),
-            value: settings.pushNotifications,
-            onChanged: (v) async {
-              await context.read<SettingsProvider>().setPushNotifications(v);
-              if (v) {
-                final granted = await NotificationService().requestPermission();
-                if (!granted && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Enable notifications in System Settings'),
-                  ));
-                }
-              } else {
-                await NotificationService().cancelAll();
-              }
-            },
-          ),
-          _switchTile(
-            icon: Icons.new_releases_outlined,
-            label: tr('new_episode_alerts', lang),
-            value: settings.newEpisodeAlerts,
-            onChanged: (v) async {
-              await context.read<SettingsProvider>().setNewEpisodeAlerts(v);
-              if (v) {
-                final granted = await NotificationService().requestPermission();
-                if (!granted && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Enable notifications in System Settings'),
-                  ));
+          if (!license.isPremium) ...[
+            _premiumLockedTile(
+              context: context,
+              icon: Icons.notifications_outlined,
+              label: tr('push_notifications', lang),
+              license: license,
+              userId: (auth.user?['id'] as num?)?.toInt(),
+            ),
+            _premiumLockedTile(
+              context: context,
+              icon: Icons.new_releases_outlined,
+              label: tr('new_episode_alerts', lang),
+              license: license,
+              userId: (auth.user?['id'] as num?)?.toInt(),
+            ),
+          ] else ...[
+            _switchTile(
+              icon: Icons.notifications_outlined,
+              label: tr('push_notifications', lang),
+              value: settings.pushNotifications,
+              onChanged: (v) async {
+                await context.read<SettingsProvider>().setPushNotifications(v);
+                if (v) {
+                  final granted = await NotificationService().requestPermission();
+                  if (!granted && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Enable notifications in System Settings'),
+                    ));
+                  }
                 } else {
-                  listRefreshNotifier.value++;
+                  await NotificationService().cancelAll();
                 }
-              } else {
-                await NotificationService().cancelAll();
-              }
-            },
-          ),
+              },
+            ),
+            _switchTile(
+              icon: Icons.new_releases_outlined,
+              label: tr('new_episode_alerts', lang),
+              value: settings.newEpisodeAlerts,
+              onChanged: (v) async {
+                await context.read<SettingsProvider>().setNewEpisodeAlerts(v);
+                if (v) {
+                  final granted = await NotificationService().requestPermission();
+                  if (!granted && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Enable notifications in System Settings'),
+                    ));
+                  } else {
+                    listRefreshNotifier.value++;
+                  }
+                } else {
+                  await NotificationService().cancelAll();
+                }
+              },
+            ),
+          ],
 
           const SizedBox(height: 8),
           const Divider(height: 1),
@@ -162,7 +179,7 @@ class SettingsScreen extends StatelessWidget {
                   )
                 : null,
             trailing: const Icon(Icons.chevron_right, color: Colors.grey, size: 18),
-            onTap: () => _showLicenseDialog(context, license),
+            onTap: () => _showLicenseDialog(context, license, (auth.user?['id'] as num?)?.toInt()),
           ),
           _tile(
             icon: Icons.open_in_new,
@@ -245,6 +262,27 @@ class SettingsScreen extends StatelessWidget {
         onTap: onTap,
       );
 
+  static Widget _premiumLockedTile({
+    required BuildContext context,
+    required IconData icon,
+    required String label,
+    required LicenseService license,
+    required int? userId,
+  }) =>
+      ListTile(
+        leading: Icon(icon, color: Colors.grey, size: 22),
+        title: Text(label, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.lock_outline, size: 14, color: Colors.grey),
+            SizedBox(width: 4),
+            Text('Premium', style: TextStyle(fontSize: 11, color: Colors.grey)),
+          ],
+        ),
+        onTap: () => _showLicenseDialog(context, license, userId),
+      );
+
   static void _showPicker({
     required BuildContext context,
     required String title,
@@ -298,10 +336,10 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  static void _showLicenseDialog(BuildContext context, LicenseService license) {
+  static void _showLicenseDialog(BuildContext context, LicenseService license, int? userId) {
     showDialog(
       context: context,
-      builder: (_) => _LicenseDialog(license: license),
+      builder: (_) => _LicenseDialog(license: license, userId: userId),
     );
   }
 
@@ -426,7 +464,8 @@ class SettingsScreen extends StatelessWidget {
 
 class _LicenseDialog extends StatefulWidget {
   final LicenseService license;
-  const _LicenseDialog({required this.license});
+  final int? userId;
+  const _LicenseDialog({required this.license, required this.userId});
 
   @override
   State<_LicenseDialog> createState() => _LicenseDialogState();
@@ -446,7 +485,7 @@ class _LicenseDialogState extends State<_LicenseDialog> {
   Future<void> _activate() async {
     final navigator = Navigator.of(context);
     setState(() { _loading = true; _errorMessage = null; });
-    final result = await widget.license.activateKey(_controller.text.trim());
+    final result = await widget.license.activateKey(_controller.text.trim(), widget.userId);
     if (!mounted) return;
     setState(() { _loading = false; });
     switch (result) {
@@ -458,6 +497,8 @@ class _LicenseDialogState extends State<_LicenseDialog> {
         setState(() => _errorMessage = 'Invalid key');
       case LicenseResult.expired:
         setState(() => _errorMessage = 'Key has expired');
+      case LicenseResult.notLoggedIn:
+        setState(() => _errorMessage = 'Log in to AniList first');
     }
   }
 
@@ -545,6 +586,18 @@ class _LicenseDialogState extends State<_LicenseDialog> {
           textCapitalization: TextCapitalization.characters,
           onSubmitted: (_) => _activate(),
         ),
+        if (widget.userId != null) ...[
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Text('Your AniList ID: ', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              Text(
+                '${widget.userId}',
+                style: const TextStyle(fontSize: 12, color: Colors.grey, fontFamily: 'monospace', fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

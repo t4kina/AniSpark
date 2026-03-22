@@ -1,34 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import '../services/anilist_service.dart';
-import '../widgets/anime_card.dart';
-
-class _SearchFilters {
-  String? genre;
-  String? format;
-  String? status;
-  String? sort;
-  int? year;
-
-  bool get hasFilters =>
-      genre != null || format != null || status != null ||
-      sort != null || year != null;
-
-  void clear() {
-    genre = null;
-    format = null;
-    status = null;
-    sort = null;
-    year = null;
-  }
-
-  _SearchFilters copy() => _SearchFilters()
-    ..genre = genre
-    ..format = format
-    ..status = status
-    ..sort = sort
-    ..year = year;
-}
+import 'detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -37,37 +11,46 @@ class SearchScreen extends StatefulWidget {
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _SearchScreenState extends State<SearchScreen>
-    with TickerProviderStateMixin {
+class _SearchScreenState extends State<SearchScreen> {
   final _service = AniListService();
   final _controller = TextEditingController();
-  late final TabController _tabController;
+  final _focusNode = FocusNode();
   Timer? _debounce;
 
-  List<dynamic> _animeResults = [];
-  List<dynamic> _mangaResults = [];
+  List<dynamic> _results = [];
   bool _loading = false;
   bool _searched = false;
-  final _filters = _SearchFilters();
+  bool _focused = false;
 
-  // Cache: cacheKey → results
-  final Map<String, List<dynamic>> _animeCache = {};
-  final Map<String, List<dynamic>> _mangaCache = {};
+  String _contentType = 'ANIME';
+  Set<String> _selectedGenres = {};
+  String _sort = 'POPULARITY_DESC';
+
+  final Map<String, List<dynamic>> _cache = {};
 
   String get _cacheKey =>
-      '${_controller.text.trim()}|${_filters.genre}|${_filters.format}|${_filters.status}|${_filters.sort}|${_filters.year}';
+      '${_controller.text.trim()}|$_contentType|${_selectedGenres.toList()..sort()}|$_sort';
+
+  static const _sortLabels = {
+    'POPULARITY_DESC': 'Popularity',
+    'SCORE_DESC': 'Score',
+    'TRENDING_DESC': 'Trending',
+    'FAVOURITES_DESC': 'Favorites',
+    'TITLE_ROMAJI': 'Title',
+    'START_DATE_DESC': 'Release Date',
+  };
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _focusNode.addListener(() => setState(() => _focused = _focusNode.hasFocus));
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
     _controller.dispose();
-    _tabController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -76,8 +59,7 @@ class _SearchScreenState extends State<SearchScreen>
     _debounce?.cancel();
     if (value.trim().isEmpty) {
       setState(() {
-        _animeResults = [];
-        _mangaResults = [];
+        _results = [];
         _searched = false;
       });
       return;
@@ -88,42 +70,51 @@ class _SearchScreenState extends State<SearchScreen>
   Future<void> _search(String query) async {
     if (query.isEmpty) return;
     final key = _cacheKey;
-
-    // Serve from cache instantly — no loading indicator needed
-    if (_animeCache.containsKey(key) && _mangaCache.containsKey(key)) {
+    if (_cache.containsKey(key)) {
       setState(() {
-        _animeResults = _animeCache[key]!;
-        _mangaResults = _mangaCache[key]!;
+        _results = _cache[key]!;
         _searched = true;
       });
       return;
     }
-
     setState(() => _loading = true);
-
-    final results = await Future.wait([
-      _service.searchAnime(query,
-          genre: _filters.genre, format: _filters.format,
-          status: _filters.status, sort: _filters.sort, year: _filters.year),
-      _service.searchManga(query,
-          genre: _filters.genre, format: _filters.format,
-          status: _filters.status, sort: _filters.sort, year: _filters.year),
-    ]);
-
+    final genres = _selectedGenres.isEmpty ? null : _selectedGenres.toList();
+    final results = _contentType == 'ANIME'
+        ? await _service.searchAnime(query, genres: genres, sort: _sort)
+        : await _service.searchManga(query, genres: genres, sort: _sort);
     if (!mounted) return;
-    _animeCache[key] = results[0];
-    _mangaCache[key] = results[1];
-
+    _cache[key] = results;
     setState(() {
-      _animeResults = results[0];
-      _mangaResults = results[1];
+      _results = results;
       _loading = false;
       _searched = true;
     });
   }
 
+  void _onContentTypeChanged(String type) {
+    if (type == _contentType) return;
+    setState(() {
+      _contentType = type;
+      _results = [];
+      _searched = false;
+    });
+    final q = _controller.text.trim();
+    if (q.isNotEmpty) _search(q);
+  }
+
+  void _onSortChanged(String sort) {
+    if (sort == _sort) return;
+    setState(() {
+      _sort = sort;
+      _cache.clear();
+      _results = [];
+    });
+    final q = _controller.text.trim();
+    if (q.isNotEmpty) _search(q);
+  }
+
   void _showFilters() {
-    final draft = _filters.copy();
+    final draft = Set<String>.from(_selectedGenres);
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -132,17 +123,13 @@ class _SearchScreenState extends State<SearchScreen>
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (_) => _FilterSheet(
-        isAnime: _tabController.index == 0,
-        filters: draft,
-        onApply: (f) {
+        selected: draft,
+        onApply: (genres) {
+          if (genres == _selectedGenres) return;
           setState(() {
-            _filters.genre = f.genre;
-            _filters.format = f.format;
-            _filters.status = f.status;
-            _filters.sort = f.sort;
-            _filters.year = f.year;
-            _animeCache.clear();
-            _mangaCache.clear();
+            _selectedGenres = genres;
+            _cache.clear();
+            _results = [];
           });
           final q = _controller.text.trim();
           if (q.isNotEmpty) _search(q);
@@ -153,79 +140,152 @@ class _SearchScreenState extends State<SearchScreen>
 
   @override
   Widget build(BuildContext context) {
+    final hasFilters = _selectedGenres.isNotEmpty;
+    final accentColor = const Color(0xFF02A9FF);
+
     return Scaffold(
       appBar: AppBar(
-        title: TextField(
-          controller: _controller,
-          autofocus: false,
-          decoration: InputDecoration(
-            hintText: 'Search anime or manga...',
-            border: InputBorder.none,
-            contentPadding: EdgeInsets.zero,
-            suffixIcon: _controller.text.isNotEmpty
-                ? IconButton(
-                    icon: const Icon(Icons.clear),
-                    onPressed: () {
-                      _controller.clear();
-                      setState(() {
-                        _animeResults = [];
-                        _mangaResults = [];
-                        _searched = false;
-                      });
-                    },
-                  )
-                : null,
+        titleSpacing: 0,
+        title: Padding(
+          padding: const EdgeInsets.only(left: 16, right: 8),
+          child: TextField(
+            controller: _controller,
+            focusNode: _focusNode,
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: 'Search...',
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+              suffixIcon: _controller.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, size: 18),
+                      onPressed: () {
+                        _controller.clear();
+                        setState(() {
+                          _results = [];
+                          _searched = false;
+                        });
+                      },
+                    )
+                  : null,
+            ),
+            onChanged: _onQueryChanged,
+            onSubmitted: _search,
           ),
-          onChanged: _onQueryChanged,
-          onSubmitted: _search,
         ),
         actions: [
-          IconButton(
-            icon: Icon(
-              Icons.tune,
-              color: _filters.hasFilters
-                  ? const Color(0xFF02A9FF)
-                  : Colors.grey,
+          if (_focused || _controller.text.isNotEmpty)
+            TextButton(
+              onPressed: () {
+                _focusNode.unfocus();
+                _controller.clear();
+                setState(() {
+                  _results = [];
+                  _searched = false;
+                  _focused = false;
+                });
+              },
+              child: const Text('Cancel'),
             ),
-            onPressed: _showFilters,
-          ),
         ],
-        bottom: TabBar(
-          controller: _tabController,
-          tabs: const [Tab(text: 'ANIME'), Tab(text: 'MANGA')],
-        ),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
+      body: Column(
+        children: [
+          // Control row
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Row(
               children: [
-                _ResultsGrid(
-                  results: _animeResults,
-                  searched: _searched,
+                // Content type pill
+                PopupMenuButton<String>(
+                  onSelected: _onContentTypeChanged,
+                  itemBuilder: (_) => [
+                    PopupMenuItem(value: 'ANIME', child: Text('Anime')),
+                    PopupMenuItem(value: 'MANGA', child: Text('Manga')),
+                  ],
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.withValues(alpha: 0.4)),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _contentType == 'ANIME' ? 'Anime' : 'Manga',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.keyboard_arrow_down, size: 16),
+                      ],
+                    ),
+                  ),
                 ),
-                _ResultsGrid(
-                  results: _mangaResults,
-                  searched: _searched,
+                const Spacer(),
+                // Filter button
+                IconButton(
+                  icon: Icon(
+                    Icons.tune,
+                    color: hasFilters ? accentColor : Colors.grey,
+                  ),
+                  onPressed: _showFilters,
+                  tooltip: 'Filters',
+                ),
+                // Sort button
+                PopupMenuButton<String>(
+                  onSelected: _onSortChanged,
+                  tooltip: 'Sort',
+                  itemBuilder: (_) => _sortLabels.entries.map((e) {
+                    return PopupMenuItem(
+                      value: e.key,
+                      child: Row(
+                        children: [
+                          Expanded(child: Text(e.value)),
+                          if (e.key == _sort)
+                            const Icon(Icons.check, size: 16, color: Color(0xFF02A9FF)),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _sortLabels[_sort] ?? 'Sort',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      const Icon(Icons.keyboard_arrow_down, size: 16),
+                    ],
+                  ),
                 ),
               ],
             ),
+          ),
+          const Divider(height: 1),
+          // Results
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : !_searched
+                    ? _buildEmptyState()
+                    : _results.isEmpty
+                        ? const Center(child: Text('No results found'))
+                        : ListView.builder(
+                            padding: const EdgeInsets.only(top: 8, bottom: 16),
+                            itemCount: _results.length,
+                            itemBuilder: (_, i) => _ResultCard(data: _results[i]),
+                          ),
+          ),
+        ],
+      ),
     );
   }
-}
 
-class _ResultsGrid extends StatelessWidget {
-  final List<dynamic> results;
-  final bool searched;
-  const _ResultsGrid({required this.results, required this.searched});
-
-  @override
-  Widget build(BuildContext context) {
-    if (!searched) {
-      return const Center(
+  Widget _buildEmptyState() => Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+          children: const [
             Icon(Icons.search, size: 64, color: Colors.grey),
             SizedBox(height: 12),
             Text('Search for anime or manga',
@@ -233,177 +293,308 @@ class _ResultsGrid extends StatelessWidget {
           ],
         ),
       );
-    }
-    if (results.isEmpty) {
-      return const Center(child: Text('No results found'));
-    }
-    return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 3,
-        childAspectRatio: 0.55,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
+}
+
+// ── Result card ──────────────────────────────────────────────────────────────
+
+class _ResultCard extends StatelessWidget {
+  final dynamic data;
+  const _ResultCard({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final id = data['id'] as int?;
+    final title = data['title']?['english'] ?? data['title']?['romaji'] ?? '';
+    final cover = data['coverImage']?['large'] as String?;
+    final banner = data['bannerImage'] as String?;
+    final score = data['averageScore'] as int?;
+    final episodes = data['episodes'] as int?;
+    final chapters = data['chapters'] as int?;
+    final format = data['format'] as String?;
+    final genres = (data['genres'] as List<dynamic>?)?.cast<String>() ?? [];
+    final description = (data['description'] as String? ?? '')
+        .replaceAll(RegExp(r'<[^>]*>'), '')
+        .trim();
+
+    final episodeLabel = episodes != null
+        ? '$episodes eps'
+        : chapters != null
+            ? '$chapters ch'
+            : null;
+    final formatLabel = format?.replaceAll('_', ' ');
+    final metaParts = [
+      ?formatLabel,
+      ?episodeLabel,
+      if (score != null) '★ ${(score / 10).toStringAsFixed(1)}',
+    ];
+
+    return GestureDetector(
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => DetailScreen(animeId: id ?? 0)),
       ),
-      itemCount: results.length,
-      itemBuilder: (_, i) => AnimeCard(animeData: results[i]),
+      child: Container(
+        height: 140,
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // Banner background
+            if (banner != null)
+              CachedNetworkImage(
+                imageUrl: banner,
+                fit: BoxFit.cover,
+                memCacheWidth: 600,
+                errorWidget: (_, _, _) => const SizedBox.shrink(),
+              ),
+            // Dark overlay
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: [
+                    Colors.black.withValues(alpha: 0.85),
+                    Colors.black.withValues(alpha: 0.6),
+                  ],
+                ),
+              ),
+            ),
+            // Content
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Cover
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(6),
+                    child: SizedBox(
+                      width: 78,
+                      height: 116,
+                      child: cover != null
+                          ? CachedNetworkImage(
+                              imageUrl: cover,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 160,
+                              errorWidget: (_, _, _) => Container(
+                                color: Colors.grey[800],
+                              ),
+                            )
+                          : Container(color: Colors.grey[800]),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  // Text
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        if (metaParts.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            metaParts.join(' · '),
+                            style: TextStyle(
+                              color: Colors.grey[400],
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                        if (description.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Expanded(
+                            child: Text(
+                              description,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.grey[300],
+                                fontSize: 11,
+                                height: 1.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                        if (genres.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 4,
+                            runSpacing: 0,
+                            children: genres.take(3).map((g) => Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.12),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                g,
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            )).toList(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-class _FilterSheet extends StatefulWidget {
-  final bool isAnime;
-  final _SearchFilters filters;
-  final void Function(_SearchFilters) onApply;
+// ── Filter sheet ─────────────────────────────────────────────────────────────
 
-  const _FilterSheet({
-    required this.isAnime,
-    required this.filters,
-    required this.onApply,
-  });
+class _FilterSheet extends StatefulWidget {
+  final Set<String> selected;
+  final void Function(Set<String>) onApply;
+
+  const _FilterSheet({required this.selected, required this.onApply});
 
   @override
   State<_FilterSheet> createState() => _FilterSheetState();
 }
 
 class _FilterSheetState extends State<_FilterSheet> {
-  late final _SearchFilters _draft;
+  late Set<String> _draft;
 
   static const _genres = [
-    'Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy',
-    'Horror', 'Mecha', 'Mystery', 'Psychological', 'Romance',
-    'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller',
-  ];
-  static const _animeFormats = ['TV', 'MOVIE', 'OVA', 'ONA', 'SPECIAL', 'MUSIC'];
-  static const _mangaFormats = ['MANGA', 'NOVEL', 'ONE_SHOT'];
-  static const _statuses = ['FINISHED', 'RELEASING', 'NOT_YET_RELEASED', 'CANCELLED'];
-  static const _sorts = [
-    ('Popularity', 'POPULARITY_DESC'),
-    ('Score', 'SCORE_DESC'),
-    ('Trending', 'TRENDING_DESC'),
-    ('Newest', 'START_DATE_DESC'),
+    'Action', 'Adventure', 'Comedy', 'Drama', 'Ecchi', 'Fantasy',
+    'Horror', 'Mahou Shoujo', 'Mecha', 'Music', 'Mystery', 'Psychological',
+    'Romance', 'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller',
   ];
 
   @override
   void initState() {
     super.initState();
-    _draft = widget.filters.copy();
+    _draft = Set<String>.from(widget.selected);
+  }
+
+  void _close() {
+    Navigator.pop(context);
+    widget.onApply(_draft);
   }
 
   @override
   Widget build(BuildContext context) {
-    final formats = widget.isAnime ? _animeFormats : _mangaFormats;
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.75,
+      initialChildSize: 0.7,
       maxChildSize: 0.95,
-      builder: (_, scrollCtrl) => ListView(
-        controller: scrollCtrl,
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
+      builder: (_, scrollCtrl) => Column(
         children: [
-          Center(
-            child: Container(
-              width: 40, height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey[600],
-                borderRadius: BorderRadius.circular(2),
-              ),
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+            child: Row(
+              children: [
+                TextButton(
+                  onPressed: () => setState(() => _draft.clear()),
+                  child: const Text('Reset', style: TextStyle(color: Colors.grey)),
+                ),
+                const Expanded(
+                  child: Center(
+                    child: Text('Filters',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: _close,
+                ),
+              ],
             ),
           ),
-          const Text('Filters',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
-          _label('Genre'),
-          _chipWrap(_genres, _draft.genre,
-              (v) => setState(() => _draft.genre = v == _draft.genre ? null : v)),
-          const SizedBox(height: 12),
-          _label('Format'),
-          _chipWrap(formats, _draft.format,
-              (v) => setState(() => _draft.format = v == _draft.format ? null : v)),
-          const SizedBox(height: 12),
-          _label('Status'),
-          _chipWrap(_statuses, _draft.status,
-              (v) => setState(() => _draft.status = v == _draft.status ? null : v)),
-          const SizedBox(height: 12),
-          _label('Sort By'),
-          _chipWrap(
-            _sorts.map((e) => e.$1).toList(),
-            _sorts.firstWhere((e) => e.$2 == _draft.sort, orElse: () => ('', '')).$1,
-            (label) {
-              final match = _sorts.firstWhere((e) => e.$1 == label, orElse: () => ('', ''));
-              setState(() => _draft.sort = match.$2.isEmpty ? null :
-                  (_draft.sort == match.$2 ? null : match.$2));
-            },
-          ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.grey,
-                    side: const BorderSide(color: Colors.grey),
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+          const Divider(height: 1),
+          Expanded(
+            child: ListView(
+              controller: scrollCtrl,
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+              children: [
+                const Text(
+                  'GENRE',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey,
+                    letterSpacing: 0.8,
                   ),
-                  onPressed: () {
-                    _draft.clear();
-                    setState(() {});
-                  },
-                  child: const Text('Clear'),
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF02A9FF),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                  ),
-                  onPressed: () {
-                    Navigator.pop(context);
-                    widget.onApply(_draft);
-                  },
-                  child: const Text('Apply'),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _genres.map((g) {
+                    final selected = _draft.contains(g);
+                    return GestureDetector(
+                      onTap: () => setState(() {
+                        if (selected) {
+                          _draft.remove(g);
+                        } else {
+                          _draft.add(g);
+                        }
+                      }),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? const Color(0xFF2ECC71).withValues(alpha: 0.2)
+                              : Theme.of(context).colorScheme.surfaceContainerHighest,
+                          border: Border.all(
+                            color: selected
+                                ? const Color(0xFF2ECC71)
+                                : Colors.transparent,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (selected) ...[
+                              const Icon(Icons.check, size: 14, color: Color(0xFF2ECC71)),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(
+                              g,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: selected ? const Color(0xFF2ECC71) : null,
+                                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
     );
   }
-
-  Widget _label(String text) => Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: Text(text,
-            style: const TextStyle(color: Colors.grey, fontSize: 12)),
-      );
-
-  Widget _chipWrap(
-    List<String> options,
-    String? selected,
-    void Function(String) onTap,
-  ) =>
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: options.map((opt) {
-          final isSelected = opt == selected;
-          return GestureDetector(
-            onTap: () => onTap(opt),
-            child: Chip(
-              label: Text(opt,
-                  style: TextStyle(
-                      fontSize: 11,
-                      color: isSelected ? Colors.white : null)),
-              backgroundColor:
-                  isSelected ? const Color(0xFF02A9FF) : Theme.of(context).colorScheme.surfaceContainerHighest,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-            ),
-          );
-        }).toList(),
-      );
 }

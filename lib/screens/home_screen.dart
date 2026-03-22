@@ -17,6 +17,9 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _seasonal = [];
   List<dynamic> _popular = [];
   List<dynamic> _topAiring = [];
+  List<dynamic> _trendingManga = [];
+  List<dynamic> _topManga = [];
+  List<dynamic> _manhwa = [];
   bool _loading = true;
 
   @override
@@ -32,12 +35,18 @@ class _HomeScreenState extends State<HomeScreen> {
       _service.getThisSeason(),
       _service.getNextSeason(),
       _service.getTopAiring(),
+      _service.getTrendingManga(),
+      _service.getTopManga(),
+      _service.getManhwa(),
     ]);
     setState(() {
       _trending = results[0];
       _seasonal = results[1];
       _popular = results[2];
       _topAiring = results[3];
+      _trendingManga = results[4];
+      _topManga = results[5];
+      _manhwa = results[6];
       _loading = false;
     });
   }
@@ -117,6 +126,20 @@ class _HomeScreenState extends State<HomeScreen> {
                           _sectionHeader('TOP AIRING'),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_topAiring),
+                          const SizedBox(height: 28),
+                          const Divider(indent: 16, endIndent: 16),
+                          const SizedBox(height: 16),
+                          _sectionHeader('TRENDING MANGA'),
+                          const SizedBox(height: 10),
+                          _buildHorizontalRow(_trendingManga),
+                          const SizedBox(height: 20),
+                          _sectionHeader('TOP MANGA ALL TIME'),
+                          const SizedBox(height: 10),
+                          _buildHorizontalRow(_topManga),
+                          const SizedBox(height: 20),
+                          _sectionHeader('POPULAR MANHWA'),
+                          const SizedBox(height: 10),
+                          _buildHorizontalRow(_manhwa),
                           const SizedBox(height: 24),
                         ],
                       ),
@@ -165,7 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: List.generate(4, (_) => _shimmerSection()),
+            children: List.generate(7, (_) => _shimmerSection()),
           ),
         ),
       );
