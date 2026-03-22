@@ -1,0 +1,33 @@
+workflows:
+  ios-release:
+    name: iOS Release
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      vars:
+        BUNDLE_ID: "com.example.anispark"
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+
+      - name: Install CocoaPods
+        script: |
+          cd ios && pod install
+
+      - name: Build iOS IPA
+        script: |
+          flutter build ipa --release \
+            --dart-define=ANILIST_CLIENT_ID=$ANILIST_CLIENT_ID \
+            --dart-define=ANILIST_CLIENT_SECRET=$ANILIST_CLIENT_SECRET
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      email:
+        recipients:
+          - t4kina69@gmail.com
+        notify:
+          success: true
+          failure: true

@@ -42,12 +42,21 @@ class AuthService extends ChangeNotifier {
       },
     ).toString();
 
+    debugPrint('[Auth] clientId: "$_clientId"');
+    debugPrint('[Auth] clientSecret empty: ${_clientSecret.isEmpty}');
     debugPrint('Opening OAuth URL: $authUrl');
 
-    final result = await FlutterWebAuth2.authenticate(
-      url: authUrl,
-      callbackUrlScheme: 'anispark',
-    );
+    final String result;
+    try {
+      result = await FlutterWebAuth2.authenticate(
+        url: authUrl,
+        callbackUrlScheme: 'anispark',
+      );
+    } on Exception catch (e) {
+      final msg = e.toString();
+      if (msg.contains('CANCELED') || msg.contains('cancel') || msg.contains('error 1')) return;
+      rethrow;
+    }
 
     debugPrint('OAuth result: $result');
 
