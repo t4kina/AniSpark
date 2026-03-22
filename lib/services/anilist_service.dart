@@ -200,7 +200,7 @@ class AniListService {
   Future<Map<String, List<dynamic>>> getUserAnimeList(
       int userId, String token) async {
     const query = '''
-      query(\$userId: Int) {
+      query(\$userId: Int!) {
         MediaListCollection(userId: \$userId, type: ANIME) {
           lists {
             name status isCustomList
@@ -237,7 +237,7 @@ class AniListService {
   Future<Map<String, List<dynamic>>> getUserMangaList(
       int userId, String token) async {
     const query = '''
-      query(\$userId: Int) {
+      query(\$userId: Int!) {
         MediaListCollection(userId: \$userId, type: MANGA) {
           lists {
             name status isCustomList
@@ -309,7 +309,7 @@ class AniListService {
   Future<Map<String, dynamic>> getUserProfileStats(
       int userId, String token) async {
     const query = '''
-      query(\$userId: Int) {
+      query(\$userId: Int!) {
         User(id: \$userId) {
           id name bannerImage
           favourites {
@@ -339,7 +339,7 @@ class AniListService {
   Future<Map<String, int>> getUserFollowCounts(
       int userId, String token) async {
     const query = '''
-      query(\$userId: Int) {
+      query(\$userId: Int!) {
         followersPage: Page(page: 1, perPage: 1) {
           pageInfo { total }
           followers(userId: \$userId) { id }
@@ -427,7 +427,7 @@ class AniListService {
   /// Returns a map of AniList status → entry count for the user's anime list.
   Future<Map<String, int>> getUserListCounts(int userId, String token) async {
     const query = '''
-      query(\$userId: Int) {
+      query(\$userId: Int!) {
         MediaListCollection(userId: \$userId, type: ANIME) {
           lists {
             status

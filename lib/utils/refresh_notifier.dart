@@ -4,3 +4,4 @@ import 'package:flutter/foundation.dart';
 /// Increment the value to notify listeners.
 final profileRefreshNotifier = ValueNotifier<int>(0);
 final listRefreshNotifier = ValueNotifier<int>(0);
+final feedRefreshNotifier = ValueNotifier<int>(0);

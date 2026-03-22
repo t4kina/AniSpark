@@ -23,7 +23,10 @@ class AuthService extends ChangeNotifier {
   Future<void> init() async {
     _box = await Hive.openBox('auth');
     _token = _box.get('token');
-    if (_token != null) await fetchUser();
+    if (_token != null) {
+      notifyListeners();
+      fetchUser(); // Run in background — don't block runApp()
+    }
   }
 
   Future<void> login() async {

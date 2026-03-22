@@ -50,16 +50,17 @@ class _SearchScreenState extends State<SearchScreen>
   bool _searched = false;
   final _filters = _SearchFilters();
 
+  // Cache: cacheKey → results
+  final Map<String, List<dynamic>> _animeCache = {};
+  final Map<String, List<dynamic>> _mangaCache = {};
+
+  String get _cacheKey =>
+      '${_controller.text.trim()}|${_filters.genre}|${_filters.format}|${_filters.status}|${_filters.sort}|${_filters.year}';
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this)
-      ..addListener(() {
-        if (!_tabController.indexIsChanging) {
-          final q = _controller.text.trim();
-          if (q.isNotEmpty) _search(q);
-        }
-      });
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
@@ -81,33 +82,44 @@ class _SearchScreenState extends State<SearchScreen>
       });
       return;
     }
-    _debounce = Timer(const Duration(milliseconds: 400), () => _search(value));
+    _debounce = Timer(const Duration(milliseconds: 400), () => _search(value.trim()));
   }
 
   Future<void> _search(String query) async {
-    if (query.trim().isEmpty) return;
-    setState(() => _loading = true);
-    if (_tabController.index == 0) {
-      final r = await _service.searchAnime(
-        query,
-        genre: _filters.genre,
-        format: _filters.format,
-        status: _filters.status,
-        sort: _filters.sort,
-        year: _filters.year,
-      );
-      if (mounted) setState(() { _animeResults = r; _loading = false; _searched = true; });
-    } else {
-      final r = await _service.searchManga(
-        query,
-        genre: _filters.genre,
-        format: _filters.format,
-        status: _filters.status,
-        sort: _filters.sort,
-        year: _filters.year,
-      );
-      if (mounted) setState(() { _mangaResults = r; _loading = false; _searched = true; });
+    if (query.isEmpty) return;
+    final key = _cacheKey;
+
+    // Serve from cache instantly — no loading indicator needed
+    if (_animeCache.containsKey(key) && _mangaCache.containsKey(key)) {
+      setState(() {
+        _animeResults = _animeCache[key]!;
+        _mangaResults = _mangaCache[key]!;
+        _searched = true;
+      });
+      return;
     }
+
+    setState(() => _loading = true);
+
+    final results = await Future.wait([
+      _service.searchAnime(query,
+          genre: _filters.genre, format: _filters.format,
+          status: _filters.status, sort: _filters.sort, year: _filters.year),
+      _service.searchManga(query,
+          genre: _filters.genre, format: _filters.format,
+          status: _filters.status, sort: _filters.sort, year: _filters.year),
+    ]);
+
+    if (!mounted) return;
+    _animeCache[key] = results[0];
+    _mangaCache[key] = results[1];
+
+    setState(() {
+      _animeResults = results[0];
+      _mangaResults = results[1];
+      _loading = false;
+      _searched = true;
+    });
   }
 
   void _showFilters() {
@@ -129,6 +141,8 @@ class _SearchScreenState extends State<SearchScreen>
             _filters.status = f.status;
             _filters.sort = f.sort;
             _filters.year = f.year;
+            _animeCache.clear();
+            _mangaCache.clear();
           });
           final q = _controller.text.trim();
           if (q.isNotEmpty) _search(q);

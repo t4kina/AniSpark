@@ -298,6 +298,7 @@ class SettingsScreen extends StatelessWidget {
     await auth.fetchUser();
     profileRefreshNotifier.value++;
     listRefreshNotifier.value++;
+    feedRefreshNotifier.value++;
 
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(

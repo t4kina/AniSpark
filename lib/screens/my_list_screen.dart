@@ -211,17 +211,36 @@ class _MediaListState extends State<_MediaList>
     'REPEATING': tr('rereading', lang),
   };
 
+  late final AuthService _auth;
+
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _auth = context.read<AuthService>();
+      _auth.addListener(_onAuthChanged);
+      _load();
+    });
     listRefreshNotifier.addListener(_silentReload);
   }
 
   @override
   void dispose() {
+    _auth.removeListener(_onAuthChanged);
     listRefreshNotifier.removeListener(_silentReload);
     super.dispose();
+  }
+
+  void _onAuthChanged() {
+    if (_auth.isLoggedIn && _lists.isEmpty) {
+      _load();
+    } else if (!_auth.isLoggedIn) {
+      setState(() {
+        _lists = {};
+        _loading = false;
+        _error = 'Connect your AniList from the Profile tab';
+      });
+    }
   }
 
   Future<void> _load() async {
@@ -229,7 +248,7 @@ class _MediaListState extends State<_MediaList>
     if (!auth.isLoggedIn) {
       setState(() {
         _loading = false;
-        _error = 'Login to see your list';
+        _error = 'Connect your AniList from the Profile tab';
       });
       return;
     }
@@ -243,6 +262,7 @@ class _MediaListState extends State<_MediaList>
       return;
     }
 
+    setState(() { _loading = true; _error = null; });
     try {
       final raw = widget.type == 'ANIME'
           ? await _service.getUserAnimeList(userId, auth.token!)
@@ -369,23 +389,9 @@ class _MediaListState extends State<_MediaList>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            const Icon(Icons.list_alt_outlined, size: 52, color: Colors.grey),
+            const SizedBox(height: 12),
             Text(_error!, style: const TextStyle(color: Colors.grey)),
-            if (_error == 'Login to see your list')
-              Padding(
-                padding: const EdgeInsets.only(top: 16),
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF02A9FF)),
-                  onPressed: () async {
-                    final auth = context.read<AuthService>();
-                    try {
-                      await auth.login();
-                    } catch (_) {}
-                  },
-                  child: const Text('Login with AniList',
-                      style: TextStyle(color: Colors.white)),
-                ),
-              ),
           ],
         ),
       );

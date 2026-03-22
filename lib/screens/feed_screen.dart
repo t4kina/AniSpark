@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
+import '../utils/refresh_notifier.dart';
 import 'user_profile_screen.dart';
 
 enum _FeedType { following, global, personal }
@@ -20,6 +21,7 @@ class _FeedScreenState extends State<FeedScreen>
   List<dynamic> _activities = [];
   bool _loading = true;
   _FeedType _feedType = _FeedType.following;
+  late final AuthService _auth;
 
   @override
   bool get wantKeepAlive => true;
@@ -27,8 +29,30 @@ class _FeedScreenState extends State<FeedScreen>
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _auth = context.read<AuthService>();
+      _auth.addListener(_onAuthChanged);
+      _load();
+    });
+    feedRefreshNotifier.addListener(_onFeedRefresh);
   }
+
+  @override
+  void dispose() {
+    _auth.removeListener(_onAuthChanged);
+    feedRefreshNotifier.removeListener(_onFeedRefresh);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    if (_auth.isLoggedIn && _activities.isEmpty) {
+      _load();
+    } else if (!_auth.isLoggedIn) {
+      setState(() => _activities = []);
+    }
+  }
+
+  void _onFeedRefresh() => _load();
 
   Future<void> _load() async {
     final auth = context.read<AuthService>();
@@ -137,8 +161,15 @@ class _FeedScreenState extends State<FeedScreen>
       return Scaffold(
         appBar: AppBar(title: const Text('Feed')),
         body: const Center(
-          child: Text('Login to see your friends activity',
-              style: TextStyle(color: Colors.grey)),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.group_outlined, size: 52, color: Colors.grey),
+              SizedBox(height: 12),
+              Text('Connect your AniList from the Profile tab',
+                  style: TextStyle(color: Colors.grey)),
+            ],
+          ),
         ),
       );
     }
