@@ -18,14 +18,18 @@ workflows:
         script: |
           cd ios && pod install
 
-      - name: Build iOS IPA
+      - name: Build iOS (no code sign)
         script: |
-          flutter build ipa --release \
+          flutter build ios --release --no-codesign \
             --dart-define=ANILIST_CLIENT_ID=$ANILIST_CLIENT_ID \
             --dart-define=ANILIST_CLIENT_SECRET=$ANILIST_CLIENT_SECRET
+
+      - name: Zip app bundle
+        script: |
+          cd build/ios/Release-iphoneos
+          zip -r AniSpark.zip Runner.app
     artifacts:
-      - build/ios/ipa/*.ipa
-      - /tmp/xcodebuild_logs/*.log
+      - build/ios/Release-iphoneos/AniSpark.zip
     publishing:
       email:
         recipients:
