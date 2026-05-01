@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -18,7 +17,7 @@ class NotificationService {
   static const _channelDesc = 'Notifications when new anime episodes are available';
 
   Future<void> init() async {
-    if (_initialized) return;
+    if (kIsWeb || _initialized) return;
     tz.initializeTimeZones();
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -35,6 +34,7 @@ class NotificationService {
 
   /// Returns true if permission was granted (or already granted).
   Future<bool> requestPermission() async {
+    if (kIsWeb) return false;
     // iOS
     final ios = _plugin
         .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
@@ -66,7 +66,9 @@ class NotificationService {
   ) async {
     if (!settings.pushNotifications || !settings.newEpisodeAlerts) return;
     if (!_initialized) return;
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) return;
+    if (kIsWeb) return;
+    if (defaultTargetPlatform != TargetPlatform.android &&
+        defaultTargetPlatform != TargetPlatform.iOS) { return; }
 
     final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final currentEntries = lists['CURRENT'] ?? [];
@@ -119,10 +121,12 @@ class NotificationService {
   }
 
   Future<void> cancelAll() async {
+    if (kIsWeb) return;
     await _plugin.cancelAll();
   }
 
   Future<void> cancelForMedia(int mediaId) async {
+    if (kIsWeb) return;
     await _plugin.cancel(mediaId % 100000);
   }
 }

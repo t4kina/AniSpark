@@ -5,3 +5,6 @@ import 'package:flutter/foundation.dart';
 final profileRefreshNotifier = ValueNotifier<int>(0);
 final listRefreshNotifier = ValueNotifier<int>(0);
 final feedRefreshNotifier = ValueNotifier<int>(0);
+
+/// Fired when the API returns 401 — listeners should log the user out.
+final authExpiredNotifier = ValueNotifier<int>(0);

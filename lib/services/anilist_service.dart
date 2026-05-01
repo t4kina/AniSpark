@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../utils/refresh_notifier.dart';
 
 class AniListService {
   static const String _baseUrl = 'https://graphql.anilist.co';
@@ -8,6 +9,10 @@ class AniListService {
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
       });
+
+  void _handle401(int statusCode) {
+    if (statusCode == 401) authExpiredNotifier.value++;
+  }
 
   Future<List<dynamic>> _query(String query,
       [Map<String, dynamic>? variables, String? token]) async {
@@ -20,6 +25,7 @@ class AniListService {
       final data = jsonDecode(response.body);
       return data['data']['Page']['media'] ?? [];
     }
+    _handle401(response.statusCode);
     return [];
   }
 
@@ -237,6 +243,7 @@ class AniListService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body)['data']['Media'];
     }
+    _handle401(response.statusCode);
     return null;
   }
 
@@ -265,10 +272,13 @@ class AniListService {
       headers: await _headers(token),
       body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
     );
-    if (response.statusCode != 200) return {};
-    final lists =
-        jsonDecode(response.body)['data']['MediaListCollection']['lists']
-            as List;
+    if (response.statusCode != 200) {
+      _handle401(response.statusCode);
+      throw Exception('HTTP ${response.statusCode}');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final lists = body['data']?['MediaListCollection']?['lists'] as List?;
+    if (lists == null) throw Exception('Unexpected response');
     final Map<String, List<dynamic>> result = {};
     for (final list in lists) {
       result[list['status'] as String] =
@@ -301,10 +311,13 @@ class AniListService {
       headers: await _headers(token),
       body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
     );
-    if (response.statusCode != 200) return {};
-    final lists =
-        jsonDecode(response.body)['data']['MediaListCollection']['lists']
-            as List;
+    if (response.statusCode != 200) {
+      _handle401(response.statusCode);
+      throw Exception('HTTP ${response.statusCode}');
+    }
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    final lists = body['data']?['MediaListCollection']?['lists'] as List?;
+    if (lists == null) throw Exception('Unexpected response');
     final Map<String, List<dynamic>> result = {};
     for (final list in lists) {
       result[list['status'] as String] =
@@ -345,6 +358,7 @@ class AniListService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body)['data']['Page']['activities'] ?? [];
     }
+    _handle401(response.statusCode);
     return [];
   }
 
@@ -375,6 +389,7 @@ class AniListService {
       final body = jsonDecode(response.body);
       return {'user': body['data']?['User'] ?? {}};
     }
+    _handle401(response.statusCode);
     return {};
   }
 
@@ -411,6 +426,7 @@ class AniListService {
                 0,
       };
     }
+    _handle401(response.statusCode);
     return {'followers': 0, 'following': 0};
   }
 
@@ -431,17 +447,56 @@ class AniListService {
       headers: await _headers(token),
       body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
     );
-    if (response.statusCode != 200) return [];
+    if (response.statusCode != 200) { _handle401(response.statusCode); return []; }
     final body = jsonDecode(response.body);
     return (body['data']?['Page']?['following'] as List<dynamic>?) ?? [];
   }
 
   /// Fetches a public user profile (no token required).
-  Future<Map<String, dynamic>?> getPublicUserProfile(int userId) async {
+  Future<Map<String, List<dynamic>>> getPublicUserList(
+      int userId, String type) async {
+    const query = '''
+      query(\$userId: Int!, \$type: MediaType!) {
+        MediaListCollection(userId: \$userId, type: \$type) {
+          lists {
+            status isCustomList
+            entries {
+              progress score(format: POINT_10)
+              media {
+                id type
+                title { romaji english }
+                coverImage { medium }
+                episodes chapters
+              }
+            }
+          }
+        }
+      }
+    ''';
+    final response = await http.post(
+      Uri.parse(_baseUrl),
+      headers: await _headers(),
+      body: jsonEncode({'query': query, 'variables': {'userId': userId, 'type': type}}),
+    );
+    if (response.statusCode != 200) { _handle401(response.statusCode); return {}; }
+    final raw = jsonDecode(response.body)['data']['MediaListCollection'];
+    if (raw == null) return {};
+    final lists = raw['lists'] as List;
+    final Map<String, List<dynamic>> result = {};
+    for (final list in lists) {
+      if (list['isCustomList'] == true) continue;
+      final status = list['status'] as String;
+      result[status] = (list['entries'] as List).cast<Map<String, dynamic>>();
+    }
+    return result;
+  }
+
+  Future<Map<String, dynamic>?> getPublicUserProfile(int userId, {String? token}) async {
     const query = '''
       query(\$userId: Int!) {
         User(id: \$userId) {
           id name bannerImage
+          isFollowing isFollower
           avatar { large }
           statistics {
             anime { count meanScore minutesWatched episodesWatched }
@@ -460,11 +515,30 @@ class AniListService {
     ''';
     final response = await http.post(
       Uri.parse(_baseUrl),
-      headers: await _headers(),
+      headers: await _headers(token),
       body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
     );
-    if (response.statusCode != 200) return null;
+    if (response.statusCode != 200) { _handle401(response.statusCode); return null; }
     return jsonDecode(response.body)['data']['User'] as Map<String, dynamic>?;
+  }
+
+  /// Follows or unfollows a user. Returns whether the user is now being followed.
+  Future<bool> toggleFollow(int userId, String token) async {
+    const mutation = '''
+      mutation(\$userId: Int!) {
+        ToggleFollow(userId: \$userId) {
+          id isFollowing
+        }
+      }
+    ''';
+    final response = await http.post(
+      Uri.parse(_baseUrl),
+      headers: await _headers(token),
+      body: jsonEncode({'query': mutation, 'variables': {'userId': userId}}),
+    );
+    if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
+    final data = jsonDecode(response.body)['data']?['ToggleFollow'];
+    return data?['isFollowing'] == true;
   }
 
   /// Returns a map of AniList status → entry count for the user's anime list.
@@ -484,7 +558,7 @@ class AniListService {
       headers: await _headers(token),
       body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
     );
-    if (response.statusCode != 200) return {};
+    if (response.statusCode != 200) { _handle401(response.statusCode); return {}; }
     final lists =
         jsonDecode(response.body)['data']['MediaListCollection']['lists'] as List;
     return {
@@ -526,6 +600,7 @@ class AniListService {
       final data = jsonDecode(response.body);
       return data['data']?['SaveMediaListEntry'] != null;
     }
+    _handle401(response.statusCode);
     return false;
   }
 
@@ -552,6 +627,7 @@ class AniListService {
       final data = jsonDecode(response.body);
       return data['data']?['DeleteMediaListEntry']?['deleted'] == true;
     }
+    _handle401(response.statusCode);
     return false;
   }
 
@@ -578,7 +654,7 @@ class AniListService {
         body: jsonEncode(
             {'query': query, 'variables': {'userId': userId, 'page': page}}),
       );
-      if (response.statusCode != 200) break;
+      if (response.statusCode != 200) { _handle401(response.statusCode); break; }
       final activities = jsonDecode(response.body)['data']['Page']
           ['activities'] as List<dynamic>;
       if (activities.isEmpty) break;
@@ -595,6 +671,61 @@ class AniListService {
       if (done) break;
     }
     return result;
+  }
+
+  Future<Map<String, dynamic>?> getCharacterDetail(int id, [String? token]) async {
+    const query = '''
+      query(\$id: Int!) {
+        Character(id: \$id) {
+          id
+          isFavourite
+          name { full native alternative }
+          image { large }
+          description(asHtml: false)
+          gender
+          age
+          bloodType
+          dateOfBirth { year month day }
+          media(perPage: 10, sort: POPULARITY_DESC) {
+            nodes {
+              id type
+              title { romaji english }
+              coverImage { medium }
+            }
+          }
+        }
+      }
+    ''';
+    final response = await http.post(
+      Uri.parse(_baseUrl),
+      headers: await _headers(token),
+      body: jsonEncode({'query': query, 'variables': {'id': id}}),
+    );
+    if (response.statusCode != 200) { _handle401(response.statusCode); return null; }
+    return jsonDecode(response.body)['data']['Character'] as Map<String, dynamic>?;
+  }
+
+  Future<bool> toggleCharacterFavourite({
+    required int characterId,
+    required String token,
+  }) async {
+    const mutation = '''
+      mutation(\$characterId: Int) {
+        ToggleFavourite(characterId: \$characterId) {
+          characters { nodes { id } }
+        }
+      }
+    ''';
+    final response = await http.post(
+      Uri.parse(_baseUrl),
+      headers: await _headers(token),
+      body: jsonEncode({
+        'query': mutation,
+        'variables': {'characterId': characterId},
+      }),
+    );
+    if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
+    return true;
   }
 
   Future<bool> toggleFavourite({
@@ -616,6 +747,7 @@ class AniListService {
         'variables': {'animeId': animeId},
       }),
     );
-    return response.statusCode == 200;
+    if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
+    return true;
   }
 }

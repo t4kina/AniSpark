@@ -4,12 +4,12 @@ import 'providers/anime_list_provider.dart';
 import 'providers/settings_provider.dart';
 import 'services/auth_service.dart';
 import 'services/notification_service.dart';
-import 'services/license_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/feed_screen.dart';
 import 'utils/translations.dart' show tr;
+import 'utils/refresh_notifier.dart' show authExpiredNotifier;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,12 +22,10 @@ void main() async {
 
   await NotificationService().init();
 
+  authExpiredNotifier.addListener(() => authService.logout());
+
   final settingsProvider = SettingsProvider();
   await settingsProvider.load();
-
-  final licenseService = LicenseService();
-  final userId = (authService.user?['id'] as num?)?.toInt();
-  await licenseService.init(userId);
 
   runApp(
     MultiProvider(
@@ -35,7 +33,6 @@ void main() async {
         ChangeNotifierProvider.value(value: animeProvider),
         ChangeNotifierProvider.value(value: authService),
         ChangeNotifierProvider.value(value: settingsProvider),
-        ChangeNotifierProvider.value(value: licenseService),
       ],
       child: const MyAnimeApp(),
     ),
@@ -57,24 +54,24 @@ class MyAnimeApp extends StatelessWidget {
         visualDensity: VisualDensity.compact,
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
-        scaffoldBackgroundColor: const Color(0xFFF0F2FA),
+        scaffoldBackgroundColor: const Color(0xFFD8D8DC),
         colorScheme: const ColorScheme.light(
           primary: Color(0xFF02A9FF),
-          surface: Colors.white,
-          surfaceContainerHighest: Color(0xFFE5E7F2),
-          outline: Color(0xFFD0D2E4),
+          surface: Color(0xFFE2E2E6),
+          surfaceContainerHighest: Color(0xFFD0D0D4),
+          outline: Color(0xFFB8B8BC),
           onSurface: Color(0xFF1A1A2E),
           onSurfaceVariant: Colors.black54,
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFF0F2FA),
+          backgroundColor: Color(0xFFD8D8DC),
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           centerTitle: true,
           foregroundColor: Color(0xFF1A1A2E),
         ),
         navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: Colors.white,
+          backgroundColor: const Color(0xFFEFEFF1),
           height: 64,
           indicatorColor: Colors.transparent,
           overlayColor: WidgetStateProperty.all(Colors.transparent),
@@ -104,7 +101,7 @@ class MyAnimeApp extends StatelessWidget {
           side: const BorderSide(color: Color(0xFFD0D2E4)),
         ),
         cardTheme: CardThemeData(
-          color: Colors.white,
+          color: const Color(0xFFE2E2E6),
           elevation: 0,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: EdgeInsets.zero,
@@ -128,7 +125,7 @@ class MyAnimeApp extends StatelessWidget {
           hintStyle: const TextStyle(color: Colors.grey),
         ),
         listTileTheme: const ListTileThemeData(
-          tileColor: Colors.white,
+          tileColor: Color(0xFFE2E2E6),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(8)),
           ),
@@ -149,21 +146,25 @@ class MyAnimeApp extends StatelessWidget {
         visualDensity: VisualDensity.compact,
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
-        scaffoldBackgroundColor: const Color(0xFF0E0E2C),
+        scaffoldBackgroundColor: const Color(0xFF111113),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFF02A9FF),
-          surface: Color(0xFF13132A),
-          surfaceContainerHighest: Color(0xFF1E1E3A),
-          outline: Color(0xFF2A2A4A),
+          surface: Color(0xFF1C1C1E),
+          surfaceContainerLow: Color(0xFF1C1C1E),
+          surfaceContainerHighest: Color(0xFF2C2C2E),
+          outlineVariant: Color(0xFF38383A),
+          outline: Color(0xFF48484A),
+          onSurface: Color(0xFFEAEAEA),
+          onSurfaceVariant: Color(0xFFAAAAAA),
         ),
         appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF0E0E2C),
+          backgroundColor: Color(0xFF111113),
           surfaceTintColor: Colors.transparent,
           elevation: 0,
           centerTitle: true,
         ),
         navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: const Color(0xFF13132A),
+          backgroundColor: const Color(0xFF1C1C1E),
           height: 64,
           indicatorColor: Colors.transparent,
           overlayColor: WidgetStateProperty.all(Colors.transparent),
@@ -187,20 +188,20 @@ class MyAnimeApp extends StatelessWidget {
           indicatorColor: Color(0xFF02A9FF),
         ),
         chipTheme: ChipThemeData(
-          backgroundColor: const Color(0xFF1E1E3A),
+          backgroundColor: const Color(0xFF2C2C2E),
           labelStyle: const TextStyle(fontSize: 11),
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         ),
         cardTheme: CardThemeData(
-          color: const Color(0xFF13132A),
+          color: const Color(0xFF1C1C1E),
           elevation: 0,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           margin: EdgeInsets.zero,
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: const Color(0xFF1E1E3A),
+          fillColor: const Color(0xFF2C2C2E),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide.none,
@@ -217,13 +218,13 @@ class MyAnimeApp extends StatelessWidget {
           hintStyle: const TextStyle(color: Colors.grey),
         ),
         listTileTheme: const ListTileThemeData(
-          tileColor: Color(0xFF13132A),
+          tileColor: Color(0xFF1C1C1E),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.all(Radius.circular(8)),
           ),
         ),
         dividerTheme: const DividerThemeData(
-          color: Color(0xFF1E1E3A),
+          color: Color(0xFF2C2C2E),
           thickness: 1,
           space: 0,
         ),
@@ -341,24 +342,24 @@ class _MainNavigationState extends State<MainNavigation> {
           onDestinationSelected: (i) => setState(() => _currentIndex = i),
           destinations: [
             NavigationDestination(
-                icon: const Icon(Icons.tv_outlined),
-                selectedIcon: const Icon(Icons.tv),
+                icon: const Icon(Icons.smart_display_outlined),
+                selectedIcon: const Icon(Icons.smart_display),
                 label: tr('nav_anime', settings.language)),
             NavigationDestination(
-                icon: const Icon(Icons.menu_book_outlined),
-                selectedIcon: const Icon(Icons.menu_book),
+                icon: const Icon(Icons.collections_bookmark_outlined),
+                selectedIcon: const Icon(Icons.collections_bookmark),
                 label: tr('nav_manga', settings.language)),
             NavigationDestination(
-                icon: const Icon(Icons.explore_outlined),
-                selectedIcon: const Icon(Icons.explore),
+                icon: const Icon(Icons.travel_explore_outlined),
+                selectedIcon: const Icon(Icons.travel_explore),
                 label: tr('nav_discover', settings.language)),
             NavigationDestination(
-                icon: const Icon(Icons.whatshot_outlined),
-                selectedIcon: const Icon(Icons.whatshot),
+                icon: const Icon(Icons.article_outlined),
+                selectedIcon: const Icon(Icons.article),
                 label: tr('nav_feed', settings.language)),
             NavigationDestination(
-                icon: const Icon(Icons.person_outline),
-                selectedIcon: const Icon(Icons.person),
+                icon: const Icon(Icons.person_outline_rounded),
+                selectedIcon: const Icon(Icons.person_rounded),
                 label: tr('nav_profile', settings.language)),
           ],
         ),

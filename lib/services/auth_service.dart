@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'dart:convert';
@@ -9,7 +9,11 @@ class AuthService extends ChangeNotifier {
       String.fromEnvironment('ANILIST_CLIENT_ID');
   static const _clientSecret =
       String.fromEnvironment('ANILIST_CLIENT_SECRET');
-  static const _redirectUri = 'anispark://callback';
+  static const _webRedirectUri =
+      String.fromEnvironment('WEB_REDIRECT_URI', defaultValue: 'http://localhost:5000/');
+  static const _mobileRedirectUri = 'anispark://callback';
+  static String get _redirectUri =>
+      kIsWeb ? _webRedirectUri : _mobileRedirectUri;
   static const _baseUrl = 'https://graphql.anilist.co';
 
   String? _token;
@@ -42,7 +46,51 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> login() async {
-    // Step 1: Open authorization page (code flow)
+    if (kIsWeb) {
+      await _loginWeb();
+    } else {
+      await _loginMobile();
+    }
+  }
+
+  // Web: implicit flow — token returned directly in URL fragment, no client secret needed
+  Future<void> _loginWeb() async {
+    final authUrl = Uri(
+      scheme: 'https',
+      host: 'anilist.co',
+      path: '/api/v2/oauth/authorize',
+      queryParameters: {
+        'client_id': _clientId,
+        'redirect_uri': _redirectUri,
+        'response_type': 'token',
+      },
+    ).toString();
+
+    final String result;
+    try {
+      result = await FlutterWebAuth2.authenticate(
+        url: authUrl,
+        callbackUrlScheme: _webRedirectUri,
+      );
+    } on Exception catch (e) {
+      final msg = e.toString();
+      if (msg.contains('CANCELED') || msg.contains('cancel') || msg.contains('error 1')) return;
+      rethrow;
+    }
+
+    // Token comes in the URL fragment: #access_token=...
+    final uri = Uri.parse(result.replaceFirst('#', '?'));
+    final token = uri.queryParameters['access_token'];
+    if (token == null) throw Exception('No access_token in: $result');
+
+    _token = token;
+    await _box.put('token', _token);
+    await fetchUser();
+    notifyListeners();
+  }
+
+  // Mobile: authorization code flow
+  Future<void> _loginMobile() async {
     final authUrl = Uri(
       scheme: 'https',
       host: 'anilist.co',
@@ -53,10 +101,6 @@ class AuthService extends ChangeNotifier {
         'response_type': 'code',
       },
     ).toString();
-
-    debugPrint('[Auth] clientId: "$_clientId"');
-    debugPrint('[Auth] clientSecret empty: ${_clientSecret.isEmpty}');
-    debugPrint('Opening OAuth URL: $authUrl');
 
     final String result;
     try {
@@ -70,23 +114,16 @@ class AuthService extends ChangeNotifier {
       rethrow;
     }
 
-    debugPrint('OAuth result: $result');
-
-    // Step 2: Extract the code
+    // Extract code
     String? code;
     if (result.contains('?')) {
-      final uri = Uri.parse(result);
-      code = uri.queryParameters['code'];
+      code = Uri.parse(result).queryParameters['code'];
     } else if (result.contains('code=')) {
-      final params = Uri.splitQueryString(result.split('?').last);
-      code = params['code'];
+      code = Uri.splitQueryString(result.split('?').last)['code'];
     }
-
-    debugPrint('Code: ${code != null ? "found ✅" : "null ❌"}');
-
     if (code == null) throw Exception('No code in: $result');
 
-    // Step 3: Exchange code for token
+    // Exchange code for token
     final tokenResponse = await http.post(
       Uri.parse('https://anilist.co/api/v2/oauth/token'),
       headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
@@ -99,12 +136,8 @@ class AuthService extends ChangeNotifier {
       }),
     );
 
-    debugPrint('Token exchange status: ${tokenResponse.statusCode}');
-    debugPrint('Token exchange body: ${tokenResponse.body}');
-
     if (tokenResponse.statusCode == 200) {
-      final data = jsonDecode(tokenResponse.body);
-      _token = data['access_token'];
+      _token = jsonDecode(tokenResponse.body)['access_token'];
       await _box.put('token', _token);
       await fetchUser();
       notifyListeners();
