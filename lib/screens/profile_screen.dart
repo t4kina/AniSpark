@@ -4,8 +4,11 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../services/auth_service.dart';
 import '../services/anilist_service.dart';
 import '../utils/refresh_notifier.dart';
+import '../widgets/overlay_button.dart';
 import 'settings_screen.dart';
 import 'user_profile_screen.dart';
+import 'detail_screen.dart';
+import 'character_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -210,7 +213,10 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
-    final user = auth.user!;
+    final user = auth.user;
+    if (user == null) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     final animeStats =
         user['statistics']?['anime'] as Map<String, dynamic>?;
     final mangaStats =
@@ -227,27 +233,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final totalManga = (mangaStats?['count'] as num?)?.toInt() ?? 0;
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        leading: const SizedBox.shrink(),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: IconButton(
-              icon: const Icon(Icons.settings_outlined, color: Colors.white),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              ),
-            ),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
+      body: Stack(
+        children: [
+          RefreshIndicator(
         onRefresh: _fetchStats,
         child: CustomScrollView(
           slivers: [
@@ -371,6 +359,19 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           ],
         ),
       ),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 6,
+            right: 12,
+            child: overlayBtn(
+              icon: Icons.settings_outlined,
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -384,158 +385,176 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     required int chaptersRead,
   }) {
     final topPadding = MediaQuery.of(context).padding.top;
-    final bg = Theme.of(context).scaffoldBackgroundColor;
+    final surface = Theme.of(context).colorScheme.surface;
     final outline = Theme.of(context).colorScheme.outline;
-    return ColoredBox(
-      color: bg,
-      child: Column(
-        children: [
-          // ── Banner + Avatar + Name ──────────────────────────────────
-          Stack(
-            alignment: Alignment.bottomCenter,
-            children: [
-              // Banner image
-              SizedBox(
-                height: 200 + topPadding,
-                width: double.infinity,
-                child: _bannerImage != null
-                    ? CachedNetworkImage(
-                        imageUrl: _bannerImage!,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 800,
-                        placeholder: (ctx, _) => Container(
-                            color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
-                        errorWidget: (_, _, _) => Container(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                      )
-                    : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
-              ),
-              // Gradient overlay
-              Positioned.fill(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [
-                        Colors.transparent,
-                        bg.withValues(alpha: 0.6),
-                        bg,
-                      ],
-                      stops: const [0.3, 0.7, 1.0],
-                    ),
-                  ),
-                ),
-              ),
-              // Avatar + name
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(color: bg, width: 3),
-                      ),
-                      child: CircleAvatar(
-                        radius: 40,
-                        backgroundColor:
-                            Theme.of(context).colorScheme.surfaceContainerHighest,
-                        backgroundImage: avatar != null
-                            ? CachedNetworkImageProvider(avatar)
-                            : null,
-                        child: avatar == null
-                            ? const Icon(Icons.person, size: 40, color: Colors.grey)
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Text(
-                      name,
-                      style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.onSurface),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    return Container(
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 18,
+            offset: const Offset(0, 5),
           ),
-          // ── Stats card (same widget, no sliver boundary) ───────────
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: outline),
-              ),
-              child: Column(
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // ── Banner + Avatar + Name ──────────────────────────────
+          Stack(
+                alignment: Alignment.bottomCenter,
                 children: [
-                  IntrinsicHeight(
-                    child: Row(
-                      children: [
-                        _statItem('$totalAnime', 'Anime'),
-                        _statDividerV(outline),
-                        _statItem(daysWatched, 'Days Watched'),
-                        _statDividerV(outline),
-                        _statItem('$totalManga', 'Manga'),
-                      ],
+                  SizedBox(
+                    height: 200 + topPadding,
+                    width: double.infinity,
+                    child: _bannerImage != null
+                        ? CachedNetworkImage(
+                            imageUrl: _bannerImage!,
+                            fit: BoxFit.cover,
+                            memCacheWidth: 800,
+                            placeholder: (ctx, _) => Container(
+                                color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
+                            errorWidget: (_, _, _) => Container(
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                          )
+                        : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                  ),
+                  Positioned.fill(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            surface.withValues(alpha: 0.6),
+                            surface,
+                          ],
+                          stops: const [0.3, 0.7, 1.0],
+                        ),
+                      ),
                     ),
                   ),
-                  Divider(height: 1, color: outline),
-                  IntrinsicHeight(
-                    child: Row(
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        _statItem('$chaptersRead', 'Chapters Read'),
-                        _statDividerV(outline),
-                        _statItem('$_followersCount', 'Followers'),
-                        _statDividerV(outline),
-                        _statItem('$_followingCount', 'Following'),
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: surface, width: 3),
+                          ),
+                          child: CircleAvatar(
+                            radius: 40,
+                            backgroundColor:
+                                Theme.of(context).colorScheme.surfaceContainerHighest,
+                            backgroundImage: avatar != null
+                                ? CachedNetworkImageProvider(avatar)
+                                : null,
+                            child: avatar == null
+                                ? const Icon(Icons.person, size: 40, color: Colors.grey)
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Text(
+                          name,
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Theme.of(context).colorScheme.onSurface),
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
-            ),
+              // ── Stats card ─────────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: outline),
+                  ),
+                  child: Column(
+                    children: [
+                      IntrinsicHeight(
+                        child: Row(
+                          children: [
+                            _statItem('$totalAnime', 'Anime'),
+                            _statDividerV(outline),
+                            _statItem(daysWatched, 'Days Watched'),
+                            _statDividerV(outline),
+                            _statItem('$totalManga', 'Manga'),
+                          ],
+                        ),
+                      ),
+                      Divider(height: 1, color: outline),
+                      IntrinsicHeight(
+                        child: Row(
+                          children: [
+                            _statItem('$chaptersRead', 'Chapters Read'),
+                            _statDividerV(outline),
+                            _statItem('$_followersCount', 'Followers'),
+                            _statDividerV(outline),
+                            _statItem('$_followingCount', 'Following'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   Widget _animeFavCard(dynamic anime) {
     final a = anime as Map<String, dynamic>;
+    final id = a['id'] as int?;
     final image = a['coverImage']?['large'] as String?;
     final title = (a['title']?['english'] ?? a['title']?['romaji'] ?? '') as String;
     return Padding(
       padding: const EdgeInsets.only(right: 10),
-      child: SizedBox(
-        width: 100,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: image != null
-                  ? CachedNetworkImage(
-                      imageUrl: image,
-                      width: 100,
-                      height: 140,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 200,
-                    )
-                  : Container(
-                      width: 100, height: 140, color: Theme.of(context).colorScheme.surfaceContainerHighest),
-            ),
-            const SizedBox(height: 4),
-            Text(title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 11)),
-          ],
+      child: GestureDetector(
+        onTap: id != null
+            ? () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)))
+            : null,
+        child: SizedBox(
+          width: 100,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: image != null
+                    ? CachedNetworkImage(
+                        imageUrl: image,
+                        width: 100,
+                        height: 140,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 200,
+                      )
+                    : Container(
+                        width: 100, height: 140, color: Theme.of(context).colorScheme.surfaceContainerHighest),
+              ),
+              const SizedBox(height: 4),
+              Text(title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11)),
+            ],
+          ),
         ),
       ),
     );
@@ -543,34 +562,42 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
 
   Widget _charFavCard(dynamic char) {
     final c = char as Map<String, dynamic>;
+    final id = c['id'] as int?;
     final image = c['image']?['medium'] as String?;
     final name = c['name']?['full'] as String? ?? '';
     return Padding(
       padding: const EdgeInsets.only(right: 10),
-      child: SizedBox(
-        width: 80,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: image != null
-                  ? CachedNetworkImage(
-                      imageUrl: image,
-                      width: 80,
-                      height: 80,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 160,
-                    )
-                  : Container(
-                      width: 80, height: 80, color: Theme.of(context).colorScheme.surfaceContainerHighest),
-            ),
-            const SizedBox(height: 4),
-            Text(name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 10)),
-          ],
+      child: GestureDetector(
+        onTap: id != null
+            ? () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => CharacterScreen(
+                    characterId: id, name: name, imageUrl: image)))
+            : null,
+        child: SizedBox(
+          width: 80,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: image != null
+                    ? CachedNetworkImage(
+                        imageUrl: image,
+                        width: 80,
+                        height: 80,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 160,
+                      )
+                    : Container(
+                        width: 80, height: 80, color: Theme.of(context).colorScheme.surfaceContainerHighest),
+              ),
+              const SizedBox(height: 4),
+              Text(name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 10)),
+            ],
+          ),
         ),
       ),
     );
@@ -661,9 +688,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       return const Color(0xFF02A9FF);
     }
 
-    const cellSize = 10.0;
+    const cellSize = 13.0;
     const gap = 3.0;
     const step = cellSize + gap;
+
+    String? tooltip;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
@@ -678,24 +707,57 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                   letterSpacing: 0.5)),
           const SizedBox(height: 12),
           Builder(builder: (ctx) {
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: totalWeeks * step,
-                height: 7 * step - gap,
-                child: CustomPaint(
-                  painter: _HeatmapPainter(
-                    startDay: startDay,
-                    today: today,
-                    totalWeeks: totalWeeks,
-                    activityDays: _activityDays,
-                    cellColor: (count) => cellColor(count, ctx),
-                    cellSize: cellSize,
-                    gap: gap,
+            return StatefulBuilder(builder: (ctx, setLocal) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: GestureDetector(
+                      onTapUp: (details) {
+                        final x = details.localPosition.dx;
+                        final y = details.localPosition.dy;
+                        final week = (x / step).floor();
+                        final dow = (y / step).floor();
+                        if (week < 0 || week >= totalWeeks || dow < 0 || dow >= 7) return;
+                        final day = startDay.add(Duration(days: week * 7 + dow));
+                        if (day.isAfter(today)) return;
+                        final key =
+                            '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+                        final count = _activityDays[key] ?? 0;
+                        final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                        final label = '${months[day.month - 1]} ${day.day}, ${day.year}';
+                        setLocal(() => tooltip = count == 0
+                            ? 'No activity on $label'
+                            : '$count activit${count == 1 ? 'y' : 'ies'} on $label');
+                      },
+                      child: SizedBox(
+                        width: totalWeeks * step,
+                        height: 7 * step - gap,
+                        child: CustomPaint(
+                          painter: _HeatmapPainter(
+                            startDay: startDay,
+                            today: today,
+                            totalWeeks: totalWeeks,
+                            activityDays: _activityDays,
+                            cellColor: (count) => cellColor(count, ctx),
+                            cellSize: cellSize,
+                            gap: gap,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            );
+                  if (tooltip != null) ...[
+                    const SizedBox(height: 6),
+                    Text(tooltip!,
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.55))),
+                  ],
+                ],
+              );
+            });
           }),
           const SizedBox(height: 6),
           Builder(builder: (ctx) => Row(

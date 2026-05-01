@@ -45,11 +45,97 @@ class _ListTabScreenState extends State<_ListTabScreen> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
   _SortMode _sortMode = _SortMode.lastUpdated;
+  Set<String> _activeGenres = {};
+
+  static const _genres = [
+    'Action', 'Adventure', 'Comedy', 'Drama', 'Ecchi', 'Fantasy', 'Horror',
+    'Mahou Shoujo', 'Mecha', 'Music', 'Mystery', 'Psychological', 'Romance',
+    'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller',
+  ];
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _showGenreFilter(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cs.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSheet) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text('Filter by Genre',
+                      style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: cs.onSurface)),
+                  const Spacer(),
+                  if (_activeGenres.isNotEmpty)
+                    TextButton(
+                      onPressed: () {
+                        setState(() => _activeGenres = {});
+                        setSheet(() {});
+                      },
+                      child: const Text('Clear', style: TextStyle(fontSize: 13)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _genres.map((g) {
+                  final selected = _activeGenres.contains(g);
+                  return GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        if (selected) {
+                          _activeGenres.remove(g);
+                        } else {
+                          _activeGenres.add(g);
+                        }
+                      });
+                      setSheet(() {});
+                    },
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: selected ? cs.primary : cs.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: selected ? cs.primary : cs.outline.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Text(
+                        g,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                          color: selected ? Colors.white : cs.onSurface,
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -92,6 +178,16 @@ class _ListTabScreenState extends State<_ListTabScreen> {
         title: Text(title,
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         actions: [
+          IconButton(
+            icon: Icon(
+              Icons.tune_rounded,
+              size: 22,
+              color: _activeGenres.isNotEmpty ? const Color(0xFF02A9FF) : Colors.grey,
+            ),
+            onPressed: () => _showGenreFilter(context),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: PopupMenuButton<_SortMode>(
@@ -138,6 +234,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
               type: widget.type,
               searchQuery: _searchQuery,
               sortMode: _sortMode,
+              activeGenres: _activeGenres,
             ),
           ),
         ],
@@ -168,7 +265,8 @@ class _MediaList extends StatefulWidget {
   final String type;
   final String searchQuery;
   final _SortMode sortMode;
-  const _MediaList({required this.type, this.searchQuery = '', this.sortMode = _SortMode.lastUpdated});
+  final Set<String> activeGenres;
+  const _MediaList({required this.type, this.searchQuery = '', this.sortMode = _SortMode.lastUpdated, this.activeGenres = const {}});
 
   @override
   State<_MediaList> createState() => _MediaListState();
@@ -359,12 +457,18 @@ class _MediaListState extends State<_MediaList>
   List<Map<String, dynamic>> _filterEntries(
       List<Map<String, dynamic>> entries) {
     var result = entries.where((e) {
-      if (widget.searchQuery.isEmpty) return true;
       final media = e['media'] as Map<String, dynamic>? ?? {};
-      final title = (media['title']?['english'] ??
-          media['title']?['romaji'] ??
-          '') as String;
-      return title.toLowerCase().contains(widget.searchQuery.toLowerCase());
+      if (widget.searchQuery.isNotEmpty) {
+        final title = (media['title']?['english'] ??
+            media['title']?['romaji'] ??
+            '') as String;
+        if (!title.toLowerCase().contains(widget.searchQuery.toLowerCase())) return false;
+      }
+      if (widget.activeGenres.isNotEmpty) {
+        final genres = (media['genres'] as List<dynamic>? ?? []).cast<String>();
+        if (!widget.activeGenres.any((g) => genres.contains(g))) return false;
+      }
+      return true;
     }).toList();
 
     switch (widget.sortMode) {
@@ -402,7 +506,68 @@ class _MediaListState extends State<_MediaList>
       );
     }
     if (_lists.isEmpty) {
-      return const Center(child: Text('Nothing here yet'));
+      final isAnime = widget.type == 'ANIME';
+      final cs = Theme.of(context).colorScheme;
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isAnime ? Icons.movie_filter_outlined : Icons.menu_book_outlined,
+                size: 64,
+                color: cs.onSurface.withValues(alpha: 0.2),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                isAnime ? 'Your anime list is empty' : 'Your manga list is empty',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface.withValues(alpha: 0.55)),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                isAnime
+                    ? 'Start tracking anime you\'re watching or plan to watch'
+                    : 'Start tracking manga you\'re reading or plan to read',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 13,
+                    color: cs.onSurface.withValues(alpha: 0.35),
+                    height: 1.5),
+              ),
+              const SizedBox(height: 24),
+              GestureDetector(
+                onTap: () => MainNavigation.navigateToTab(2),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: cs.primary,
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.explore_outlined,
+                          color: Colors.white, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        isAnime ? 'Discover Anime' : 'Discover Manga',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     final lang = context.read<SettingsProvider>().language;
@@ -423,6 +588,26 @@ class _MediaListState extends State<_MediaList>
         }
         items.add((isHeader: false, status: null, label: null, count: null, entry: null)); // spacer
       }
+    }
+
+    if (items.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.search_off_rounded, size: 52,
+                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
+            const SizedBox(height: 12),
+            Text(
+              widget.searchQuery.isNotEmpty
+                  ? 'No results for "${widget.searchQuery}"'
+                  : 'No entries match the selected genres',
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                  fontSize: 13)),
+          ],
+        ),
+      );
     }
 
     return RefreshIndicator(
@@ -447,10 +632,25 @@ class _MediaListState extends State<_MediaList>
                 child: Row(
                   children: [
                     Text(item.label!,
-                        style: const TextStyle(fontSize: 15, color: Colors.grey)),
+                        style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey)),
                     const Spacer(),
-                    Text('${item.count}',
-                        style: const TextStyle(fontSize: 15, color: Colors.grey)),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${item.count}',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Theme.of(context).colorScheme.primary),
+                      ),
+                    ),
                     const SizedBox(width: 6),
                     Icon(
                       collapsed ? Icons.chevron_right : Icons.expand_more,

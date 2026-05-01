@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
 import '../utils/refresh_notifier.dart';
+import 'detail_screen.dart';
 import 'user_profile_screen.dart';
 
 enum _FeedType { following, global, personal }
@@ -322,14 +323,25 @@ class _ActivityCard extends StatelessWidget {
           ),
           if (coverImage != null) ...[
             const SizedBox(width: 10),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: CachedNetworkImage(
-                imageUrl: coverImage,
-                width: 45,
-                height: 64,
-                fit: BoxFit.cover,
-                memCacheWidth: 90,
+            GestureDetector(
+              onTap: media?['id'] != null && media?['type'] == 'ANIME'
+                  ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              DetailScreen(animeId: media!['id'] as int),
+                        ),
+                      )
+                  : null,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: CachedNetworkImage(
+                  imageUrl: coverImage,
+                  width: 45,
+                  height: 64,
+                  fit: BoxFit.cover,
+                  memCacheWidth: 90,
+                ),
               ),
             ),
           ],

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/anilist_service.dart';
 import 'detail_screen.dart';
 
@@ -21,6 +22,9 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _loading = false;
   bool _searched = false;
   bool _focused = false;
+
+  List<String> _recentSearches = [];
+  static const _prefsKey = 'recent_searches';
 
   String _contentType = 'ANIME';
   Set<String> _selectedGenres = {};
@@ -44,6 +48,35 @@ class _SearchScreenState extends State<SearchScreen> {
   void initState() {
     super.initState();
     _focusNode.addListener(() => setState(() => _focused = _focusNode.hasFocus));
+    _loadRecentSearches();
+  }
+
+  Future<void> _loadRecentSearches() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList(_prefsKey) ?? [];
+    if (mounted) setState(() => _recentSearches = raw);
+  }
+
+  Future<void> _saveSearch(String query) async {
+    final updated = [query, ..._recentSearches.where((s) => s != query)]
+        .take(8)
+        .toList();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_prefsKey, updated);
+    if (mounted) setState(() => _recentSearches = updated);
+  }
+
+  Future<void> _removeRecentSearch(String query) async {
+    final updated = _recentSearches.where((s) => s != query).toList();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_prefsKey, updated);
+    setState(() => _recentSearches = updated);
+  }
+
+  Future<void> _clearRecentSearches() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefsKey);
+    setState(() => _recentSearches = []);
   }
 
   @override
@@ -84,6 +117,7 @@ class _SearchScreenState extends State<SearchScreen> {
         : await _service.searchManga(query, genres: genres, sort: _sort);
     if (!mounted) return;
     _cache[key] = results;
+    _saveSearch(query);
     setState(() {
       _results = results;
       _loading = false;
@@ -282,7 +316,9 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildEmptyState() => Center(
+  Widget _buildEmptyState() {
+    if (_recentSearches.isEmpty) {
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: const [
@@ -293,6 +329,71 @@ class _SearchScreenState extends State<SearchScreen> {
           ],
         ),
       );
+    }
+
+    final cs = Theme.of(context).colorScheme;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      children: [
+        Row(
+          children: [
+            Text('Recent',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface.withValues(alpha: 0.55),
+                    letterSpacing: 0.3)),
+            const Spacer(),
+            GestureDetector(
+              onTap: _clearRecentSearches,
+              child: Text('Clear all',
+                  style: TextStyle(fontSize: 12, color: cs.primary)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _recentSearches.map((q) {
+            return GestureDetector(
+              onTap: () {
+                _controller.text = q;
+                _controller.selection = TextSelection.fromPosition(
+                    TextPosition(offset: q.length));
+                _search(q);
+              },
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 7, 6, 7),
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: cs.outline.withValues(alpha: 0.4)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.history_rounded, size: 14,
+                        color: cs.onSurface.withValues(alpha: 0.45)),
+                    const SizedBox(width: 6),
+                    Text(q,
+                        style: TextStyle(
+                            fontSize: 13, color: cs.onSurface.withValues(alpha: 0.85))),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: () => _removeRecentSearch(q),
+                      child: Icon(Icons.close_rounded, size: 14,
+                          color: cs.onSurface.withValues(alpha: 0.35)),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
 }
 
 // ── Result card ──────────────────────────────────────────────────────────────

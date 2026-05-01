@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 import '../services/anilist_service.dart';
 import '../widgets/anime_card.dart';
+import 'detail_screen.dart';
 import 'search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -111,33 +113,33 @@ class _HomeScreenState extends State<HomeScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const SizedBox(height: 12),
-                          _sectionHeader('CURRENTLY TRENDING ANIME'),
+                          _sectionHeader('CURRENTLY TRENDING ANIME', items: _trending),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_trending),
                           const SizedBox(height: 20),
-                          _sectionHeader('CURRENT SEASON - $_currentSeasonLabel'),
+                          _sectionHeader('CURRENT SEASON - $_currentSeasonLabel', items: _seasonal),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_seasonal),
                           const SizedBox(height: 20),
-                          _sectionHeader('UPCOMING SEASON - $_nextSeasonLabel'),
+                          _sectionHeader('UPCOMING SEASON - $_nextSeasonLabel', items: _popular),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_popular),
                           const SizedBox(height: 20),
-                          _sectionHeader('TOP AIRING'),
+                          _sectionHeader('TOP AIRING', items: _topAiring),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_topAiring),
                           const SizedBox(height: 28),
                           const Divider(indent: 16, endIndent: 16),
                           const SizedBox(height: 16),
-                          _sectionHeader('TRENDING MANGA'),
+                          _sectionHeader('TRENDING MANGA', items: _trendingManga),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_trendingManga),
                           const SizedBox(height: 20),
-                          _sectionHeader('TOP MANGA ALL TIME'),
+                          _sectionHeader('TOP MANGA ALL TIME', items: _topManga),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_topManga),
                           const SizedBox(height: 20),
-                          _sectionHeader('POPULAR MANHWA'),
+                          _sectionHeader('POPULAR MANHWA', items: _manhwa),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_manhwa),
                           const SizedBox(height: 24),
@@ -151,16 +153,39 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _sectionHeader(String title) => Padding(
+  Widget _sectionHeader(String title, {List<dynamic>? items}) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Text(
-          title,
-          style: const TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: Colors.grey,
-            letterSpacing: 0.5,
-          ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            if (items != null && items.isNotEmpty)
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => _BrowseAllScreen(title: title, items: items),
+                  ),
+                ),
+                child: const Text(
+                  'See all',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF02A9FF),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+          ],
         ),
       );
 
@@ -195,6 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _shimmerSection() => Column(
+
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
@@ -240,4 +266,110 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       );
+}
+
+// ── Browse All Screen ────────────────────────────────────────────────────────
+
+class _BrowseAllScreen extends StatelessWidget {
+  final String title;
+  final List<dynamic> items;
+
+  const _BrowseAllScreen({required this.title, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(
+          title,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+        ),
+      ),
+      body: GridView.builder(
+        padding: const EdgeInsets.all(12),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: 0.53,
+        ),
+        itemCount: items.length,
+        itemBuilder: (context, i) {
+          final item = items[i] as Map<String, dynamic>;
+          final id = item['id'] as int?;
+          final cover = item['coverImage']?['large'] as String?;
+          final title = (item['title']?['english'] ?? item['title']?['romaji'] ?? '') as String;
+          final score = item['averageScore'] as int?;
+          final cs = Theme.of(context).colorScheme;
+
+          return GestureDetector(
+            onTap: id != null
+                ? () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)))
+                : null,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        cover != null
+                            ? CachedNetworkImage(
+                                imageUrl: cover,
+                                fit: BoxFit.cover,
+                                memCacheWidth: 200,
+                                placeholder: (_, __) => Container(
+                                    color: cs.surfaceContainerHighest),
+                                errorWidget: (context, error, stack) => Container(
+                                    color: cs.surfaceContainerHighest),
+                              )
+                            : Container(color: cs.surfaceContainerHighest),
+                        if (score != null)
+                          Positioned(
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  vertical: 4, horizontal: 6),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
+                                  colors: [
+                                    Colors.black.withValues(alpha: 0.75),
+                                    Colors.transparent,
+                                  ],
+                                ),
+                              ),
+                              child: Text(
+                                '★ ${(score / 10).toStringAsFixed(1)}',
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
 }
