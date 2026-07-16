@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import '../providers/settings_provider.dart';
@@ -30,6 +31,17 @@ class NotificationService {
       const InitializationSettings(android: android, iOS: ios),
     );
     _initialized = true;
+  }
+
+  /// Asks for permission only on first launch. Updates settings accordingly.
+  Future<void> requestOnFirstLaunch(SettingsProvider settings) async {
+    if (kIsWeb || !_initialized) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool('notification_asked') ?? false) return;
+    await prefs.setBool('notification_asked', true);
+    final granted = await requestPermission();
+    await settings.setPushNotifications(granted);
+    await settings.setNewEpisodeAlerts(granted);
   }
 
   /// Returns true if permission was granted (or already granted).
@@ -69,6 +81,8 @@ class NotificationService {
     if (kIsWeb) return;
     if (defaultTargetPlatform != TargetPlatform.android &&
         defaultTargetPlatform != TargetPlatform.iOS) { return; }
+
+    await _plugin.cancelAll();
 
     final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final currentEntries = lists['CURRENT'] ?? [];

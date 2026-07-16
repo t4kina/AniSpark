@@ -23,6 +23,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _topManga = [];
   List<dynamic> _manhwa = [];
   bool _loading = true;
+  bool _hasError = false;
 
   @override
   void initState() {
@@ -30,27 +31,36 @@ class _HomeScreenState extends State<HomeScreen> {
     _load();
   }
 
+  Future<List<dynamic>> _safe(Future<List<dynamic>> f) =>
+      f.catchError((_) => <dynamic>[]);
+
   Future<void> _load() async {
-    setState(() => _loading = true);
-    final results = await Future.wait([
-      _service.getTrending(),
-      _service.getThisSeason(),
-      _service.getNextSeason(),
-      _service.getTopAiring(),
-      _service.getTrendingManga(),
-      _service.getTopManga(),
-      _service.getManhwa(),
-    ]);
-    setState(() {
-      _trending = results[0];
-      _seasonal = results[1];
-      _popular = results[2];
-      _topAiring = results[3];
-      _trendingManga = results[4];
-      _topManga = results[5];
-      _manhwa = results[6];
-      _loading = false;
-    });
+    setState(() { _loading = true; _hasError = false; });
+    try {
+      final results = await Future.wait([
+        _safe(_service.getTrending()),
+        _safe(_service.getThisSeason()),
+        _safe(_service.getNextSeason()),
+        _safe(_service.getTopAiring()),
+        _safe(_service.getTrendingManga()),
+        _safe(_service.getTopManga()),
+        _safe(_service.getManhwa()),
+      ]);
+      final allEmpty = results.every((r) => r.isEmpty);
+      setState(() {
+        _trending = results[0];
+        _seasonal = results[1];
+        _popular = results[2];
+        _topAiring = results[3];
+        _trendingManga = results[4];
+        _topManga = results[5];
+        _manhwa = results[6];
+        _loading = false;
+        _hasError = allEmpty;
+      });
+    } catch (_) {
+      setState(() { _loading = false; _hasError = true; });
+    }
   }
 
   String get _currentSeasonLabel {
@@ -105,7 +115,9 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: _loading
                 ? _buildShimmer()
-                : RefreshIndicator(
+                : _hasError
+                    ? _buildError()
+                    : RefreshIndicator(
                     onRefresh: _load,
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
@@ -202,6 +214,24 @@ class _HomeScreenState extends State<HomeScreen> {
               child: AnimeCard(animeData: items[i]),
             ),
           ),
+        ),
+      );
+
+  Widget _buildError() => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            const Text('No se pudo cargar el contenido',
+                style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reintentar'),
+            ),
+          ],
         ),
       );
 

@@ -494,13 +494,27 @@ class _MediaListState extends State<_MediaList>
 
     if (_loading) return const Center(child: CircularProgressIndicator());
     if (_error != null) {
+      final isNetworkError = _error != 'Connect your AniList from the Profile tab'
+          && _error != 'Could not get user ID';
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.list_alt_outlined, size: 52, color: Colors.grey),
+            Icon(
+              isNetworkError ? Icons.wifi_off_rounded : Icons.list_alt_outlined,
+              size: 52,
+              color: Colors.grey,
+            ),
             const SizedBox(height: 12),
             Text(_error!, style: const TextStyle(color: Colors.grey)),
+            if (isNetworkError) ...[
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Reintentar'),
+              ),
+            ],
           ],
         ),
       );

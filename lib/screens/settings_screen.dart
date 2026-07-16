@@ -83,10 +83,12 @@ class SettingsScreen extends StatelessWidget {
             label: tr('push_notifications', lang),
             value: settings.pushNotifications,
             onChanged: (v) async {
-              await context.read<SettingsProvider>().setPushNotifications(v);
+              final sp = context.read<SettingsProvider>();
+              await sp.setPushNotifications(v);
               if (v) {
                 final granted = await NotificationService().requestPermission();
                 if (!granted && context.mounted) {
+                  await sp.setPushNotifications(false);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                     content: Text('Enable notifications in System Settings'),
                   ));
@@ -101,14 +103,16 @@ class SettingsScreen extends StatelessWidget {
             label: tr('new_episode_alerts', lang),
             value: settings.newEpisodeAlerts,
             onChanged: (v) async {
-              await context.read<SettingsProvider>().setNewEpisodeAlerts(v);
+              final sp = context.read<SettingsProvider>();
+              await sp.setNewEpisodeAlerts(v);
               if (v) {
                 final granted = await NotificationService().requestPermission();
                 if (!granted && context.mounted) {
+                  await sp.setNewEpisodeAlerts(false);
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
                     content: Text('Enable notifications in System Settings'),
                   ));
-                } else {
+                } else if (context.mounted) {
                   listRefreshNotifier.value++;
                 }
               } else {

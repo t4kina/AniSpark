@@ -21,6 +21,7 @@ class _FeedScreenState extends State<FeedScreen>
   final _service = AniListService();
   List<dynamic> _activities = [];
   bool _loading = true;
+  bool _hasError = false;
   _FeedType _feedType = _FeedType.following;
   late final AuthService _auth;
 
@@ -58,21 +59,25 @@ class _FeedScreenState extends State<FeedScreen>
   Future<void> _load() async {
     final auth = context.read<AuthService>();
     if (!auth.isLoggedIn) {
-      setState(() => _loading = false);
+      setState(() { _loading = false; _hasError = false; });
       return;
     }
-    setState(() => _loading = true);
-    final activities = await _service.getActivityFeed(
-      auth.token!,
-      isFollowing: _feedType == _FeedType.following,
-      userId: _feedType == _FeedType.personal
-          ? (auth.user?['id'] as int?)
-          : null,
-    );
-    setState(() {
-      _activities = activities;
-      _loading = false;
-    });
+    setState(() { _loading = true; _hasError = false; });
+    try {
+      final activities = await _service.getActivityFeed(
+        auth.token!,
+        isFollowing: _feedType == _FeedType.following,
+        userId: _feedType == _FeedType.personal
+            ? (auth.user?['id'] as int?)
+            : null,
+      );
+      setState(() {
+        _activities = activities;
+        _loading = false;
+      });
+    } catch (_) {
+      setState(() { _loading = false; _hasError = true; });
+    }
   }
 
   String _timeAgo(int timestamp) {
@@ -195,21 +200,39 @@ class _FeedScreenState extends State<FeedScreen>
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _activities.isEmpty
-              ? const Center(
-                  child: Text('No activity yet',
-                      style: TextStyle(color: Colors.grey)))
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _activities.length,
-                    itemBuilder: (_, i) => _ActivityCard(
-                      activity: _activities[i],
-                      timeAgo: _timeAgo,
-                    ),
+          : _hasError
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+                      const SizedBox(height: 12),
+                      const Text('No se pudo cargar el feed',
+                          style: TextStyle(color: Colors.grey)),
+                      const SizedBox(height: 16),
+                      FilledButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Reintentar'),
+                      ),
+                    ],
                   ),
-                ),
+                )
+              : _activities.isEmpty
+                  ? const Center(
+                      child: Text('No activity yet',
+                          style: TextStyle(color: Colors.grey)))
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _activities.length,
+                        itemBuilder: (_, i) => _ActivityCard(
+                          activity: _activities[i],
+                          timeAgo: _timeAgo,
+                        ),
+                      ),
+                    ),
     );
   }
 }

@@ -37,8 +37,8 @@ class SettingsProvider extends ChangeNotifier {
     _language = prefs.getString('language') ?? 'English';
     _appearance = prefs.getString('appearance') ?? 'Dark';
     _titleLanguage = prefs.getString('titleLanguage') ?? 'English';
-    _pushNotifications = prefs.getBool('pushNotifications') ?? true;
-    _newEpisodeAlerts = prefs.getBool('newEpisodeAlerts') ?? true;
+    _pushNotifications = prefs.getBool('pushNotifications') ?? false;
+    _newEpisodeAlerts = prefs.getBool('newEpisodeAlerts') ?? false;
     notifyListeners();
   }
 
