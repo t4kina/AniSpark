@@ -519,31 +519,41 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(animeScore,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 2),
-                  const Text('Anime Score',
-                      style: TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
-                ],
+              Flexible(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(animeScore,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: const Text('Anime Score',
+                          style: TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
+                    ),
+                  ],
+                ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: Text('|',
                     style: TextStyle(
                         color: Colors.grey.withValues(alpha: 0.4), fontSize: 16)),
               ),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(mangaScore,
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 2),
-                  const Text('Manga Score',
-                      style: TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
-                ],
+              Flexible(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(mangaScore,
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: const Text('Manga Score',
+                          style: TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
