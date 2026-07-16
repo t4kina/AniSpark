@@ -14,16 +14,20 @@ class AniListService {
     if (statusCode == 401) authExpiredNotifier.value++;
   }
 
+  static int _rateLimitCount = 0;
+
   // Sends a GraphQL request, retrying once after Retry-After seconds on 429.
   Future<http.Response> _post(String body, [String? token]) async {
     final headers = await _headers(token);
     var response = await http.post(Uri.parse(_baseUrl), headers: headers, body: body);
     if (response.statusCode == 429) {
-      rateLimitActiveNotifier.value = true;
+      _rateLimitCount++;
+      if (_rateLimitCount == 1) rateLimitActiveNotifier.value = true;
       final retryAfter = int.tryParse(response.headers['retry-after'] ?? '') ?? 60;
       await Future.delayed(Duration(seconds: retryAfter));
       response = await http.post(Uri.parse(_baseUrl), headers: headers, body: body);
-      rateLimitActiveNotifier.value = false;
+      _rateLimitCount--;
+      if (_rateLimitCount == 0) rateLimitActiveNotifier.value = false;
     }
     return response;
   }
@@ -286,6 +290,7 @@ class AniListService {
     if (lists == null) throw Exception('Unexpected response');
     final Map<String, List<dynamic>> result = {};
     for (final list in lists) {
+      if (list['isCustomList'] == true) continue;
       result[list['status'] as String] =
           (list['entries'] as List).cast<Map<String, dynamic>>().toList();
     }
@@ -321,6 +326,7 @@ class AniListService {
     if (lists == null) throw Exception('Unexpected response');
     final Map<String, List<dynamic>> result = {};
     for (final list in lists) {
+      if (list['isCustomList'] == true) continue;
       result[list['status'] as String] =
           (list['entries'] as List).cast<Map<String, dynamic>>().toList();
     }

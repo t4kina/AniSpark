@@ -410,7 +410,7 @@ class _RateLimitBannerWrapperState extends State<_RateLimitBannerWrapper>
   void initState() {
     super.initState();
     _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    _slide = Tween(begin: const Offset(0, -1.5), end: Offset.zero)
+    _slide = Tween(begin: const Offset(0, 1.5), end: Offset.zero)
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
     _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
     rateLimitActiveNotifier.addListener(_onRateLimitChanged);
@@ -426,9 +426,9 @@ class _RateLimitBannerWrapperState extends State<_RateLimitBannerWrapper>
   void _onRateLimitChanged() {
     if (!mounted) return;
     if (rateLimitActiveNotifier.value) {
-      _ctrl.forward();
+      if (!_ctrl.isCompleted) _ctrl.forward();
     } else {
-      _ctrl.reverse();
+      if (!_ctrl.isDismissed) _ctrl.reverse();
     }
   }
 
