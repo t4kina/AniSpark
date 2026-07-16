@@ -33,14 +33,17 @@
 <div align="center">
 <table>
   <tr>
-    <td align="center"><img src="screenshots/dark_discover.png" width="180"/><br/><sub>Discover</sub></td>
-    <td align="center"><img src="screenshots/dark_anime.png" width="180"/><br/><sub>Anime List</sub></td>
-    <td align="center"><img src="screenshots/dark_manga.png" width="180"/><br/><sub>Manga List</sub></td>
+    <td align="center"><img src="screenshots/dark_discover.jpg" width="180"/><br/><sub>Discover</sub></td>
+    <td align="center"><img src="screenshots/dark_anime.jpg" width="180"/><br/><sub>Anime List</sub></td>
+    <td align="center"><img src="screenshots/dark_manga.jpg" width="180"/><br/><sub>Manga List</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="screenshots/dark_detail.png" width="180"/><br/><sub>Detail View</sub></td>
-    <td align="center"><img src="screenshots/dark_feed.png" width="180"/><br/><sub>Activity Feed</sub></td>
-    <td align="center"><img src="screenshots/dark_profile.png" width="180"/><br/><sub>Profile</sub></td>
+    <td align="center"><img src="screenshots/dark_detail.jpg" width="180"/><br/><sub>Detail View</sub></td>
+    <td align="center"><img src="screenshots/dark_detail_chars.jpg" width="180"/><br/><sub>Characters</sub></td>
+    <td align="center"><img src="screenshots/dark_feed.jpg" width="180"/><br/><sub>Activity Feed</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="screenshots/dark_profile.jpg" width="180"/><br/><sub>Profile</sub></td>
   </tr>
 </table>
 </div>
@@ -50,14 +53,17 @@
 <div align="center">
 <table>
   <tr>
-    <td align="center"><img src="screenshots/light_discover.png" width="180"/><br/><sub>Discover</sub></td>
-    <td align="center"><img src="screenshots/light_anime.png" width="180"/><br/><sub>Anime List</sub></td>
-    <td align="center"><img src="screenshots/light_manga.png" width="180"/><br/><sub>Manga List</sub></td>
+    <td align="center"><img src="screenshots/light_discover.jpg" width="180"/><br/><sub>Discover</sub></td>
+    <td align="center"><img src="screenshots/light_anime.jpg" width="180"/><br/><sub>Anime List</sub></td>
+    <td align="center"><img src="screenshots/light_manga.jpg" width="180"/><br/><sub>Manga List</sub></td>
   </tr>
   <tr>
-    <td align="center"><img src="screenshots/light_detail.png" width="180"/><br/><sub>Detail View</sub></td>
-    <td align="center"><img src="screenshots/light_feed.png" width="180"/><br/><sub>Activity Feed</sub></td>
-    <td align="center"><img src="screenshots/light_profile.png" width="180"/><br/><sub>Profile</sub></td>
+    <td align="center"><img src="screenshots/light_detail.jpg" width="180"/><br/><sub>Detail View</sub></td>
+    <td align="center"><img src="screenshots/light_detail_chars.jpg" width="180"/><br/><sub>Characters</sub></td>
+    <td align="center"><img src="screenshots/light_feed.jpg" width="180"/><br/><sub>Activity Feed</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="screenshots/light_profile.jpg" width="180"/><br/><sub>Profile</sub></td>
   </tr>
 </table>
 </div>
