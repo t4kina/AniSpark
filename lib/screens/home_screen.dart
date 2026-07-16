@@ -321,7 +321,7 @@ class _BrowseAllScreen extends StatelessWidget {
                                 imageUrl: cover,
                                 fit: BoxFit.cover,
                                 memCacheWidth: 200,
-                                placeholder: (_, __) => Container(
+                                placeholder: (_, _) => Container(
                                     color: cs.surfaceContainerHighest),
                                 errorWidget: (context, error, stack) => Container(
                                     color: cs.surfaceContainerHighest),

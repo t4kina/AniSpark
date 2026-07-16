@@ -36,9 +36,6 @@
             </intent-filter>
 
             <meta-data
-            android:name="io.flutter.embedding.android.SplashScreenDrawable"
-            android:resource="@drawable/launch_background" />
-            <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="false" />
             
