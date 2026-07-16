@@ -39,10 +39,7 @@
   </tr>
   <tr>
     <td align="center"><img src="screenshots/dark_detail.jpg" width="180"/><br/><sub>Detail View</sub></td>
-    <td align="center"><img src="screenshots/dark_detail_chars.jpg" width="180"/><br/><sub>Characters</sub></td>
     <td align="center"><img src="screenshots/dark_feed.jpg" width="180"/><br/><sub>Activity Feed</sub></td>
-  </tr>
-  <tr>
     <td align="center"><img src="screenshots/dark_profile.jpg" width="180"/><br/><sub>Profile</sub></td>
   </tr>
 </table>
@@ -59,10 +56,7 @@
   </tr>
   <tr>
     <td align="center"><img src="screenshots/light_detail.jpg" width="180"/><br/><sub>Detail View</sub></td>
-    <td align="center"><img src="screenshots/light_detail_chars.jpg" width="180"/><br/><sub>Characters</sub></td>
     <td align="center"><img src="screenshots/light_feed.jpg" width="180"/><br/><sub>Activity Feed</sub></td>
-  </tr>
-  <tr>
     <td align="center"><img src="screenshots/light_profile.jpg" width="180"/><br/><sub>Profile</sub></td>
   </tr>
 </table>
