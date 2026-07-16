@@ -9,7 +9,7 @@ import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/feed_screen.dart';
 import 'utils/translations.dart' show tr;
-import 'utils/refresh_notifier.dart' show authExpiredNotifier;
+import 'utils/refresh_notifier.dart' show authExpiredNotifier, rateLimitActiveNotifier;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -233,7 +233,7 @@ class MyAnimeApp extends StatelessWidget {
       builder: (context, child) {
         return ScrollConfiguration(
           behavior: const _SmoothScrollBehavior(),
-          child: child!,
+          child: _RateLimitBannerWrapper(child: child!),
         );
       },
       home: const SplashScreen(),
@@ -325,8 +325,12 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
+  final Set<int> _visited = {0};
 
-  void _setTab(int index) => setState(() => _currentIndex = index);
+  void _setTab(int index) => setState(() {
+    _currentIndex = index;
+    _visited.add(index);
+  });
 
   final List<Widget> _screens = const [
     AnimeListScreen(),
@@ -341,12 +345,18 @@ class _MainNavigationState extends State<MainNavigation> {
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
-        children: _screens,
+        children: List.generate(
+          _screens.length,
+          (i) => _visited.contains(i) ? _screens[i] : const SizedBox.shrink(),
+        ),
       ),
       bottomNavigationBar: Consumer<SettingsProvider>(
         builder: (_, settings, _) => NavigationBar(
           selectedIndex: _currentIndex,
-          onDestinationSelected: (i) => setState(() => _currentIndex = i),
+          onDestinationSelected: (i) => setState(() {
+            _currentIndex = i;
+            _visited.add(i);
+          }),
           destinations: [
             NavigationDestination(
                 icon: const Icon(Icons.smart_display_outlined),
@@ -380,4 +390,83 @@ class _SmoothScrollBehavior extends ScrollBehavior {
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) =>
       const BouncingScrollPhysics();
+}
+
+class _RateLimitBannerWrapper extends StatefulWidget {
+  final Widget child;
+  const _RateLimitBannerWrapper({required this.child});
+
+  @override
+  State<_RateLimitBannerWrapper> createState() => _RateLimitBannerWrapperState();
+}
+
+class _RateLimitBannerWrapperState extends State<_RateLimitBannerWrapper>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<Offset> _slide;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
+    _slide = Tween(begin: const Offset(0, -1.5), end: Offset.zero)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
+    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
+    rateLimitActiveNotifier.addListener(_onRateLimitChanged);
+  }
+
+  @override
+  void dispose() {
+    rateLimitActiveNotifier.removeListener(_onRateLimitChanged);
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _onRateLimitChanged() {
+    if (!mounted) return;
+    if (rateLimitActiveNotifier.value) {
+      _ctrl.forward();
+    } else {
+      _ctrl.reverse();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        widget.child,
+        Positioned(
+          bottom: MediaQuery.of(context).padding.bottom + 64 + 12,
+          left: 0,
+          right: 0,
+          child: FadeTransition(
+            opacity: _fade,
+            child: SlideTransition(
+              position: _slide,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    'Rate limit reached',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      decoration: TextDecoration.none,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }

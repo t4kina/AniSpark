@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
 import '../screens/detail_screen.dart';
@@ -435,24 +434,33 @@ class _MediaListState extends State<_MediaList>
     }
   }
 
-  Future<void> _removeEntry(Map<String, dynamic> entry) async {
+  Future<void> _decrementEpisode(Map<String, dynamic> entry) async {
     final auth = context.read<AuthService>();
     if (!auth.isLoggedIn) return;
-    final entryId = entry['id'] as int?;
-    if (entryId == null) return;
+    final media = entry['media'] as Map<String, dynamic>? ?? {};
+    final mediaId = media['id'] as int?;
+    if (mediaId == null) return;
 
+    final progress = (entry['progress'] as num?)?.toInt() ?? 0;
+    if (progress <= 0) return;
+
+    final newProgress = progress - 1;
     final status = (entry['status'] as String?) ?? 'CURRENT';
-    final ok = await _service.deleteListEntry(
-      entryId: entryId,
+    final score = (entry['score'] as num?)?.toDouble() ?? 0;
+
+    final ok = await _service.saveListEntry(
+      mediaId: mediaId,
+      status: status,
+      progress: newProgress,
+      score: score,
       token: auth.token!,
     );
     if (ok) {
-      setState(() {
-        _lists[status]?.removeWhere((e) => e['id'] == entryId);
-      });
+      setState(() => entry['progress'] = newProgress);
       _silentReload();
     }
   }
+
 
   List<Map<String, dynamic>> _filterEntries(
       List<Map<String, dynamic>> entries) {
@@ -684,7 +692,7 @@ class _MediaListState extends State<_MediaList>
             entry: item.entry!,
             type: widget.type,
             onAddEpisode: () => _incrementEpisode(item.entry!),
-            onRemove: () => _removeEntry(item.entry!),
+            onRemove: () => _decrementEpisode(item.entry!),
           );
         },
       ),
@@ -712,6 +720,20 @@ class _SwipeableRow extends StatefulWidget {
 }
 
 class _SwipeableRowState extends State<_SwipeableRow> {
+  late int _progress;
+
+  @override
+  void initState() {
+    super.initState();
+    _progress = (widget.entry['progress'] as num?)?.toInt() ?? 0;
+  }
+
+  @override
+  void didUpdateWidget(_SwipeableRow old) {
+    super.didUpdateWidget(old);
+    final next = (widget.entry['progress'] as num?)?.toInt() ?? 0;
+    if (next != _progress) setState(() => _progress = next);
+  }
 
   String? _timeUntilAiring(int airingAt) {
     final remaining = airingAt - DateTime.now().millisecondsSinceEpoch ~/ 1000;
@@ -791,7 +813,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              tr('remove', lang),
+              unitLabel,
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
@@ -799,7 +821,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
               ),
             ),
             const SizedBox(width: 6),
-            SvgPicture.asset('assets/bin.svg', width: 22, height: 22, colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn)),
+            const Icon(Icons.remove, color: Colors.white, size: 20),
           ],
         ),
       ),
@@ -855,10 +877,13 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                           fontSize: 14, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      '$progress${total != null ? ' / $total' : ''} ${widget.type == 'ANIME' ? tr('episodes', lang) : tr('chapters', lang)}',
-                      style: const TextStyle(
-                          fontSize: 12, color: Colors.grey),
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: Text(
+                        '$_progress${total != null ? ' / $total' : ''} ${widget.type == 'ANIME' ? tr('episodes', lang) : tr('chapters', lang)}',
+                        key: ValueKey(_progress),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
                     ),
                     if (score > 0) ...[
                       const SizedBox(height: 4),

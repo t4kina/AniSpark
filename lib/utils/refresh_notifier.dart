@@ -8,3 +8,6 @@ final feedRefreshNotifier = ValueNotifier<int>(0);
 
 /// Fired when the API returns 401 — listeners should log the user out.
 final authExpiredNotifier = ValueNotifier<int>(0);
+
+/// True while the app is waiting out a 429 rate-limit retry.
+final rateLimitActiveNotifier = ValueNotifier<bool>(false);

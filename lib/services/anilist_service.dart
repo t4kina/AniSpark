@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../utils/refresh_notifier.dart';
+import '../utils/refresh_notifier.dart' show authExpiredNotifier, rateLimitActiveNotifier;
 
 class AniListService {
   static const String _baseUrl = 'https://graphql.anilist.co';
@@ -14,12 +14,25 @@ class AniListService {
     if (statusCode == 401) authExpiredNotifier.value++;
   }
 
+  // Sends a GraphQL request, retrying once after Retry-After seconds on 429.
+  Future<http.Response> _post(String body, [String? token]) async {
+    final headers = await _headers(token);
+    var response = await http.post(Uri.parse(_baseUrl), headers: headers, body: body);
+    if (response.statusCode == 429) {
+      rateLimitActiveNotifier.value = true;
+      final retryAfter = int.tryParse(response.headers['retry-after'] ?? '') ?? 60;
+      await Future.delayed(Duration(seconds: retryAfter));
+      response = await http.post(Uri.parse(_baseUrl), headers: headers, body: body);
+      rateLimitActiveNotifier.value = false;
+    }
+    return response;
+  }
+
   Future<List<dynamic>> _query(String query,
       [Map<String, dynamic>? variables, String? token]) async {
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': query, 'variables': variables ?? {}}),
+    final response = await _post(
+      jsonEncode({'query': query, 'variables': variables ?? {}}),
+      token,
     );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -235,11 +248,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': query, 'variables': {'id': id}}),
-    );
+    final response = await _post(jsonEncode({'query': query, 'variables': {'id': id}}), token);
     if (response.statusCode == 200) {
       return jsonDecode(response.body)['data']['Media'];
     }
@@ -267,11 +276,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
-    );
+    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode != 200) {
       _handle401(response.statusCode);
       throw Exception('HTTP ${response.statusCode}');
@@ -306,11 +311,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
-    );
+    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode != 200) {
       _handle401(response.statusCode);
       throw Exception('HTTP ${response.statusCode}');
@@ -350,11 +351,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': query, 'variables': variables}),
-    );
+    final response = await _post(jsonEncode({'query': query, 'variables': variables}), token);
     if (response.statusCode == 200) {
       return jsonDecode(response.body)['data']['Page']['activities'] ?? [];
     }
@@ -380,11 +377,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
-    );
+    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode == 200) {
       final body = jsonDecode(response.body);
       return {'user': body['data']?['User'] ?? {}};
@@ -408,11 +401,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
-    );
+    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body)['data'];
       return {
@@ -442,11 +431,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
-    );
+    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode != 200) { _handle401(response.statusCode); return []; }
     final body = jsonDecode(response.body);
     return (body['data']?['Page']?['following'] as List<dynamic>?) ?? [];
@@ -473,11 +458,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(),
-      body: jsonEncode({'query': query, 'variables': {'userId': userId, 'type': type}}),
-    );
+    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId, 'type': type}}));
     if (response.statusCode != 200) { _handle401(response.statusCode); return {}; }
     final raw = jsonDecode(response.body)['data']['MediaListCollection'];
     if (raw == null) return {};
@@ -513,11 +494,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
-    );
+    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode != 200) { _handle401(response.statusCode); return null; }
     return jsonDecode(response.body)['data']['User'] as Map<String, dynamic>?;
   }
@@ -531,11 +508,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': mutation, 'variables': {'userId': userId}}),
-    );
+    final response = await _post(jsonEncode({'query': mutation, 'variables': {'userId': userId}}), token);
     if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
     final data = jsonDecode(response.body)['data']?['ToggleFollow'];
     return data?['isFollowing'] == true;
@@ -553,11 +526,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': query, 'variables': {'userId': userId}}),
-    );
+    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode != 200) { _handle401(response.statusCode); return {}; }
     final lists =
         jsonDecode(response.body)['data']['MediaListCollection']['lists'] as List;
@@ -583,19 +552,10 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({
-        'query': mutation,
-        'variables': {
-          'mediaId': mediaId,
-          'status': status,
-          'progress': progress,
-          'score': score,
-        },
-      }),
-    );
+    final response = await _post(jsonEncode({
+      'query': mutation,
+      'variables': {'mediaId': mediaId, 'status': status, 'progress': progress, 'score': score},
+    }), token);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       return data['data']?['SaveMediaListEntry'] != null;
@@ -615,12 +575,9 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({
-        'query': mutation,
-        'variables': {'id': entryId},
+    final response = await _post(jsonEncode({
+      'query': mutation,
+      'variables': {'id': entryId},
       }),
     );
     if (response.statusCode == 200) {
@@ -648,11 +605,9 @@ class AniListService {
             1000;
     final Map<String, int> result = {};
     for (int page = 1; page <= 6; page++) {
-      final response = await http.post(
-        Uri.parse(_baseUrl),
-        headers: await _headers(token),
-        body: jsonEncode(
-            {'query': query, 'variables': {'userId': userId, 'page': page}}),
+      final response = await _post(
+        jsonEncode({'query': query, 'variables': {'userId': userId, 'page': page}}),
+        token,
       );
       if (response.statusCode != 200) { _handle401(response.statusCode); break; }
       final activities = jsonDecode(response.body)['data']['Page']
@@ -696,11 +651,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({'query': query, 'variables': {'id': id}}),
-    );
+    final response = await _post(jsonEncode({'query': query, 'variables': {'id': id}}), token);
     if (response.statusCode != 200) { _handle401(response.statusCode); return null; }
     return jsonDecode(response.body)['data']['Character'] as Map<String, dynamic>?;
   }
@@ -716,14 +667,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({
-        'query': mutation,
-        'variables': {'characterId': characterId},
-      }),
-    );
+    final response = await _post(jsonEncode({'query': mutation, 'variables': {'characterId': characterId}}), token);
     if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
     return true;
   }
@@ -739,14 +683,7 @@ class AniListService {
         }
       }
     ''';
-    final response = await http.post(
-      Uri.parse(_baseUrl),
-      headers: await _headers(token),
-      body: jsonEncode({
-        'query': mutation,
-        'variables': {'animeId': animeId},
-      }),
-    );
+    final response = await _post(jsonEncode({'query': mutation, 'variables': {'animeId': animeId}}), token);
     if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
     return true;
   }
