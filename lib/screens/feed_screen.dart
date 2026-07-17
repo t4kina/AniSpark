@@ -3,6 +3,8 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
+import '../providers/settings_provider.dart';
 import '../utils/refresh_notifier.dart';
 import 'detail_screen.dart';
 import 'user_profile_screen.dart';
@@ -75,6 +77,10 @@ class _FeedScreenState extends State<FeedScreen>
         _activities = activities;
         _loading = false;
       });
+      if (_feedType == _FeedType.following && mounted) {
+        final settings = context.read<SettingsProvider>();
+        await NotificationService().checkFriendActivity(activities, settings);
+      }
     } catch (_) {
       setState(() { _loading = false; _hasError = true; });
     }

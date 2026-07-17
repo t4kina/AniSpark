@@ -122,6 +122,15 @@ class SettingsScreen extends StatelessWidget {
               }
             },
           ),
+          _switchTile(
+            icon: Icons.group_outlined,
+            label: tr('friend_activity_alerts', lang),
+            value: settings.friendActivityAlerts,
+            onChanged: (v) async {
+              final sp = context.read<SettingsProvider>();
+              await sp.setFriendActivityAlerts(v);
+            },
+          ),
 
           const SizedBox(height: 8),
           const Divider(height: 1),

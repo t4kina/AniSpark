@@ -1,6 +1,8 @@
+import 'dart:math' show pi;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:confetti/confetti.dart';
 import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
 import '../screens/detail_screen.dart';
@@ -420,6 +422,7 @@ class _MediaListState extends State<_MediaList>
     final newProgress = progress + 1;
     final status = (entry['status'] as String?) ?? 'CURRENT';
     final score = (entry['score'] as num?)?.toDouble() ?? 0;
+    final isLastEpisode = total != null && newProgress == total;
 
     final ok = await _service.saveListEntry(
       mediaId: mediaId,
@@ -431,7 +434,64 @@ class _MediaListState extends State<_MediaList>
     if (ok) {
       setState(() => entry['progress'] = newProgress);
       _silentReload();
+      if (isLastEpisode && mounted) {
+        await _showCompletionDialog(entry, mediaId, total);
+      }
     }
+  }
+
+  Future<void> _showCompletionDialog(
+    Map<String, dynamic> entry,
+    int mediaId,
+    int total,
+  ) async {
+    final settings = context.read<SettingsProvider>();
+    final media = entry['media'] as Map<String, dynamic>? ?? {};
+    final title = settings.resolveTitle(media['title'] as Map<String, dynamic>?);
+    final coverImage = media['coverImage']?['large'] as String?;
+    final averageScore = (media['averageScore'] as num?)?.toDouble();
+    final initialScore = (entry['score'] as num?)?.toDouble() ?? 0;
+
+    if (!mounted) return;
+    await showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.transparent,
+      transitionDuration: const Duration(milliseconds: 400),
+      transitionBuilder: (ctx, animation, _, child) => FadeTransition(
+        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+        child: SlideTransition(
+          position: Tween(begin: const Offset(0, 0.06), end: Offset.zero)
+              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+          child: child,
+        ),
+      ),
+      pageBuilder: (ctx, _, _) => _CompletionDialog(
+        title: title,
+        coverImage: coverImage,
+        averageScore: averageScore,
+        initialScore: initialScore,
+        type: widget.type,
+        onComplete: (score) async {
+          final auth = context.read<AuthService>();
+          if (!auth.isLoggedIn || !mounted) return;
+          final ok = await _service.saveListEntry(
+            mediaId: mediaId,
+            status: 'COMPLETED',
+            progress: total,
+            score: score,
+            token: auth.token!,
+          );
+          if (ok && mounted) {
+            setState(() {
+              entry['status'] = 'COMPLETED';
+              if (score > 0) entry['score'] = score;
+            });
+            _silentReload();
+          }
+        },
+      ),
+    );
   }
 
   Future<void> _decrementEpisode(Map<String, dynamic> entry) async {
@@ -951,4 +1011,449 @@ class MyListScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const AnimeListScreen();
+}
+
+// ─── Completion Dialog ─────────────────────────────────────────────────────
+
+class _CompletionDialog extends StatefulWidget {
+  final String title;
+  final String? coverImage;
+  final double? averageScore;
+  final double initialScore;
+  final String type;
+  final Future<void> Function(double score) onComplete;
+
+  const _CompletionDialog({
+    required this.title,
+    required this.coverImage,
+    required this.averageScore,
+    required this.initialScore,
+    required this.type,
+    required this.onComplete,
+  });
+
+  @override
+  State<_CompletionDialog> createState() => _CompletionDialogState();
+}
+
+class _CompletionDialogState extends State<_CompletionDialog> {
+  late final ConfettiController _confetti;
+  double _score = 0;
+  bool _completing = false;
+
+  static const _colors = [
+    Color(0xFF02A9FF),
+    Colors.white,
+    Color(0xFFFFC107),
+    Color(0xFFFF6B6B),
+    Color(0xFF66BB6A),
+    Color(0xFFCE93D8),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _score = widget.initialScore;
+    _confetti = ConfettiController(duration: const Duration(seconds: 5));
+    _confetti.play();
+  }
+
+  @override
+  void dispose() {
+    _confetti.dispose();
+    super.dispose();
+  }
+
+  Future<void> _complete() async {
+    setState(() => _completing = true);
+    await widget.onComplete(_score);
+    if (mounted) Navigator.pop(context);
+  }
+
+  void _openScorePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _ScorePickerSheet(
+        initialScore: _score,
+        onUpdate: (score) {
+          setState(() => _score = score);
+          Navigator.pop(context);
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final unitLabel = widget.type == 'ANIME' ? 'series' : 'manga';
+
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          // Blurred cover art background
+          if (widget.coverImage != null)
+            Positioned.fill(
+              child: Stack(
+                children: [
+                  CachedNetworkImage(
+                    imageUrl: widget.coverImage!,
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                  ),
+                  Container(color: Colors.black.withValues(alpha: 0.78)),
+                ],
+              ),
+            ),
+
+          // Confetti — top left
+          Align(
+            alignment: Alignment.topLeft,
+            child: ConfettiWidget(
+              confettiController: _confetti,
+              blastDirection: pi / 3,
+              blastDirectionality: BlastDirectionality.directional,
+              emissionFrequency: 0.06,
+              numberOfParticles: 12,
+              gravity: 0.12,
+              colors: _colors,
+            ),
+          ),
+
+          // Confetti — top right
+          Align(
+            alignment: Alignment.topRight,
+            child: ConfettiWidget(
+              confettiController: _confetti,
+              blastDirection: 2 * pi / 3,
+              blastDirectionality: BlastDirectionality.directional,
+              emissionFrequency: 0.06,
+              numberOfParticles: 12,
+              gravity: 0.12,
+              colors: _colors,
+            ),
+          ),
+
+          // Content
+          SafeArea(
+            child: Column(
+              children: [
+                const Spacer(),
+
+                // Congrats subtitle
+                Text(
+                  'Congrats! You\'ve just finished',
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: Colors.white.withValues(alpha: 0.6),
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Title
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 40),
+                  child: Text(
+                    widget.title,
+                    style: const TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      height: 1.2,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(height: 28),
+
+                // Cover image
+                if (widget.coverImage != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: CachedNetworkImage(
+                      imageUrl: widget.coverImage!,
+                      width: 148,
+                      height: 210,
+                      fit: BoxFit.cover,
+                      memCacheWidth: 296,
+                    ),
+                  ),
+                const SizedBox(height: 28),
+
+                // Rating question
+                Text(
+                  'What\'s your final rating for this $unitLabel?',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.white.withValues(alpha: 0.55),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Score button
+                GestureDetector(
+                  onTap: _openScorePicker,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 13),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+                    ),
+                    child: Text(
+                      _score > 0 ? _score.toStringAsFixed(1) : 'Not Scored',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+
+                // Average rating
+                if (widget.averageScore != null) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.star_rounded, size: 13, color: Color(0xFFFFC107)),
+                      const SizedBox(width: 4),
+                      Text(
+                        'AVERAGE RATING  ${(widget.averageScore! / 10).toStringAsFixed(1)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          letterSpacing: 0.5,
+                          color: Colors.white.withValues(alpha: 0.35),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+
+                const Spacer(),
+
+                // Complete button
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                  child: GestureDetector(
+                    onTap: _completing ? null : _complete,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: _completing
+                            ? Colors.white.withValues(alpha: 0.08)
+                            : Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+                      ),
+                      child: Center(
+                        child: _completing
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : Text(
+                                'Complete ${widget.type == 'ANIME' ? 'Series' : 'Manga'}',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Score Picker Sheet ────────────────────────────────────────────────────
+
+class _ScorePickerSheet extends StatefulWidget {
+  final double initialScore;
+  final void Function(double) onUpdate;
+
+  const _ScorePickerSheet({required this.initialScore, required this.onUpdate});
+
+  @override
+  State<_ScorePickerSheet> createState() => _ScorePickerSheetState();
+}
+
+class _ScorePickerSheetState extends State<_ScorePickerSheet> {
+  late double _score;
+  late final TextEditingController _ctrl;
+  final _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _score = widget.initialScore;
+    _ctrl = TextEditingController(text: _fmt(_score));
+    _focusNode.addListener(_onFocusLost);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusLost);
+    _focusNode.dispose();
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  String _fmt(double v) => v == 0 ? '0' : v.toStringAsFixed(v % 1 == 0 ? 0 : 1);
+
+  void _onFocusLost() {
+    if (!_focusNode.hasFocus) _applyText();
+  }
+
+  void _applyText() {
+    final parsed = double.tryParse(_ctrl.text.replaceAll(',', '.'));
+    final clamped = (parsed ?? _score).clamp(0.0, 10.0);
+    setState(() => _score = clamped);
+    _ctrl.text = _fmt(clamped);
+  }
+
+  void _adjust(double delta) {
+    _focusNode.unfocus();
+    final next = (_score + delta).clamp(0.0, 10.0);
+    setState(() => _score = next);
+    _ctrl.text = _fmt(next);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          24, 16, 24, MediaQuery.of(context).viewInsets.bottom + 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 36,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 20),
+            decoration: BoxDecoration(
+              color: cs.onSurface.withValues(alpha: 0.2),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Text(
+            'Score',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: cs.onSurface,
+            ),
+          ),
+          const SizedBox(height: 28),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Minus
+              GestureDetector(
+                onTap: () => _adjust(-0.5),
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.remove, size: 26, color: cs.onSurface),
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Score — editable field
+              Container(
+                width: 120,
+                decoration: BoxDecoration(
+                  color: cs.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: TextField(
+                  controller: _ctrl,
+                  focusNode: _focusNode,
+                  textAlign: TextAlign.center,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.bold,
+                    color: cs.onSurface,
+                  ),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.symmetric(vertical: 18),
+                    isDense: true,
+                  ),
+                  onSubmitted: (_) => _applyText(),
+                  onEditingComplete: _applyText,
+                ),
+              ),
+              const SizedBox(width: 16),
+              // Plus
+              GestureDetector(
+                onTap: () => _adjust(0.5),
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    color: cs.surfaceContainerHighest,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.add, size: 26, color: cs.onSurface),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 28),
+          SizedBox(
+            width: double.infinity,
+            height: 54,
+            child: FilledButton(
+              onPressed: () {
+                _applyText();
+                widget.onUpdate(_score);
+              },
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF02A9FF),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18)),
+              ),
+              child: const Text(
+                'Update',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

@@ -42,9 +42,13 @@ dependencies:
   # Preferences
   shared_preferences: ^2.2.2
 
+  # Confetti
+  confetti: ^0.7.0
+
   # Notifications
   flutter_local_notifications: ^18.0.1
   timezone: ^0.9.4
+  flutter_timezone: ^3.0.0
 
 dev_dependencies:
   flutter_test:

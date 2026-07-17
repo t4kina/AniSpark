@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
@@ -17,9 +18,24 @@ class NotificationService {
   static const _channelName = 'Episode Alerts';
   static const _channelDesc = 'Notifications when new anime episodes are available';
 
+  static const _friendChannelId = 'friend_activity';
+  static const _friendChannelName = 'Friend Activity';
+  static const _friendChannelDesc = 'Notifications when friends are active on AniList';
+
+  static const _friendNotifId = 99999;
+  static const _prefLastActivityKey = 'last_seen_activity_at';
+
   Future<void> init() async {
     if (kIsWeb || _initialized) return;
     tz.initializeTimeZones();
+
+    // Set timezone to device's local timezone (fixes UTC default)
+    try {
+      final localTz = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(localTz));
+    } catch (_) {
+      // Fall back to UTC if timezone detection fails
+    }
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
     const ios = DarwinInitializationSettings(
@@ -47,31 +63,22 @@ class NotificationService {
   /// Returns true if permission was granted (or already granted).
   Future<bool> requestPermission() async {
     if (kIsWeb) return false;
-    // iOS
     final ios = _plugin
         .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>();
     if (ios != null) {
-      final granted = await ios.requestPermissions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
+      final granted = await ios.requestPermissions(alert: true, badge: true, sound: true);
       return granted ?? false;
     }
-
-    // Android 13+
     final android = _plugin
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     if (android != null) {
       final granted = await android.requestNotificationsPermission();
       return granted ?? false;
     }
-
     return true;
   }
 
   /// Schedule episode notifications for all CURRENT-status anime entries.
-  /// Silently skips entries with no upcoming episode or if settings are off.
   Future<void> scheduleForAnimeList(
     Map<String, List<dynamic>> lists,
     SettingsProvider settings,
@@ -98,17 +105,18 @@ class NotificationService {
       final airingAt = (nextAiring['airingAt'] as num?)?.toInt();
       final episode = (nextAiring['episode'] as num?)?.toInt();
       if (airingAt == null || episode == null) continue;
-      if (airingAt <= nowSeconds) continue; // already aired
+      if (airingAt <= nowSeconds) continue;
 
       final title = (media['title']?['english'] ?? media['title']?['romaji'] ?? 'Unknown') as String;
       final notifId = mediaId % 100000;
+      final airingTime = tz.TZDateTime.fromMillisecondsSinceEpoch(tz.local, airingAt * 1000);
 
       try {
         await _plugin.zonedSchedule(
           notifId,
-          '🎬 New Episode Available',
+          'New Episode Airing',
           'Episode $episode of $title is now airing!',
-          tz.TZDateTime.fromMillisecondsSinceEpoch(tz.local, airingAt * 1000),
+          airingTime,
           const NotificationDetails(
             android: AndroidNotificationDetails(
               _channelId,
@@ -132,6 +140,78 @@ class NotificationService {
         debugPrint('[Notifications] Failed to schedule for $title: $e');
       }
     }
+  }
+
+  /// Checks if there is new friend activity since the last time the feed was seen.
+  /// If [settings.friendActivityAlerts] is enabled and new activity exists, fires a notification.
+  /// Returns the number of new activities so the caller can update the last-seen timestamp.
+  Future<void> checkFriendActivity(
+    List<dynamic> activities,
+    SettingsProvider settings,
+  ) async {
+    if (!settings.pushNotifications || !settings.friendActivityAlerts) return;
+    if (!_initialized || kIsWeb) return;
+    if (defaultTargetPlatform != TargetPlatform.android &&
+        defaultTargetPlatform != TargetPlatform.iOS) { return; }
+    if (activities.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final lastSeenAt = prefs.getInt(_prefLastActivityKey) ?? 0;
+
+    final newActivities = activities
+        .where((a) => ((a['createdAt'] as int?) ?? 0) > lastSeenAt)
+        .toList();
+
+    if (newActivities.isEmpty) return;
+
+    // Persist the most recent timestamp so we don't notify again for the same events
+    final newestAt = newActivities
+        .map((a) => (a['createdAt'] as int?) ?? 0)
+        .reduce((a, b) => a > b ? a : b);
+    await prefs.setInt(_prefLastActivityKey, newestAt);
+
+    final count = newActivities.length;
+    final body = count == 1
+        ? _activitySummary(newActivities.first)
+        : '$count friends were recently active';
+
+    try {
+      await _plugin.show(
+        _friendNotifId,
+        'Friend Activity',
+        body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            _friendChannelId,
+            _friendChannelName,
+            channelDescription: _friendChannelDesc,
+            importance: Importance.defaultImportance,
+            priority: Priority.defaultPriority,
+            icon: '@mipmap/ic_launcher',
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: false,
+            presentSound: false,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('[Notifications] Failed to show friend activity: $e');
+    }
+  }
+
+  String _activitySummary(dynamic activity) {
+    final user = activity['user'] as Map?;
+    final name = user?['name'] as String? ?? 'A friend';
+    final type = activity['type'] as String?;
+    if (type == 'TEXT') return '$name posted a status update';
+    final status = activity['status'] as String? ?? 'updated';
+    final media = activity['media'] as Map<String, dynamic>?;
+    final title = (media?['title']?['english'] ?? media?['title']?['romaji'] ?? 'something') as String;
+    final progress = activity['progress'];
+    if (progress != null) return '$name $status $progress of $title';
+    return '$name $status $title';
   }
 
   Future<void> cancelAll() async {

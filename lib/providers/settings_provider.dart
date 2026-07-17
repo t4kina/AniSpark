@@ -7,12 +7,14 @@ class SettingsProvider extends ChangeNotifier {
   String _titleLanguage = 'English';
   bool _pushNotifications = true;
   bool _newEpisodeAlerts = true;
+  bool _friendActivityAlerts = false;
 
   String get language => _language;
   String get appearance => _appearance;
   String get titleLanguage => _titleLanguage;
   bool get pushNotifications => _pushNotifications;
   bool get newEpisodeAlerts => _newEpisodeAlerts;
+  bool get friendActivityAlerts => _friendActivityAlerts;
 
   ThemeMode get themeMode => switch (_appearance) {
     'Light' => ThemeMode.light,
@@ -39,6 +41,7 @@ class SettingsProvider extends ChangeNotifier {
     _titleLanguage = prefs.getString('titleLanguage') ?? 'English';
     _pushNotifications = prefs.getBool('pushNotifications') ?? false;
     _newEpisodeAlerts = prefs.getBool('newEpisodeAlerts') ?? false;
+    _friendActivityAlerts = prefs.getBool('friendActivityAlerts') ?? false;
     notifyListeners();
   }
 
@@ -74,6 +77,13 @@ class SettingsProvider extends ChangeNotifier {
     _newEpisodeAlerts = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('newEpisodeAlerts', value);
+    notifyListeners();
+  }
+
+  Future<void> setFriendActivityAlerts(bool value) async {
+    _friendActivityAlerts = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('friendActivityAlerts', value);
     notifyListeners();
   }
 }
