@@ -127,8 +127,7 @@ class SettingsScreen extends StatelessWidget {
             label: tr('friend_activity_alerts', lang),
             value: settings.friendActivityAlerts,
             onChanged: (v) async {
-              final sp = context.read<SettingsProvider>();
-              await sp.setFriendActivityAlerts(v);
+              await context.read<SettingsProvider>().setFriendActivityAlerts(v);
             },
           ),
 

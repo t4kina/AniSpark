@@ -374,9 +374,11 @@ class _MediaListState extends State<_MediaList>
         _lists = typed;
         _loading = false;
       });
-      if (widget.type == 'ANIME' && mounted) {
+      if (mounted) {
         final settings = context.read<SettingsProvider>();
-        NotificationService().scheduleForAnimeList(typed, settings);
+        if (widget.type == 'ANIME') {
+          NotificationService().scheduleForAnimeList(typed, settings);
+        }
       }
     } catch (e) {
       setState(() {
@@ -420,10 +422,18 @@ class _MediaListState extends State<_MediaList>
     if (total != null && progress >= total) return;
 
     final newProgress = progress + 1;
-    final status = (entry['status'] as String?) ?? 'CURRENT';
-    final score = (entry['score'] as num?)?.toDouble() ?? 0;
     final isLastEpisode = total != null && newProgress == total;
 
+    // For the last episode, show the completion dialog BEFORE saving.
+    // The dialog's onComplete callback handles both the progress save and
+    // the status change. If the user dismisses, nothing is written to AniList.
+    if (isLastEpisode && mounted) {
+      await _showCompletionDialog(entry, mediaId, total, newProgress);
+      return;
+    }
+
+    final status = (entry['status'] as String?) ?? 'CURRENT';
+    final score = (entry['score'] as num?)?.toDouble() ?? 0;
     final ok = await _service.saveListEntry(
       mediaId: mediaId,
       status: status,
@@ -434,9 +444,6 @@ class _MediaListState extends State<_MediaList>
     if (ok) {
       setState(() => entry['progress'] = newProgress);
       _silentReload();
-      if (isLastEpisode && mounted) {
-        await _showCompletionDialog(entry, mediaId, total);
-      }
     }
   }
 
@@ -444,6 +451,7 @@ class _MediaListState extends State<_MediaList>
     Map<String, dynamic> entry,
     int mediaId,
     int total,
+    int newProgress,
   ) async {
     final settings = context.read<SettingsProvider>();
     final media = entry['media'] as Map<String, dynamic>? ?? {};
@@ -484,6 +492,7 @@ class _MediaListState extends State<_MediaList>
           );
           if (ok && mounted) {
             setState(() {
+              entry['progress'] = newProgress;
               entry['status'] = 'COMPLETED';
               if (score > 0) entry['score'] = score;
             });
@@ -1054,7 +1063,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
   void initState() {
     super.initState();
     _score = widget.initialScore;
-    _confetti = ConfettiController(duration: const Duration(seconds: 5));
+    _confetti = ConfettiController(duration: const Duration(milliseconds: 2500));
     _confetti.play();
   }
 
@@ -1073,6 +1082,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
   void _openScorePicker() {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Theme.of(context).colorScheme.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -1143,6 +1153,19 @@ class _CompletionDialogState extends State<_CompletionDialog> {
           SafeArea(
             child: Column(
               children: [
+                // Close button
+                Align(
+                  alignment: Alignment.topRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4, right: 4),
+                    child: IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close_rounded,
+                          color: Colors.white54, size: 22),
+                    ),
+                  ),
+                ),
+
                 const Spacer(),
 
                 // Congrats subtitle

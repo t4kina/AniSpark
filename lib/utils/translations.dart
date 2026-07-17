@@ -136,6 +136,7 @@ const _en = {
   'push_notifications': 'Push Notifications',
   'new_episode_alerts': 'New Episode Alerts',
   'friend_activity_alerts': 'Friend Activity Alerts',
+
   'data_storage': 'Data & Storage',
   'clear_cache': 'Clear Image Cache',
   'sync_anilist': 'Sync with AniList',

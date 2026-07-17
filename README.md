@@ -88,6 +88,13 @@
 4. On your iPhone: **Settings → General → VPN & Device Management** → trust the certificate
 5. Open AniSpark and log in with your AniList account
 
+## 🤖 Install on Android
+
+1. Download the latest `.apk` from [Releases](https://github.com/t4kina/AniSpark/releases)
+2. On your phone: **Settings → Install unknown apps** → allow your browser or file manager
+3. Open the `.apk` and tap **Install**
+4. Open AniSpark and log in with your AniList account
+
 ---
 
 ## 🔗 Connect with AniList

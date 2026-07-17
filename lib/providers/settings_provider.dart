@@ -86,4 +86,5 @@ class SettingsProvider extends ChangeNotifier {
     await prefs.setBool('friendActivityAlerts', value);
     notifyListeners();
   }
+
 }
