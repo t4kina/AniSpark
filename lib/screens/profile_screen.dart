@@ -936,8 +936,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
 
   Widget _buildScoreDistribution(
       Map<String, dynamic>? animeStats, Map<String, dynamic>? mangaStats) {
-    final animeRaw = animeStats?['scoreDistribution'] as List<dynamic>?;
-    final mangaRaw = mangaStats?['scoreDistribution'] as List<dynamic>?;
+    final animeRaw = animeStats?['scores'] as List<dynamic>?;
+    final mangaRaw = mangaStats?['scores'] as List<dynamic>?;
     if ((animeRaw == null || animeRaw.isEmpty) &&
         (mangaRaw == null || mangaRaw.isEmpty)) {
       return const SizedBox.shrink();
@@ -952,12 +952,12 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       }
       final scores = raw
           .cast<Map<String, dynamic>>()
-          .where((e) => ((e['score'] as num?) ?? 0) > 0 && ((e['amount'] as num?) ?? 0) > 0)
+          .where((e) => ((e['score'] as num?) ?? 0) > 0 && ((e['count'] as num?) ?? 0) > 0)
           .toList()
         ..sort((a, b) => ((a['score'] as num?) ?? 0).compareTo((b['score'] as num?) ?? 0));
       if (scores.isEmpty) return const SizedBox.shrink();
       final maxAmount = scores
-          .map((e) => (e['amount'] as num?)?.toInt() ?? 0)
+          .map((e) => (e['count'] as num?)?.toInt() ?? 0)
           .reduce((a, b) => a > b ? a : b);
       return Builder(builder: (ctx) {
         final accent = Theme.of(ctx).colorScheme.primary;
@@ -965,7 +965,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: scores.map((e) {
             final score = ((e['score'] as num?) ?? 0).toInt();
-            final amount = ((e['amount'] as num?) ?? 0).toInt();
+            final amount = ((e['count'] as num?) ?? 0).toInt();
             final ratio = maxAmount > 0 ? amount / maxAmount : 0.0;
             final label = (score / 10).toStringAsFixed(0);
             return Expanded(
