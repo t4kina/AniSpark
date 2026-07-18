@@ -21,7 +21,6 @@ class FeedScreen extends StatefulWidget {
 class _FeedScreenState extends State<FeedScreen>
     with AutomaticKeepAliveClientMixin {
   final _service = AniListService();
-  final _scrollController = ScrollController();
   List<dynamic> _activities = [];
   bool _loading = true;
   bool _loadingMore = false;
@@ -37,7 +36,6 @@ class _FeedScreenState extends State<FeedScreen>
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _auth = context.read<AuthService>();
       _auth.addListener(_onAuthChanged);
@@ -48,18 +46,18 @@ class _FeedScreenState extends State<FeedScreen>
 
   @override
   void dispose() {
-    _scrollController.dispose();
     _auth.removeListener(_onAuthChanged);
     feedRefreshNotifier.removeListener(_onFeedRefresh);
     super.dispose();
   }
 
-  void _onScroll() {
-    if (_loadingMore || !_hasMore) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (_loadingMore || !_hasMore) return false;
+    if (notification.metrics.pixels >=
+        notification.metrics.maxScrollExtent - 200) {
       _loadMore();
     }
+    return false;
   }
 
   void _onAuthChanged() {
@@ -270,24 +268,26 @@ class _FeedScreenState extends State<FeedScreen>
                   ? const Center(
                       child: Text('No activity yet',
                           style: TextStyle(color: Colors.grey)))
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _activities.length + (_hasMore ? 1 : 0),
-                        itemBuilder: (_, i) {
-                          if (i == _activities.length) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 20),
-                              child: Center(child: CircularProgressIndicator()),
+                  : NotificationListener<ScrollNotification>(
+                      onNotification: _onScrollNotification,
+                      child: RefreshIndicator(
+                        onRefresh: _load,
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: _activities.length + (_hasMore ? 1 : 0),
+                          itemBuilder: (_, i) {
+                            if (i == _activities.length) {
+                              return const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 20),
+                                child: Center(child: CircularProgressIndicator()),
+                              );
+                            }
+                            return _ActivityCard(
+                              activity: _activities[i],
+                              timeAgo: _timeAgo,
                             );
-                          }
-                          return _ActivityCard(
-                            activity: _activities[i],
-                            timeAgo: _timeAgo,
-                          );
-                        },
+                          },
+                        ),
                       ),
                     ),
     );
