@@ -28,10 +28,12 @@ class UserProfileScreen extends StatefulWidget {
 class _UserProfileScreenState extends State<UserProfileScreen> {
   final _service = AniListService();
   Map<String, dynamic>? _profile;
+  List<dynamic> _recentActivity = [];
   bool _loading = true;
   bool _isFollowing = false;
   bool _isFollower = false;
   bool _togglingFollow = false;
+  bool _bioExpanded = false;
 
   @override
   void initState() {
@@ -42,10 +44,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Future<void> _load() async {
     final auth = context.read<AuthService>();
     final token = auth.isLoggedIn ? auth.token : null;
-    final data = await _service.getPublicUserProfile(widget.userId, token: token);
+    final results = await Future.wait([
+      _service.getPublicUserProfile(widget.userId, token: token),
+      _service.getUserRecentActivity(widget.userId, token: token),
+    ]);
     if (!mounted) return;
+    final data = results[0] as Map<String, dynamic>?;
     setState(() {
       _profile = data;
+      _recentActivity = results[1] as List<dynamic>;
       _isFollowing = data?['isFollowing'] == true;
       _isFollower = data?['isFollower'] == true;
       _loading = false;
@@ -223,7 +230,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final mangaMeanScore = (mangaStats?['meanScore'] as num?)?.toDouble() ?? 0.0;
 
     final favAnime = (p['favourites']?['anime']?['nodes'] as List<dynamic>?) ?? [];
+    final favManga = (p['favourites']?['manga']?['nodes'] as List<dynamic>?) ?? [];
     final favChars = (p['favourites']?['characters']?['nodes'] as List<dynamic>?) ?? [];
+
+    final rawGenres = (p['statistics']?['anime']?['genres'] as List<dynamic>?) ?? [];
+    final topGenres = (rawGenres.cast<Map<String, dynamic>>().toList()
+          ..sort((a, b) => ((b['count'] as num?) ?? 0).compareTo((a['count'] as num?) ?? 0)))
+        .take(5)
+        .map((g) => g['genre'] as String? ?? '')
+        .where((g) => g.isNotEmpty)
+        .toList();
+
+    final about = (p['about'] as String? ?? '').trim();
 
     final surface = Theme.of(context).colorScheme.surface;
     final outline = Theme.of(context).colorScheme.outline;
@@ -381,6 +399,32 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
         ),
 
+        // ── Bio ────────────────────────────────────────────────────────
+        if (about.isNotEmpty)
+          SliverToBoxAdapter(child: _buildBio(about)),
+
+        // ── Top genres ─────────────────────────────────────────────────
+        if (topGenres.isNotEmpty)
+          SliverToBoxAdapter(child: _buildGenreChips(topGenres)),
+
+        // ── Recent activity ────────────────────────────────────────────
+        if (_recentActivity.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
+              child: const Text('RECENT ACTIVITY',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                      color: Colors.grey, letterSpacing: 0.5)),
+            ),
+          ),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (_, i) => _recentActivityRow(_recentActivity[i]),
+              childCount: _recentActivity.length,
+            ),
+          ),
+        ],
+
         // ── Favourite Anime ────────────────────────────────────────────
         if (favAnime.isNotEmpty) ...[
           SliverToBoxAdapter(
@@ -402,6 +446,32 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: favAnime.length,
                 itemBuilder: (_, i) => _animeFavCard(favAnime[i]),
+              ),
+            ),
+          ),
+        ],
+
+        // ── Favourite Manga ────────────────────────────────────────────
+        if (favManga.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+              child: const Text('FAVOURITE MANGA',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey,
+                      letterSpacing: 0.5)),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 170,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                itemCount: favManga.length,
+                itemBuilder: (_, i) => _animeFavCard(favManga[i]),
               ),
             ),
           ),
@@ -435,6 +505,171 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
         const SliverToBoxAdapter(child: SizedBox(height: 40)),
       ],
+    );
+  }
+
+  Widget _buildBio(String about) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: cs.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: cs.outline),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('ABOUT',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+                    color: Colors.grey, letterSpacing: 0.5)),
+            const SizedBox(height: 8),
+            AnimatedCrossFade(
+              duration: const Duration(milliseconds: 200),
+              crossFadeState: _bioExpanded
+                  ? CrossFadeState.showSecond
+                  : CrossFadeState.showFirst,
+              firstChild: Text(about,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, height: 1.5)),
+              secondChild: Text(about,
+                  style: const TextStyle(fontSize: 13, height: 1.5)),
+            ),
+            if (about.length > 120) ...[
+              const SizedBox(height: 6),
+              GestureDetector(
+                onTap: () => setState(() => _bioExpanded = !_bioExpanded),
+                child: Text(
+                  _bioExpanded ? 'Show less' : 'Show more',
+                  style: TextStyle(fontSize: 12, color: cs.primary,
+                      fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGenreChips(List<String> genres) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        children: genres.map((g) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+          ),
+          child: Text(g,
+              style: TextStyle(fontSize: 12, color: cs.primary,
+                  fontWeight: FontWeight.w500)),
+        )).toList(),
+      ),
+    );
+  }
+
+  Widget _recentActivityRow(dynamic activity) {
+    final type = activity['type'] as String?;
+    final createdAt = activity['createdAt'] as int? ?? 0;
+    final diff = DateTime.now()
+        .difference(DateTime.fromMillisecondsSinceEpoch(createdAt * 1000));
+    final timeStr = diff.inMinutes < 60
+        ? '${diff.inMinutes}m ago'
+        : diff.inHours < 24
+            ? '${diff.inHours}h ago'
+            : '${diff.inDays}d ago';
+
+    if (type == 'TEXT') {
+      final text = activity['text'] as String? ?? '';
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.grey),
+              const SizedBox(width: 10),
+              Expanded(child: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, color: Colors.grey))),
+              const SizedBox(width: 8),
+              Text(timeStr, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final media = activity['media'] as Map<String, dynamic>?;
+    final status = activity['status'] as String? ?? '';
+    final progress = activity['progress'];
+    final cover = media?['coverImage']?['medium'] as String?;
+    final title = (media?['title']?['english'] ?? media?['title']?['romaji'] ?? '') as String;
+    final mediaId = media?['id'] as int?;
+    final isAnime = media?['type'] == 'ANIME';
+    final actionText = progress != null ? '$status $progress' : status;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: GestureDetector(
+        onTap: mediaId != null && isAnime
+            ? () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => DetailScreen(animeId: mediaId)))
+            : null,
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              if (cover != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(5),
+                  child: CachedNetworkImage(
+                    imageUrl: cover, width: 36, height: 50,
+                    fit: BoxFit.cover, memCacheWidth: 72,
+                  ),
+                )
+              else
+                Container(width: 36, height: 50,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.outline,
+                      borderRadius: BorderRadius.circular(5),
+                    )),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text(actionText,
+                        style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(timeStr, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

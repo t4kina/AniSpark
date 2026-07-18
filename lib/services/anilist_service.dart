@@ -539,15 +539,22 @@ class AniListService {
     const query = '''
       query(\$userId: Int!) {
         User(id: \$userId) {
-          id name bannerImage
+          id name bannerImage about(asHtml: false)
           isFollowing isFollower
           avatar { large }
           statistics {
-            anime { count meanScore minutesWatched episodesWatched }
-            manga { count chaptersRead meanScore }
+            anime { count meanScore minutesWatched episodesWatched
+              genres { genre count }
+            }
+            manga { count chaptersRead meanScore
+              genres { genre count }
+            }
           }
           favourites {
             anime(perPage: 10) {
+              nodes { id title { romaji english native } coverImage { large } }
+            }
+            manga(perPage: 10) {
               nodes { id title { romaji english native } coverImage { large } }
             }
             characters(perPage: 10) {
@@ -560,6 +567,28 @@ class AniListService {
     final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode != 200) { _handle401(response.statusCode); return null; }
     return jsonDecode(response.body)['data']['User'] as Map<String, dynamic>?;
+  }
+
+  Future<List<dynamic>> getUserRecentActivity(int userId, {String? token}) async {
+    const query = '''
+      query(\$userId: Int!) {
+        Page(page: 1, perPage: 8) {
+          activities(userId: \$userId, sort: ID_DESC) {
+            ... on ListActivity {
+              id type status progress createdAt
+              media { id type title { romaji english } coverImage { medium } }
+            }
+            ... on TextActivity {
+              id type text createdAt
+            }
+          }
+        }
+      }
+    ''';
+    final response = await _post(
+        jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
+    if (response.statusCode != 200) return [];
+    return jsonDecode(response.body)['data']?['Page']?['activities'] as List? ?? [];
   }
 
   /// Follows or unfollows a user. Returns whether the user is now being followed.
