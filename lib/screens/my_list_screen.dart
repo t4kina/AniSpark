@@ -11,7 +11,6 @@ import '../providers/settings_provider.dart';
 import '../utils/translations.dart' show tr;
 import '../utils/refresh_notifier.dart';
 import '../services/notification_service.dart';
-import '../services/widget_service.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
 
@@ -379,14 +378,6 @@ class _MediaListState extends State<_MediaList>
         final settings = context.read<SettingsProvider>();
         if (widget.type == 'ANIME') {
           NotificationService().scheduleForAnimeList(typed, settings);
-
-          // Update home screen widget
-          final watching  = typed['CURRENT']?.length  ?? 0;
-          final completed = typed['COMPLETED']?.length ?? 0;
-          WidgetService.update(
-            watchingCount: watching,
-            completedCount: completed,
-          );
         }
       }
     } catch (e) {
