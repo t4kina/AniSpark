@@ -808,27 +808,19 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   Widget _buildTopGenres(
       Map<String, dynamic>? animeStats, Map<String, dynamic>? mangaStats) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('TOP GENRES',
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey,
-                  letterSpacing: 0.5)),
-          const SizedBox(height: 8),
           _genreSection(
-            label: 'Anime',
+            label: 'ANIME GENRES',
             stats: animeStats,
             unit: 'anime',
             expanded: _animeGenresExpanded,
             onToggle: () => setState(() => _animeGenresExpanded = !_animeGenresExpanded),
           ),
-          const SizedBox(height: 4),
           _genreSection(
-            label: 'Manga',
+            label: 'MANGA GENRES',
             stats: mangaStats,
             unit: 'manga',
             expanded: _mangaGenresExpanded,
@@ -860,20 +852,19 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             child: Row(
               children: [
                 Text(label,
-                    style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: hasData ? null : Colors.grey)),
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey,
+                        letterSpacing: 0.5)),
                 const Spacer(),
-                if (!hasData)
-                  const Text('No data',
-                      style: TextStyle(fontSize: 11, color: Colors.grey))
-                else
-                  Icon(
-                    expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 18,
-                    color: Colors.grey,
-                  ),
+                Icon(
+                  hasData
+                      ? (expanded ? Icons.expand_less : Icons.expand_more)
+                      : Icons.expand_more,
+                  size: 18,
+                  color: Colors.grey,
+                ),
               ],
             ),
           ),
