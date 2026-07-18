@@ -407,24 +407,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         if (topGenres.isNotEmpty)
           SliverToBoxAdapter(child: _buildGenreChips(topGenres)),
 
-        // ── Recent activity ────────────────────────────────────────────
-        if (_recentActivity.isNotEmpty) ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
-              child: const Text('RECENT ACTIVITY',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                      color: Colors.grey, letterSpacing: 0.5)),
-            ),
-          ),
-          SliverList(
-            delegate: SliverChildBuilderDelegate(
-              (_, i) => _recentActivityRow(_recentActivity[i]),
-              childCount: _recentActivity.length,
-            ),
-          ),
-        ],
-
         // ── Favourite Anime ────────────────────────────────────────────
         if (favAnime.isNotEmpty) ...[
           SliverToBoxAdapter(
@@ -499,6 +481,24 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 itemCount: favChars.length,
                 itemBuilder: (_, i) => _charFavCard(favChars[i]),
               ),
+            ),
+          ),
+        ],
+
+        // ── Recent activity ────────────────────────────────────────────
+        if (_recentActivity.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
+              child: const Text('RECENT ACTIVITY',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                      color: Colors.grey, letterSpacing: 0.5)),
+            ),
+          ),
+          SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (_, i) => _recentActivityRow(_recentActivity[i]),
+              childCount: _recentActivity.length,
             ),
           ),
         ],
