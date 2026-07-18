@@ -120,6 +120,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   List<dynamic> _following = [];
   bool _animeGenresExpanded = false;
   bool _mangaGenresExpanded = false;
+  bool _scoreDistributionExpanded = false;
+  bool _releaseYearsExpanded = false;
 
   @override
   void initState() {
@@ -362,6 +364,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
 
             // ── Release Years ───────────────────────────────────────────
             SliverToBoxAdapter(child: _buildReleaseYears(animeStats)),
+
 
             const SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],
@@ -943,7 +946,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       return const SizedBox.shrink();
     }
 
-    Widget scoreBar(List<dynamic>? raw, String unit) {
+    Widget scoreBar(List<dynamic>? raw) {
       if (raw == null || raw.isEmpty) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
@@ -993,20 +996,37 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('SCORE DISTRIBUTION',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
-          const SizedBox(height: 12),
-          const Text('Anime', style: TextStyle(fontSize: 12, color: Colors.grey)),
-          const SizedBox(height: 8),
-          SizedBox(height: 80, child: scoreBar(animeRaw, 'anime')),
-          const SizedBox(height: 16),
-          const Text('Manga', style: TextStyle(fontSize: 12, color: Colors.grey)),
-          const SizedBox(height: 8),
-          SizedBox(height: 80, child: scoreBar(mangaRaw, 'manga')),
+          InkWell(
+            onTap: () => setState(() => _scoreDistributionExpanded = !_scoreDistributionExpanded),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  const Text('SCORE DISTRIBUTION',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
+                  const Spacer(),
+                  Icon(_scoreDistributionExpanded ? Icons.expand_less : Icons.expand_more, color: Colors.grey, size: 18),
+                ],
+              ),
+            ),
+          ),
+          if (_scoreDistributionExpanded) ...[
+            const SizedBox(height: 4),
+            const Text('Anime', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 8),
+            SizedBox(height: 80, child: scoreBar(animeRaw)),
+            const SizedBox(height: 16),
+            const Text('Manga', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 8),
+            SizedBox(height: 80, child: scoreBar(mangaRaw)),
+            const SizedBox(height: 8),
+          ],
+          Divider(height: 1, color: Colors.grey.withValues(alpha: 0.15)),
         ],
       ),
     );
@@ -1028,48 +1048,65 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         .reduce((a, b) => a > b ? a : b);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('ANIME BY YEAR',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
-          const SizedBox(height: 12),
-          Builder(builder: (ctx) {
-            final accent = Theme.of(ctx).colorScheme.primary;
-            return Column(
-              children: years.map((y) {
-                final year = ((y['releaseYear'] as num?) ?? 0).toInt();
-                final count = ((y['count'] as num?) ?? 0).toInt();
-                final ratio = maxCount > 0 ? count / maxCount : 0.0;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 36,
-                        child: Text('$year', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(3),
-                          child: LinearProgressIndicator(
-                            value: ratio,
-                            minHeight: 6,
-                            backgroundColor: Theme.of(ctx).colorScheme.surfaceContainerHighest,
-                            valueColor: AlwaysStoppedAnimation(accent),
+          InkWell(
+            onTap: () => setState(() => _releaseYearsExpanded = !_releaseYearsExpanded),
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                children: [
+                  const Text('ANIME BY YEAR',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
+                  const Spacer(),
+                  Icon(_releaseYearsExpanded ? Icons.expand_less : Icons.expand_more, color: Colors.grey, size: 18),
+                ],
+              ),
+            ),
+          ),
+          if (_releaseYearsExpanded) ...[
+            const SizedBox(height: 4),
+            Builder(builder: (ctx) {
+              final accent = Theme.of(ctx).colorScheme.primary;
+              return Column(
+                children: years.map((y) {
+                  final year = ((y['releaseYear'] as num?) ?? 0).toInt();
+                  final count = ((y['count'] as num?) ?? 0).toInt();
+                  final ratio = maxCount > 0 ? count / maxCount : 0.0;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 36,
+                          child: Text('$year', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(3),
+                            child: LinearProgressIndicator(
+                              value: ratio,
+                              minHeight: 6,
+                              backgroundColor: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                              valueColor: AlwaysStoppedAnimation(accent),
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Text('$count', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                    ],
-                  ),
-                );
-              }).toList(),
-            );
-          }),
+                        const SizedBox(width: 8),
+                        Text('$count', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              );
+            }),
+            const SizedBox(height: 8),
+          ],
+          Divider(height: 1, color: Colors.grey.withValues(alpha: 0.15)),
         ],
       ),
     );
