@@ -383,16 +383,19 @@ class AniListService {
         .toList();
   }
 
-  Future<List<dynamic>> getActivityFeed(String token,
-      {bool isFollowing = true, int? userId}) async {
+  Future<({List<dynamic> activities, bool hasNextPage})> getActivityFeed(
+      String token,
+      {bool isFollowing = true, int? userId, int page = 1}) async {
     final variables = <String, dynamic>{
       'isFollowing': isFollowing,
+      'page': page,
       'userId': ?userId,
     };
     final userFilter = userId != null ? ', userId: \$userId' : '';
     final query = '''
-      query(\$isFollowing: Boolean${userId != null ? ', \$userId: Int' : ''}) {
-        Page(page: 1, perPage: 30) {
+      query(\$isFollowing: Boolean, \$page: Int${userId != null ? ', \$userId: Int' : ''}) {
+        Page(page: \$page, perPage: 30) {
+          pageInfo { hasNextPage }
           activities(isFollowing: \$isFollowing$userFilter, sort: ID_DESC) {
             ... on ListActivity {
               id type status progress createdAt
@@ -409,10 +412,14 @@ class AniListService {
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': variables}), token);
     if (response.statusCode == 200) {
-      return jsonDecode(response.body)['data']['Page']['activities'] ?? [];
+      final page = jsonDecode(response.body)['data']?['Page'];
+      return (
+        activities: (page?['activities'] as List?) ?? [],
+        hasNextPage: page?['pageInfo']?['hasNextPage'] as bool? ?? false,
+      );
     }
     _handle401(response.statusCode);
-    return [];
+    return (activities: [], hasNextPage: false);
   }
 
   /// Fetches user favourites (anime + characters) and bannerImage.

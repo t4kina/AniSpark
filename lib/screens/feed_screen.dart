@@ -21,9 +21,13 @@ class FeedScreen extends StatefulWidget {
 class _FeedScreenState extends State<FeedScreen>
     with AutomaticKeepAliveClientMixin {
   final _service = AniListService();
+  final _scrollController = ScrollController();
   List<dynamic> _activities = [];
   bool _loading = true;
+  bool _loadingMore = false;
+  bool _hasMore = false;
   bool _hasError = false;
+  int _page = 1;
   _FeedType _feedType = _FeedType.following;
   late final AuthService _auth;
 
@@ -33,6 +37,7 @@ class _FeedScreenState extends State<FeedScreen>
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _auth = context.read<AuthService>();
       _auth.addListener(_onAuthChanged);
@@ -43,9 +48,18 @@ class _FeedScreenState extends State<FeedScreen>
 
   @override
   void dispose() {
+    _scrollController.dispose();
     _auth.removeListener(_onAuthChanged);
     feedRefreshNotifier.removeListener(_onFeedRefresh);
     super.dispose();
+  }
+
+  void _onScroll() {
+    if (_loadingMore || !_hasMore) return;
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMore();
+    }
   }
 
   void _onAuthChanged() {
@@ -64,25 +78,53 @@ class _FeedScreenState extends State<FeedScreen>
       setState(() { _loading = false; _hasError = false; });
       return;
     }
-    setState(() { _loading = true; _hasError = false; });
+    setState(() { _loading = true; _hasError = false; _page = 1; });
     try {
-      final activities = await _service.getActivityFeed(
+      final result = await _service.getActivityFeed(
         auth.token!,
         isFollowing: _feedType == _FeedType.following,
         userId: _feedType == _FeedType.personal
             ? (auth.user?['id'] as int?)
             : null,
+        page: 1,
       );
       setState(() {
-        _activities = activities;
+        _activities = result.activities;
+        _hasMore = result.hasNextPage;
         _loading = false;
       });
       if (_feedType == _FeedType.following && mounted) {
         final settings = context.read<SettingsProvider>();
-        await NotificationService().checkFriendActivity(activities, settings);
+        await NotificationService().checkFriendActivity(result.activities, settings);
       }
     } catch (_) {
       setState(() { _loading = false; _hasError = true; });
+    }
+  }
+
+  Future<void> _loadMore() async {
+    if (_loadingMore || !_hasMore) return;
+    final auth = context.read<AuthService>();
+    if (!auth.isLoggedIn) return;
+    setState(() => _loadingMore = true);
+    try {
+      final nextPage = _page + 1;
+      final result = await _service.getActivityFeed(
+        auth.token!,
+        isFollowing: _feedType == _FeedType.following,
+        userId: _feedType == _FeedType.personal
+            ? (auth.user?['id'] as int?)
+            : null,
+        page: nextPage,
+      );
+      setState(() {
+        _activities = [..._activities, ...result.activities];
+        _hasMore = result.hasNextPage;
+        _page = nextPage;
+        _loadingMore = false;
+      });
+    } catch (_) {
+      setState(() => _loadingMore = false);
     }
   }
 
@@ -231,12 +273,21 @@ class _FeedScreenState extends State<FeedScreen>
                   : RefreshIndicator(
                       onRefresh: _load,
                       child: ListView.builder(
+                        controller: _scrollController,
                         padding: const EdgeInsets.all(12),
-                        itemCount: _activities.length,
-                        itemBuilder: (_, i) => _ActivityCard(
-                          activity: _activities[i],
-                          timeAgo: _timeAgo,
-                        ),
+                        itemCount: _activities.length + (_hasMore ? 1 : 0),
+                        itemBuilder: (_, i) {
+                          if (i == _activities.length) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 20),
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
+                          return _ActivityCard(
+                            activity: _activities[i],
+                            timeAgo: _timeAgo,
+                          );
+                        },
                       ),
                     ),
     );

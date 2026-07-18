@@ -1036,16 +1036,20 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final raw = animeStats?['releaseYears'] as List<dynamic>?;
     if (raw == null || raw.isEmpty) return const SizedBox.shrink();
 
-    final years = raw
-        .cast<Map<String, dynamic>>()
-        .where((e) => ((e['count'] as num?) ?? 0) > 0)
-        .toList()
-      ..sort((a, b) => ((a['releaseYear'] as num?) ?? 0).compareTo((b['releaseYear'] as num?) ?? 0));
-    if (years.isEmpty) return const SizedBox.shrink();
+    // Group into 5-year buckets
+    final buckets = <int, int>{};
+    for (final e in raw.cast<Map<String, dynamic>>()) {
+      final year = ((e['releaseYear'] as num?) ?? 0).toInt();
+      final count = ((e['count'] as num?) ?? 0).toInt();
+      if (year <= 0 || count <= 0) continue;
+      final bucket = (year ~/ 5) * 5;
+      buckets[bucket] = (buckets[bucket] ?? 0) + count;
+    }
+    if (buckets.isEmpty) return const SizedBox.shrink();
 
-    final maxCount = years
-        .map((e) => (e['count'] as num?)?.toInt() ?? 0)
-        .reduce((a, b) => a > b ? a : b);
+    final sortedBuckets = buckets.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    final maxCount = sortedBuckets.map((e) => e.value).reduce((a, b) => a > b ? a : b);
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -1059,7 +1063,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 children: [
-                  const Text('ANIME BY YEAR',
+                  const Text('TITLES BY ERA',
                       style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
                   const Spacer(),
                   Icon(_releaseYearsExpanded ? Icons.expand_less : Icons.expand_more, color: Colors.grey, size: 18),
@@ -1072,17 +1076,17 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             Builder(builder: (ctx) {
               final accent = Theme.of(ctx).colorScheme.primary;
               return Column(
-                children: years.map((y) {
-                  final year = ((y['releaseYear'] as num?) ?? 0).toInt();
-                  final count = ((y['count'] as num?) ?? 0).toInt();
+                children: sortedBuckets.map((entry) {
+                  final label = '${entry.key}–${entry.key + 4}';
+                  final count = entry.value;
                   final ratio = maxCount > 0 ? count / maxCount : 0.0;
                   return Padding(
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
                       children: [
                         SizedBox(
-                          width: 36,
-                          child: Text('$year', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                          width: 68,
+                          child: Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
