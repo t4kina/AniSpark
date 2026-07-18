@@ -482,6 +482,22 @@ class AniListService {
     return {'followers': 0, 'following': 0};
   }
 
+  Future<List<dynamic>> getFollowers(int userId, String token) async {
+    const query = '''
+      query(\$userId: Int!) {
+        Page(page: 1, perPage: 50) {
+          followers(userId: \$userId) {
+            id name
+            avatar { large }
+          }
+        }
+      }
+    ''';
+    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
+    if (response.statusCode != 200) { _handle401(response.statusCode); return []; }
+    return (jsonDecode(response.body)['data']?['Page']?['followers'] as List<dynamic>?) ?? [];
+  }
+
   /// Returns the list of users that [userId] is following.
   Future<List<dynamic>> getFollowing(int userId, String token) async {
     const query = '''
@@ -546,7 +562,7 @@ class AniListService {
             anime { count meanScore minutesWatched episodesWatched
               genres { genre count }
             }
-            manga { count chaptersRead meanScore
+            manga { count chaptersRead volumesRead meanScore
               genres { genre count }
             }
           }

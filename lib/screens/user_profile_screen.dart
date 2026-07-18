@@ -224,10 +224,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final episodesWatched = (animeStats?['episodesWatched'] as num?)?.toInt() ?? 0;
     final minutesWatched = (animeStats?['minutesWatched'] as num?)?.toInt() ?? 0;
     final daysWatched = (minutesWatched / 1440).toStringAsFixed(1);
-    final animeMeanScore = (animeStats?['meanScore'] as num?)?.toDouble() ?? 0.0;
     final totalManga = (mangaStats?['count'] as num?)?.toInt() ?? 0;
     final chaptersRead = (mangaStats?['chaptersRead'] as num?)?.toInt() ?? 0;
-    final mangaMeanScore = (mangaStats?['meanScore'] as num?)?.toDouble() ?? 0.0;
+    final volumesRead = (mangaStats?['volumesRead'] as num?)?.toInt() ?? 0;
 
     final favAnime = (p['favourites']?['anime']?['nodes'] as List<dynamic>?) ?? [];
     final favManga = (p['favourites']?['manga']?['nodes'] as List<dynamic>?) ?? [];
@@ -384,10 +383,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             _vDiv(outline),
                             _stat('$chaptersRead', 'Chapters'),
                             _vDiv(outline),
-                            _combinedScore(
-                              animeMeanScore > 0 ? animeMeanScore.toStringAsFixed(1) : '—',
-                              mangaMeanScore > 0 ? mangaMeanScore.toStringAsFixed(1) : '—',
-                            ),
+                            _stat('$volumesRead', 'Volumes Read'),
                           ]),
                         ),
                       ],
@@ -748,52 +744,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _combinedScore(String animeScore, String mangaScore) => Expanded(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Flexible(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(animeScore,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 2),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: const Text('Anime Score',
-                          style: TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
-                    ),
-                  ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Text('|',
-                    style: TextStyle(
-                        color: Colors.grey.withValues(alpha: 0.4), fontSize: 16)),
-              ),
-              Flexible(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(mangaScore,
-                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 2),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      child: const Text('Manga Score',
-                          style: TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
 
   Widget _vDiv(Color color) => VerticalDivider(width: 1, thickness: 1, color: color);
 

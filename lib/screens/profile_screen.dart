@@ -228,12 +228,12 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final avatar = user['avatar']?['large'] as String?;
     final name = user['name'] as String? ?? 'Unknown';
 
-    final minutesWatched =
-        (animeStats?['minutesWatched'] as num?)?.toInt() ?? 0;
+    final minutesWatched = (animeStats?['minutesWatched'] as num?)?.toInt() ?? 0;
     final daysWatched = (minutesWatched / 1440).toStringAsFixed(1);
-    final chaptersRead =
-        (mangaStats?['chaptersRead'] as num?)?.toInt() ?? 0;
+    final episodesWatched = (animeStats?['episodesWatched'] as num?)?.toInt() ?? 0;
     final totalAnime = (animeStats?['count'] as num?)?.toInt() ?? 0;
+    final chaptersRead = (mangaStats?['chaptersRead'] as num?)?.toInt() ?? 0;
+    final volumesRead = (mangaStats?['volumesRead'] as num?)?.toInt() ?? 0;
     final totalManga = (mangaStats?['count'] as num?)?.toInt() ?? 0;
 
     return Scaffold(
@@ -248,13 +248,18 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               child: _buildHeaderAndStats(
                 avatar, name, context,
                 totalAnime: totalAnime,
+                episodesWatched: episodesWatched,
                 daysWatched: daysWatched,
                 totalManga: totalManga,
                 chaptersRead: chaptersRead,
+                volumesRead: volumesRead,
               ),
             ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            // ── Follow pills ───────────────────────────────────────────
+            SliverToBoxAdapter(child: _buildFollowPills(context)),
+
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
             SliverToBoxAdapter(
               child: Builder(builder: (ctx) => Divider(height: 1, color: Theme.of(ctx).colorScheme.outline)),
             ),
@@ -323,36 +328,6 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                     ),
             ),
 
-            // ── Following ──────────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
-                child: const Text('FOLLOWING',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey,
-                        letterSpacing: 0.5)),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: _following.isEmpty && _statsLoaded
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text('Not following anyone yet',
-                          style: TextStyle(color: Colors.grey, fontSize: 13)),
-                    )
-                  : SizedBox(
-                      height: 90,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _following.length,
-                        itemBuilder: (_, i) => _followingCard(_following[i]),
-                      ),
-                    ),
-            ),
-
             // ── Activity Graph ──────────────────────────────────────────
             SliverToBoxAdapter(child: _buildActivityGraph()),
 
@@ -391,9 +366,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     String name,
     BuildContext context, {
     required int totalAnime,
+    required int episodesWatched,
     required String daysWatched,
     required int totalManga,
     required int chaptersRead,
+    required int volumesRead,
   }) {
     final topPadding = MediaQuery.of(context).padding.top;
     final surface = Theme.of(context).colorScheme.surface;
@@ -502,9 +479,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                           children: [
                             _statItem('$totalAnime', 'Anime'),
                             _statDividerV(outline),
-                            _statItem(daysWatched, 'Days Watched'),
+                            _statItem('$episodesWatched', 'Episodes'),
                             _statDividerV(outline),
-                            _statItem('$totalManga', 'Manga'),
+                            _statItem(daysWatched, 'Days Watched'),
                           ],
                         ),
                       ),
@@ -512,11 +489,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                       IntrinsicHeight(
                         child: Row(
                           children: [
-                            _statItem('$chaptersRead', 'Chapters Read'),
+                            _statItem('$totalManga', 'Manga'),
                             _statDividerV(outline),
-                            _statItem('$_followersCount', 'Followers'),
+                            _statItem('$chaptersRead', 'Chapters'),
                             _statDividerV(outline),
-                            _statItem('$_followingCount', 'Following'),
+                            _statItem('$volumesRead', 'Volumes Read'),
                           ],
                         ),
                       ),
@@ -634,40 +611,82 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         ),
       );
 
-  Widget _followingCard(dynamic u) {
-    final user = u as Map<String, dynamic>;
-    final id = user['id'] as int;
-    final name = user['name'] as String? ?? '';
-    final avatar = user['avatar']?['large'] as String?;
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => UserProfileScreen(userId: id, name: name, avatarUrl: avatar),
-        ),
+  void _showFollowSheet(BuildContext context, String title,
+      {List<dynamic>? preloaded}) {
+    final auth = context.read<AuthService>();
+    final userId = auth.user?['id'] as int?;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _FollowSheet(
+        title: title,
+        preloaded: preloaded,
+        userId: userId,
+        token: auth.token,
+        service: _service,
       ),
-      child: Padding(
-        padding: const EdgeInsets.only(right: 14),
-        child: Column(
-          children: [
-            CircleAvatar(
-              radius: 30,
-              backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-              backgroundImage: avatar != null ? CachedNetworkImageProvider(avatar) : null,
-              child: avatar == null ? const Icon(Icons.person, color: Colors.grey) : null,
-            ),
-            const SizedBox(height: 5),
-            SizedBox(
-              width: 64,
-              child: Text(
-                name,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 11),
+    );
+  }
+
+  Widget _buildFollowPills(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      child: Row(
+        children: [
+          _followPill(
+            context, cs,
+            count: _followersCount,
+            label: 'Followers',
+            icon: Icons.group_outlined,
+            onTap: () => _showFollowSheet(context, 'Followers'),
+          ),
+          const SizedBox(width: 10),
+          _followPill(
+            context, cs,
+            count: _followingCount,
+            label: 'Following',
+            icon: Icons.person_outlined,
+            onTap: () => _showFollowSheet(context, 'Following', preloaded: _following),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _followPill(BuildContext context, ColorScheme cs, {
+    required int count,
+    required String label,
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: cs.outline),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 15, color: cs.primary),
+              const SizedBox(width: 6),
+              Text(
+                '$count $label',
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface),
               ),
-            ),
-          ],
+              const SizedBox(width: 4),
+              Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Colors.grey),
+            ],
+          ),
         ),
       ),
     );
@@ -1160,4 +1179,126 @@ class _HeatmapPainter extends CustomPainter {
   @override
   bool shouldRepaint(_HeatmapPainter old) =>
       old.activityDays != activityDays || old.today != today;
+}
+
+// ── Follow sheet ──────────────────────────────────────────────────────────────
+
+class _FollowSheet extends StatefulWidget {
+  final String title;
+  final List<dynamic>? preloaded;
+  final int? userId;
+  final String? token;
+  final AniListService service;
+
+  const _FollowSheet({
+    required this.title,
+    required this.service,
+    this.preloaded,
+    this.userId,
+    this.token,
+  });
+
+  @override
+  State<_FollowSheet> createState() => _FollowSheetState();
+}
+
+class _FollowSheetState extends State<_FollowSheet> {
+  List<dynamic>? _users;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.preloaded != null) {
+      _users = widget.preloaded;
+    } else {
+      _fetchFollowers();
+    }
+  }
+
+  Future<void> _fetchFollowers() async {
+    if (widget.userId == null || widget.token == null) {
+      setState(() => _users = []);
+      return;
+    }
+    setState(() => _loading = true);
+    final result = await widget.service.getFollowers(widget.userId!, widget.token!);
+    if (mounted) setState(() { _users = result; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      builder: (_, scrollController) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 8),
+              child: Container(
+                width: 36, height: 4,
+                decoration: BoxDecoration(
+                  color: cs.outlineVariant,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+              child: Text(widget.title,
+                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+            ),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : (_users == null || _users!.isEmpty)
+                      ? Center(child: Text('Nobody here yet',
+                          style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))))
+                      : ListView.builder(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                          itemCount: _users!.length,
+                          itemBuilder: (_, i) => _UserTile(user: _users![i]),
+                        ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UserTile extends StatelessWidget {
+  final dynamic user;
+  const _UserTile({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final u = user as Map<String, dynamic>;
+    final id = u['id'] as int?;
+    final name = u['name'] as String? ?? '';
+    final avatar = u['avatar']?['large'] as String?;
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      leading: CircleAvatar(
+        radius: 22,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+        backgroundImage: avatar != null ? CachedNetworkImageProvider(avatar) : null,
+        child: avatar == null ? const Icon(Icons.person, size: 22) : null,
+      ),
+      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w500)),
+      onTap: id != null
+          ? () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => UserProfileScreen(
+                    userId: id, name: name, avatarUrl: avatar)))
+          : null,
+    );
+  }
 }

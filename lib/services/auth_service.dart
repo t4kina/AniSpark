@@ -162,7 +162,7 @@ class AuthService extends ChangeNotifier {
               releaseYears { releaseYear count meanScore }
             }
             manga {
-              count chaptersRead meanScore
+              count chaptersRead volumesRead meanScore
               genres { genre count meanScore }
               scores { score count }
               releaseYears { releaseYear count meanScore }
