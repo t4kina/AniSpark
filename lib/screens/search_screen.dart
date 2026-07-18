@@ -270,6 +270,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 PopupMenuButton<String>(
                   onSelected: _onSortChanged,
                   tooltip: 'Sort',
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   itemBuilder: (_) => _sortLabels.entries.map((e) {
                     return PopupMenuItem(
                       value: e.key,
