@@ -233,6 +233,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 // Content type pill
                 PopupMenuButton<String>(
                   onSelected: _onContentTypeChanged,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   itemBuilder: (_) => [
                     PopupMenuItem(value: 'ANIME', child: Text('Anime')),
                     PopupMenuItem(value: 'MANGA', child: Text('Manga')),
