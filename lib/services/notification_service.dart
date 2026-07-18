@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -108,8 +109,10 @@ class NotificationService {
       if (airingAt <= nowSeconds) continue;
 
       final title = (media['title']?['english'] ?? media['title']?['romaji'] ?? 'Unknown') as String;
+      final coverUrl = media['coverImage']?['large'] as String?;
       final notifId = mediaId % 100000;
       final airingTime = tz.TZDateTime.fromMillisecondsSinceEpoch(tz.local, airingAt * 1000);
+      final imagePath = coverUrl != null ? await _downloadImage(coverUrl) : null;
 
       try {
         await _plugin.zonedSchedule(
@@ -117,7 +120,7 @@ class NotificationService {
           'New Episode Airing',
           'Episode $episode of $title is now airing!',
           airingTime,
-          const NotificationDetails(
+          NotificationDetails(
             android: AndroidNotificationDetails(
               _channelId,
               _channelName,
@@ -125,11 +128,22 @@ class NotificationService {
               importance: Importance.high,
               priority: Priority.high,
               icon: '@mipmap/ic_launcher',
+              styleInformation: imagePath != null
+                  ? BigPictureStyleInformation(
+                      FilePathAndroidBitmap(imagePath),
+                      largeIcon: FilePathAndroidBitmap(imagePath),
+                      contentTitle: 'New Episode Airing',
+                      summaryText: 'Episode $episode of $title is now airing!',
+                    )
+                  : null,
             ),
             iOS: DarwinNotificationDetails(
               presentAlert: true,
               presentBadge: true,
               presentSound: true,
+              attachments: imagePath != null
+                  ? [DarwinNotificationAttachment(imagePath)]
+                  : null,
             ),
           ),
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -212,6 +226,15 @@ class NotificationService {
     final progress = activity['progress'];
     if (progress != null) return '$name $status $progress of $title';
     return '$name $status $title';
+  }
+
+  Future<String?> _downloadImage(String url) async {
+    try {
+      final file = await DefaultCacheManager().getSingleFile(url);
+      return file.path;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> cancelAll() async {

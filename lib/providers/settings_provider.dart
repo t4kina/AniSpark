@@ -1,6 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+const accentColorOptions = <String, Color>{
+  'Blue':   Color(0xFF02A9FF),
+  'Purple': Color(0xFF9C27B0),
+  'Green':  Color(0xFF4CAF50),
+  'Pink':   Color(0xFFE91E63),
+  'Teal':   Color(0xFF009688),
+  'Orange': Color(0xFFFF6B35),
+};
+
 class SettingsProvider extends ChangeNotifier {
   String _language = 'English';
   String _appearance = 'Dark';
@@ -8,6 +17,7 @@ class SettingsProvider extends ChangeNotifier {
   bool _pushNotifications = true;
   bool _newEpisodeAlerts = true;
   bool _friendActivityAlerts = false;
+  String _accentColorName = 'Blue';
 
   String get language => _language;
   String get appearance => _appearance;
@@ -15,6 +25,8 @@ class SettingsProvider extends ChangeNotifier {
   bool get pushNotifications => _pushNotifications;
   bool get newEpisodeAlerts => _newEpisodeAlerts;
   bool get friendActivityAlerts => _friendActivityAlerts;
+  String get accentColorName => _accentColorName;
+  Color get accentColor => accentColorOptions[_accentColorName] ?? const Color(0xFF02A9FF);
 
   ThemeMode get themeMode => switch (_appearance) {
     'Light' => ThemeMode.light,
@@ -42,6 +54,7 @@ class SettingsProvider extends ChangeNotifier {
     _pushNotifications = prefs.getBool('pushNotifications') ?? false;
     _newEpisodeAlerts = prefs.getBool('newEpisodeAlerts') ?? false;
     _friendActivityAlerts = prefs.getBool('friendActivityAlerts') ?? false;
+    _accentColorName = prefs.getString('accentColorName') ?? 'Blue';
     notifyListeners();
   }
 
@@ -84,6 +97,14 @@ class SettingsProvider extends ChangeNotifier {
     _friendActivityAlerts = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('friendActivityAlerts', value);
+    notifyListeners();
+  }
+
+  Future<void> setAccentColor(String name) async {
+    if (!accentColorOptions.containsKey(name)) return;
+    _accentColorName = name;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('accentColorName', name);
     notifyListeners();
   }
 

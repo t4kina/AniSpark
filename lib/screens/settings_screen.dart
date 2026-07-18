@@ -2,7 +2,7 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../providers/settings_provider.dart';
+import '../providers/settings_provider.dart' show SettingsProvider, accentColorOptions;
 import '../services/auth_service.dart';
 import '../utils/translations.dart';
 import '../utils/refresh_notifier.dart';
@@ -58,6 +58,27 @@ class SettingsScreen extends StatelessWidget {
               current: settings.appearance,
               onSelected: (v) => context.read<SettingsProvider>().setAppearance(v),
             ),
+          ),
+          _tile(
+            icon: Icons.color_lens_outlined,
+            label: tr('accent_color', lang),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    color: settings.accentColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(settings.accentColorName,
+                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              ],
+            ),
+            onTap: () => _showAccentColorPicker(context, settings, lang),
           ),
           _tile(
             icon: Icons.title,
@@ -208,14 +229,14 @@ class SettingsScreen extends StatelessWidget {
       ListTile(
         leading: Icon(icon, color: Colors.grey, size: 22),
         title: Text(label, style: const TextStyle(fontSize: 14)),
-        trailing: Transform.scale(
+        trailing: Builder(builder: (ctx) => Transform.scale(
           scale: 0.75,
           child: CupertinoSwitch(
             value: value,
             onChanged: onChanged,
-            activeTrackColor: const Color(0xFF02A9FF),
+            activeTrackColor: Theme.of(ctx).colorScheme.primary,
           ),
-        ),
+        )),
         onTap: () => onChanged(!value),
       );
 
@@ -262,23 +283,97 @@ class SettingsScreen extends StatelessWidget {
               Flexible(
                 child: ListView(
                   shrinkWrap: true,
-                  children: options.map((opt) => ListTile(
+                  children: options.map((opt) => Builder(builder: (ctx) => ListTile(
                     leading: Icon(
                       current == opt ? Icons.radio_button_checked : Icons.radio_button_off,
-                      color: current == opt ? const Color(0xFF02A9FF) : Colors.grey,
+                      color: current == opt ? Theme.of(ctx).colorScheme.primary : Colors.grey,
                       size: 20,
                     ),
                     title: Text(opt,
                         style: TextStyle(
-                            color: current == opt ? const Color(0xFF02A9FF) : null,
+                            color: current == opt ? Theme.of(ctx).colorScheme.primary : null,
                             fontSize: 14)),
                     onTap: () {
                       onSelected(opt);
                       Navigator.pop(context);
                     },
-                  )).toList(),
+                  ))).toList(),
                 ),
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static void _showAccentColorPicker(
+      BuildContext context, SettingsProvider settings, String lang) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40, height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                    color: Colors.grey[400],
+                    borderRadius: BorderRadius.circular(2)),
+              ),
+              Text(tr('accent_color', lang),
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                alignment: WrapAlignment.center,
+                children: accentColorOptions.entries.map((e) {
+                  final isSelected = settings.accentColorName == e.key;
+                  return GestureDetector(
+                    onTap: () {
+                      context.read<SettingsProvider>().setAccentColor(e.key);
+                      Navigator.pop(context);
+                    },
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 44,
+                          height: 44,
+                          decoration: BoxDecoration(
+                            color: e.value,
+                            shape: BoxShape.circle,
+                            border: isSelected
+                                ? Border.all(
+                                    color: Colors.white, width: 3)
+                                : null,
+                            boxShadow: isSelected
+                                ? [BoxShadow(color: e.value.withValues(alpha: 0.6), blurRadius: 8)]
+                                : null,
+                          ),
+                          child: isSelected
+                              ? const Icon(Icons.check,
+                                  color: Colors.white, size: 20)
+                              : null,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(e.key,
+                            style: const TextStyle(
+                                fontSize: 11, color: Colors.grey)),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 8),
             ],
           ),
         ),
@@ -323,7 +418,7 @@ class SettingsScreen extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(tr('close', lang), style: const TextStyle(color: Color(0xFF02A9FF))),
+            child: Builder(builder: (ctx) => Text(tr('close', lang), style: TextStyle(color: Theme.of(ctx).colorScheme.primary))),
           ),
         ],
       ),

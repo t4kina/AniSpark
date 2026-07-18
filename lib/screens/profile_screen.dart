@@ -43,8 +43,8 @@ class _LoginPrompt extends StatelessWidget {
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(50),
                 ),
-                child: const Icon(Icons.person,
-                    size: 50, color: Color(0xFF02A9FF)),
+                child: Builder(builder: (ctx) => Icon(Icons.person,
+                    size: 50, color: Theme.of(ctx).colorScheme.primary)),
               ),
               const SizedBox(height: 24),
               const Text('Connect your AniList',
@@ -61,7 +61,7 @@ class _LoginPrompt extends StatelessWidget {
                 width: double.infinity,
                 child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF02A9FF),
+                    backgroundColor: Theme.of(context).colorScheme.primary,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
@@ -118,6 +118,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   bool _statsLoaded = false;
   Map<String, int> _activityDays = {};
   List<dynamic> _following = [];
+  bool _animeGenresExpanded = false;
+  bool _mangaGenresExpanded = false;
 
   @override
   void initState() {
@@ -353,7 +355,13 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             SliverToBoxAdapter(child: _buildActivityGraph()),
 
             // ── Top Genres ─────────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildTopGenres(animeStats)),
+            SliverToBoxAdapter(child: _buildTopGenres(animeStats, mangaStats)),
+
+            // ── Score Distribution ──────────────────────────────────────
+            SliverToBoxAdapter(child: _buildScoreDistribution(animeStats, mangaStats)),
+
+            // ── Release Years ───────────────────────────────────────────
+            SliverToBoxAdapter(child: _buildReleaseYears(animeStats)),
 
             const SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],
@@ -679,13 +687,14 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final maxCount = _activityDays.values.fold(0, (a, b) => a > b ? a : b);
 
     Color cellColor(int count, BuildContext ctx) {
+      final accent = Theme.of(ctx).colorScheme.primary;
       if (count == 0) return Theme.of(ctx).colorScheme.surfaceContainerHighest;
-      if (maxCount == 0) return const Color(0xFF02A9FF);
+      if (maxCount == 0) return accent;
       final ratio = count / maxCount;
-      if (ratio < 0.25) return const Color(0xFF02A9FF).withValues(alpha: 0.25);
-      if (ratio < 0.50) return const Color(0xFF02A9FF).withValues(alpha: 0.50);
-      if (ratio < 0.75) return const Color(0xFF02A9FF).withValues(alpha: 0.75);
-      return const Color(0xFF02A9FF);
+      if (ratio < 0.25) return accent.withValues(alpha: 0.25);
+      if (ratio < 0.50) return accent.withValues(alpha: 0.50);
+      if (ratio < 0.75) return accent.withValues(alpha: 0.75);
+      return accent;
     }
 
     const cellSize = 13.0;
@@ -766,12 +775,13 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               const Text('Less', style: TextStyle(fontSize: 10, color: Colors.grey)),
               const SizedBox(width: 4),
               ...List.generate(5, (i) {
+                final accent = Theme.of(ctx).colorScheme.primary;
                 final colors = [
                   Theme.of(ctx).colorScheme.surfaceContainerHighest,
-                  const Color(0xFF02A9FF).withValues(alpha: 0.25),
-                  const Color(0xFF02A9FF).withValues(alpha: 0.50),
-                  const Color(0xFF02A9FF).withValues(alpha: 0.75),
-                  const Color(0xFF02A9FF),
+                  accent.withValues(alpha: 0.25),
+                  accent.withValues(alpha: 0.50),
+                  accent.withValues(alpha: 0.75),
+                  accent,
                 ];
                 return Container(
                   width: cellSize,
@@ -792,18 +802,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  Widget _buildTopGenres(Map<String, dynamic>? animeStats) {
-    final raw = animeStats?['genres'] as List<dynamic>?;
-    if (raw == null || raw.isEmpty) return const SizedBox.shrink();
-
-    final genres = raw
-        .cast<Map<String, dynamic>>()
-        .toList()
-      ..sort((a, b) =>
-          ((b['count'] as num?) ?? 0).compareTo((a['count'] as num?) ?? 0));
-    final top = genres.take(5).toList();
-    final maxCount = (top.first['count'] as num).toDouble();
-
+  Widget _buildTopGenres(
+      Map<String, dynamic>? animeStats, Map<String, dynamic>? mangaStats) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
       child: Column(
@@ -815,46 +815,259 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                   fontWeight: FontWeight.w600,
                   color: Colors.grey,
                   letterSpacing: 0.5)),
-          const SizedBox(height: 12),
-          ...top.map((g) {
-            final genre = g['genre'] as String? ?? '';
-            final count = (g['count'] as num?)?.toInt() ?? 0;
-            final score = (g['meanScore'] as num?)?.toDouble() ?? 0.0;
-            final ratio = maxCount > 0 ? count / maxCount : 0.0;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Builder(builder: (ctx) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(genre,
+          const SizedBox(height: 8),
+          _genreSection(
+            label: 'Anime',
+            stats: animeStats,
+            unit: 'anime',
+            expanded: _animeGenresExpanded,
+            onToggle: () => setState(() => _animeGenresExpanded = !_animeGenresExpanded),
+          ),
+          const SizedBox(height: 4),
+          _genreSection(
+            label: 'Manga',
+            stats: mangaStats,
+            unit: 'manga',
+            expanded: _mangaGenresExpanded,
+            onToggle: () => setState(() => _mangaGenresExpanded = !_mangaGenresExpanded),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _genreSection({
+    required String label,
+    required Map<String, dynamic>? stats,
+    required String unit,
+    required bool expanded,
+    required VoidCallback onToggle,
+  }) {
+    final raw = stats?['genres'] as List<dynamic>?;
+    final hasData = raw != null && raw.isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: hasData ? onToggle : null,
+          borderRadius: BorderRadius.circular(8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Text(label,
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: hasData ? null : Colors.grey)),
+                const Spacer(),
+                if (!hasData)
+                  const Text('No data',
+                      style: TextStyle(fontSize: 11, color: Colors.grey))
+                else
+                  Icon(
+                    expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 18,
+                    color: Colors.grey,
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (expanded && hasData) ...[
+          const SizedBox(height: 4),
+          Builder(builder: (ctx) {
+            final genres = raw
+                .cast<Map<String, dynamic>>()
+                .toList()
+              ..sort((a, b) => ((b['count'] as num?) ?? 0)
+                  .compareTo((a['count'] as num?) ?? 0));
+            final top = genres.take(5).toList();
+            final maxCount = (top.first['count'] as num).toDouble();
+            return Column(
+              children: top.map((g) {
+                final genre = g['genre'] as String? ?? '';
+                final count = (g['count'] as num?)?.toInt() ?? 0;
+                final score = (g['meanScore'] as num?)?.toDouble() ?? 0.0;
+                final ratio = maxCount > 0 ? count / maxCount : 0.0;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(genre,
+                              style: const TextStyle(
+                                  fontSize: 13, fontWeight: FontWeight.w500)),
+                          Text(
+                            '$count $unit${score > 0 ? '  ·  ${score.toStringAsFixed(1)} ★' : ''}',
                             style: const TextStyle(
-                                fontSize: 13, fontWeight: FontWeight.w500)),
-                        Text(
-                          '$count anime${score > 0 ? '  ·  ${score.toStringAsFixed(1)} ★' : ''}',
-                          style: const TextStyle(
-                              fontSize: 11, color: Colors.grey),
+                                fontSize: 11, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: ratio,
+                          minHeight: 5,
+                          backgroundColor: Theme.of(ctx)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                          valueColor: AlwaysStoppedAnimation(
+                              Theme.of(ctx).colorScheme.primary),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 5),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: ratio,
-                        minHeight: 5,
-                        backgroundColor:
-                            Theme.of(ctx).colorScheme.surfaceContainerHighest,
-                        valueColor: const AlwaysStoppedAnimation(
-                            Color(0xFF02A9FF)),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            );
+          }),
+        ],
+        Divider(height: 1, color: Colors.grey.withValues(alpha: 0.15)),
+      ],
+    );
+  }
+
+  Widget _buildScoreDistribution(
+      Map<String, dynamic>? animeStats, Map<String, dynamic>? mangaStats) {
+    final animeRaw = animeStats?['scoreDistribution'] as List<dynamic>?;
+    final mangaRaw = mangaStats?['scoreDistribution'] as List<dynamic>?;
+    if ((animeRaw == null || animeRaw.isEmpty) &&
+        (mangaRaw == null || mangaRaw.isEmpty)) {
+      return const SizedBox.shrink();
+    }
+
+    Widget scoreBar(List<dynamic>? raw, String unit) {
+      if (raw == null || raw.isEmpty) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Text('No data', style: TextStyle(fontSize: 12, color: Colors.grey.withValues(alpha: 0.6))),
+        );
+      }
+      final scores = raw
+          .cast<Map<String, dynamic>>()
+          .where((e) => ((e['score'] as num?) ?? 0) > 0 && ((e['amount'] as num?) ?? 0) > 0)
+          .toList()
+        ..sort((a, b) => ((a['score'] as num?) ?? 0).compareTo((b['score'] as num?) ?? 0));
+      if (scores.isEmpty) return const SizedBox.shrink();
+      final maxAmount = scores
+          .map((e) => (e['amount'] as num?)?.toInt() ?? 0)
+          .reduce((a, b) => a > b ? a : b);
+      return Builder(builder: (ctx) {
+        final accent = Theme.of(ctx).colorScheme.primary;
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: scores.map((e) {
+            final score = ((e['score'] as num?) ?? 0).toInt();
+            final amount = ((e['amount'] as num?) ?? 0).toInt();
+            final ratio = maxAmount > 0 ? amount / maxAmount : 0.0;
+            final label = (score / 10).toStringAsFixed(0);
+            return Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 1),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      height: 60 * ratio,
+                      decoration: BoxDecoration(
+                        color: accent.withValues(alpha: 0.2 + 0.8 * ratio),
+                        borderRadius: BorderRadius.circular(3),
                       ),
                     ),
+                    const SizedBox(height: 3),
+                    Text(label, style: const TextStyle(fontSize: 9, color: Colors.grey)),
                   ],
+                ),
+              ),
+            );
+          }).toList(),
+        );
+      });
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('SCORE DISTRIBUTION',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
+          const SizedBox(height: 12),
+          const Text('Anime', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 8),
+          SizedBox(height: 80, child: scoreBar(animeRaw, 'anime')),
+          const SizedBox(height: 16),
+          const Text('Manga', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 8),
+          SizedBox(height: 80, child: scoreBar(mangaRaw, 'manga')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReleaseYears(Map<String, dynamic>? animeStats) {
+    final raw = animeStats?['releaseYears'] as List<dynamic>?;
+    if (raw == null || raw.isEmpty) return const SizedBox.shrink();
+
+    final years = raw
+        .cast<Map<String, dynamic>>()
+        .where((e) => ((e['count'] as num?) ?? 0) > 0)
+        .toList()
+      ..sort((a, b) => ((a['releaseYear'] as num?) ?? 0).compareTo((b['releaseYear'] as num?) ?? 0));
+    if (years.isEmpty) return const SizedBox.shrink();
+
+    final maxCount = years
+        .map((e) => (e['count'] as num?)?.toInt() ?? 0)
+        .reduce((a, b) => a > b ? a : b);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('ANIME BY YEAR',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
+          const SizedBox(height: 12),
+          Builder(builder: (ctx) {
+            final accent = Theme.of(ctx).colorScheme.primary;
+            return Column(
+              children: years.map((y) {
+                final year = ((y['releaseYear'] as num?) ?? 0).toInt();
+                final count = ((y['count'] as num?) ?? 0).toInt();
+                final ratio = maxCount > 0 ? count / maxCount : 0.0;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 36,
+                        child: Text('$year', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(3),
+                          child: LinearProgressIndicator(
+                            value: ratio,
+                            minHeight: 6,
+                            backgroundColor: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                            valueColor: AlwaysStoppedAnimation(accent),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text('$count', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    ],
+                  ),
                 );
-              }),
+              }).toList(),
             );
           }),
         ],

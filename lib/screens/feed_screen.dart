@@ -146,13 +146,13 @@ class _FeedScreenState extends State<FeedScreen>
   Widget _feedOption(String label, IconData icon, _FeedType type) {
     final isSelected = _feedType == type;
     return ListTile(
-      leading: Icon(icon, color: isSelected ? const Color(0xFF02A9FF) : Colors.grey),
+      leading: Icon(icon, color: isSelected ? Theme.of(context).colorScheme.primary : Colors.grey),
       title: Text(label,
           style: TextStyle(
               color: isSelected ? null : Colors.grey,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal)),
       trailing: isSelected
-          ? const Icon(Icons.check, color: Color(0xFF02A9FF), size: 18)
+          ? Builder(builder: (ctx) => Icon(Icons.check, color: Theme.of(ctx).colorScheme.primary, size: 18))
           : null,
       onTap: () {
         Navigator.pop(context);
@@ -323,9 +323,9 @@ class _ActivityCard extends StatelessWidget {
                       children: [
                         TextSpan(
                             text: username,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF02A9FF))),
+                                color: Theme.of(context).colorScheme.primary)),
                         TextSpan(
                             text: ' $actionText',
                             style: const TextStyle(color: Colors.grey)),
@@ -401,9 +401,9 @@ class _ActivityCard extends StatelessWidget {
                 GestureDetector(
                   onTap: () => _openUserProfile(context, user),
                   child: Text(username,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF02A9FF),
+                          color: Theme.of(context).colorScheme.primary,
                           fontSize: 13)),
                 ),
                 const SizedBox(height: 4),

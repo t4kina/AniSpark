@@ -11,6 +11,7 @@ import '../providers/settings_provider.dart';
 import '../utils/translations.dart' show tr;
 import '../utils/refresh_notifier.dart';
 import '../services/notification_service.dart';
+import '../services/widget_service.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
 
@@ -183,7 +184,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
             icon: Icon(
               Icons.tune_rounded,
               size: 22,
-              color: _activeGenres.isNotEmpty ? const Color(0xFF02A9FF) : Colors.grey,
+              color: _activeGenres.isNotEmpty ? Theme.of(context).colorScheme.primary : Colors.grey,
             ),
             onPressed: () => _showGenreFilter(context),
             padding: EdgeInsets.zero,
@@ -249,11 +250,11 @@ class _ListTabScreenState extends State<_ListTabScreen> {
         child: Row(
           children: [
             Icon(icon, size: 16,
-                color: _sortMode == mode ? const Color(0xFF02A9FF) : Colors.grey),
+                color: _sortMode == mode ? Theme.of(context).colorScheme.primary : Colors.grey),
             const SizedBox(width: 10),
             Text(label,
                 style: TextStyle(
-                    color: _sortMode == mode ? const Color(0xFF02A9FF) : null,
+                    color: _sortMode == mode ? Theme.of(context).colorScheme.primary : null,
                     fontSize: 13)),
           ],
         ),
@@ -378,6 +379,14 @@ class _MediaListState extends State<_MediaList>
         final settings = context.read<SettingsProvider>();
         if (widget.type == 'ANIME') {
           NotificationService().scheduleForAnimeList(typed, settings);
+
+          // Update home screen widget
+          final watching  = typed['CURRENT']?.length  ?? 0;
+          final completed = typed['COMPLETED']?.length ?? 0;
+          WidgetService.update(
+            watchingCount: watching,
+            completedCount: completed,
+          );
         }
       }
     } catch (e) {
@@ -666,18 +675,37 @@ class _MediaListState extends State<_MediaList>
         widget.type == 'ANIME' ? _animeStatusLabels(lang) : _mangaStatusLabels(lang);
 
     // Build a flat item list: headers + entries (only when expanded)
-    final items = <({bool isHeader, String? status, String? label, int? count, Map<String, dynamic>? entry})>[];
+    final items = <({bool isHeader, String? status, String? label, int? count, Map<String, dynamic>? entry, bool isCustom})>[];
     for (final status in _statusOrder) {
       final raw = _lists[status];
       if (raw == null || raw.isEmpty) continue;
       final filtered = _filterEntries(raw);
       if (filtered.isEmpty) continue;
-      items.add((isHeader: true, status: status, label: labels[status] ?? status, count: filtered.length, entry: null));
+      items.add((isHeader: true, status: status, label: labels[status] ?? status, count: filtered.length, entry: null, isCustom: false));
       if (!_collapsedSections.contains(status)) {
         for (final e in filtered) {
-          items.add((isHeader: false, status: null, label: null, count: null, entry: e));
+          items.add((isHeader: false, status: null, label: null, count: null, entry: e, isCustom: false));
         }
-        items.add((isHeader: false, status: null, label: null, count: null, entry: null)); // spacer
+        items.add((isHeader: false, status: null, label: null, count: null, entry: null, isCustom: false)); // spacer
+      }
+    }
+
+    // Custom list sections
+    final customKeys = _lists.keys.where((k) => k.startsWith('custom:')).toList();
+    if (customKeys.isNotEmpty && items.isNotEmpty) {
+      items.add((isHeader: false, status: null, label: null, count: null, entry: null, isCustom: false));
+    }
+    for (final key in customKeys) {
+      final raw = _lists[key]!;
+      final filtered = _filterEntries(raw);
+      if (filtered.isEmpty) continue;
+      final name = key.substring('custom:'.length);
+      items.add((isHeader: true, status: key, label: name, count: filtered.length, entry: null, isCustom: true));
+      if (!_collapsedSections.contains(key)) {
+        for (final e in filtered) {
+          items.add((isHeader: false, status: null, label: null, count: null, entry: e, isCustom: false));
+        }
+        items.add((isHeader: false, status: null, label: null, count: null, entry: null, isCustom: false));
       }
     }
 
@@ -722,6 +750,10 @@ class _MediaListState extends State<_MediaList>
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 child: Row(
                   children: [
+                    if (item.isCustom) ...[
+                      const Icon(Icons.playlist_add_check, size: 16, color: Colors.grey),
+                      const SizedBox(width: 6),
+                    ],
                     Text(item.label!,
                         style: const TextStyle(
                             fontSize: 15,
@@ -969,6 +1001,23 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                         ],
                       ),
                     ],
+                    Builder(builder: (_) {
+                      final notes = widget.entry['notes'] as String?;
+                      if (notes == null || notes.isEmpty) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          notes,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      );
+                    }),
                     if (nextAiring != null) Builder(builder: (_) {
                       final nextEp = nextAiring['episode'] as int?;
                       final airingAtRaw = nextAiring['airingAt'];
@@ -1462,7 +1511,7 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
                 widget.onUpdate(_score);
               },
               style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF02A9FF),
+                backgroundColor: Theme.of(context).colorScheme.primary,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18)),
               ),

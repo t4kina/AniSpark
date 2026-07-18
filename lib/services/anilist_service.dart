@@ -59,6 +59,36 @@ class AniListService {
     return (season, year);
   }
 
+  /// Returns airing episodes for this week that are on the user's CURRENT list.
+  Future<List<dynamic>> getWeeklySchedule(String token) async {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    final weekEnd = now + 7 * 86400;
+    const query = '''
+      query(\$from: Int!, \$to: Int!) {
+        Page(perPage: 50) {
+          airingSchedules(airingAt_greater: \$from, airingAt_lesser: \$to, sort: TIME) {
+            airingAt episode
+            media {
+              id title { romaji english native }
+              coverImage { large }
+              mediaListEntry { status }
+            }
+          }
+        }
+      }
+    ''';
+    final response = await _post(
+      jsonEncode({'query': query, 'variables': {'from': now, 'to': weekEnd}}),
+      token,
+    );
+    if (response.statusCode != 200) return [];
+    final schedules = jsonDecode(response.body)['data']?['Page']?['airingSchedules'] as List<dynamic>? ?? [];
+    return schedules.where((s) {
+      final entry = s['media']?['mediaListEntry'];
+      return entry != null && entry['status'] == 'CURRENT';
+    }).toList();
+  }
+
   Future<List<dynamic>> getTrending() => _query('''
     query {
       Page(page: 1, perPage: 20) {
@@ -216,7 +246,7 @@ class AniListService {
           tags { name isMediaSpoiler }
           isFavourite
           mediaListEntry {
-            id status progress score(format: POINT_10_DECIMAL)
+            id status progress score(format: POINT_10_DECIMAL) notes customLists
           }
           relations {
             edges {
@@ -268,7 +298,7 @@ class AniListService {
           lists {
             name status isCustomList
             entries {
-              mediaId progress score(format: POINT_10)
+              id mediaId progress score(format: POINT_10) notes customLists
               media {
                 id title { romaji english native }
                 coverImage { large }
@@ -290,9 +320,10 @@ class AniListService {
     if (lists == null) throw Exception('Unexpected response');
     final Map<String, List<dynamic>> result = {};
     for (final list in lists) {
-      if (list['isCustomList'] == true) continue;
-      result[list['status'] as String] =
-          (list['entries'] as List).cast<Map<String, dynamic>>().toList();
+      final key = list['isCustomList'] == true
+          ? 'custom:${list['name']}'
+          : list['status'] as String;
+      result[key] = (list['entries'] as List).cast<Map<String, dynamic>>().toList();
     }
     return result;
   }
@@ -305,7 +336,7 @@ class AniListService {
           lists {
             name status isCustomList
             entries {
-              mediaId progress score(format: POINT_10)
+              id mediaId progress score(format: POINT_10) notes customLists
               media {
                 id title { romaji english native }
                 coverImage { large }
@@ -326,11 +357,30 @@ class AniListService {
     if (lists == null) throw Exception('Unexpected response');
     final Map<String, List<dynamic>> result = {};
     for (final list in lists) {
-      if (list['isCustomList'] == true) continue;
-      result[list['status'] as String] =
-          (list['entries'] as List).cast<Map<String, dynamic>>().toList();
+      final key = list['isCustomList'] == true
+          ? 'custom:${list['name']}'
+          : list['status'] as String;
+      result[key] = (list['entries'] as List).cast<Map<String, dynamic>>().toList();
     }
     return result;
+  }
+
+  Future<List<String>> getCustomListNames(int userId, String type, String token) async {
+    final query = '''
+      query(\$userId: Int!) {
+        MediaListCollection(userId: \$userId, type: $type) {
+          lists { name isCustomList }
+        }
+      }
+    ''';
+    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
+    if (response.statusCode != 200) return [];
+    final lists = jsonDecode(response.body)['data']?['MediaListCollection']?['lists'] as List?;
+    if (lists == null) return [];
+    return lists
+        .where((l) => l['isCustomList'] == true)
+        .map<String>((l) => l['name'] as String)
+        .toList();
   }
 
   Future<List<dynamic>> getActivityFeed(String token,
@@ -548,19 +598,25 @@ class AniListService {
     required int progress,
     required double score,
     required String token,
+    String? notes,
+    List<String>? customLists,
   }) async {
     const mutation = '''
       mutation(\$mediaId: Int, \$status: MediaListStatus,
-               \$progress: Int, \$score: Float) {
+               \$progress: Int, \$score: Float, \$notes: String, \$customLists: [String]) {
         SaveMediaListEntry(mediaId: \$mediaId, status: \$status,
-                           progress: \$progress, score: \$score) {
-          id status progress score
+                           progress: \$progress, score: \$score, notes: \$notes,
+                           customLists: \$customLists) {
+          id status progress score notes customLists
         }
       }
     ''';
     final response = await _post(jsonEncode({
       'query': mutation,
-      'variables': {'mediaId': mediaId, 'status': status, 'progress': progress, 'score': score},
+      'variables': {
+        'mediaId': mediaId, 'status': status, 'progress': progress,
+        'score': score, 'notes': notes, 'customLists': customLists,
+      },
     }), token);
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -600,8 +656,10 @@ class AniListService {
     const query = '''
       query(\$userId: Int!, \$page: Int!) {
         Page(page: \$page, perPage: 50) {
-          activities(userId: \$userId, sort: ID_DESC, type: ANIME_LIST) {
+          activities(userId: \$userId, sort: ID_DESC) {
             ... on ListActivity { createdAt }
+            ... on TextActivity { createdAt }
+            ... on MessageActivity { createdAt }
           }
         }
       }

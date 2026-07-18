@@ -23,6 +23,7 @@ class DetailScreen extends StatefulWidget {
 class _DetailScreenState extends State<DetailScreen> {
   final _service = AniListService();
   Map<String, dynamic>? _data;
+  List<String> _customListNames = [];
   bool _loading = true;
   bool _togglingFav = false;
 
@@ -36,6 +37,12 @@ class _DetailScreenState extends State<DetailScreen> {
     final auth = context.read<AuthService>();
     final token = auth.isLoggedIn ? auth.token : null;
     final data = await _service.getAnimeDetail(widget.animeId, token);
+    if (!mounted) return;
+    if (auth.isLoggedIn && auth.user?['id'] != null && token != null) {
+      final type = data?['type'] as String? ?? 'ANIME';
+      _customListNames = await _service.getCustomListNames(
+          auth.user!['id'] as int, type, token);
+    }
     if (mounted) setState(() { if (data != null) _data = data; _loading = false; });
   }
 
@@ -766,6 +773,18 @@ class _DetailScreenState extends State<DetailScreen> {
     String selectedStatus = initialStatus;
     int progress = initialProgress;
     double score = initialScore;
+    final initialNotes = (_data!['mediaListEntry']?['notes'] as String?) ?? '';
+    final notesController = TextEditingController(text: initialNotes);
+
+    // Parse current custom lists from entry data
+    final rawCustom = _data!['mediaListEntry']?['customLists'];
+    final initialCustom = <String>{};
+    if (rawCustom is Map) {
+      for (final e in rawCustom.entries) {
+        if (e.value == true) initialCustom.add(e.key as String);
+      }
+    }
+    final selectedCustomLists = Set<String>.from(initialCustom);
 
     showModalBottomSheet(
       context: context,
@@ -815,11 +834,52 @@ class _DetailScreenState extends State<DetailScreen> {
                 const SizedBox(width: 12),
                 _counterBtn(ctx, Icons.add, () { if (score < 10) setModal(() => score = (score + 0.5).clamp(0, 10)); }),
               ]),
+              if (_customListNames.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Text('Custom Lists', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: _customListNames.map((name) {
+                    final selected = selectedCustomLists.contains(name);
+                    return Builder(builder: (c) => FilterChip(
+                      label: Text(name, style: TextStyle(fontSize: 12, color: selected ? Colors.white : null)),
+                      selected: selected,
+                      selectedColor: Theme.of(c).colorScheme.primary,
+                      checkmarkColor: Colors.white,
+                      onSelected: (v) => setModal(() {
+                        if (v) { selectedCustomLists.add(name); } else { selectedCustomLists.remove(name); }
+                      }),
+                    ));
+                  }).toList(),
+                ),
+              ],
+              const SizedBox(height: 16),
+              const Text('Notes', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: notesController,
+                maxLines: 3,
+                minLines: 1,
+                style: const TextStyle(fontSize: 13),
+                decoration: InputDecoration(
+                  hintText: 'Personal notes…',
+                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
+                  filled: true,
+                  fillColor: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: BorderSide.none,
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+              ),
               const SizedBox(height: 24),
               Row(children: [
                 Expanded(child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF02A9FF),
+                      backgroundColor: Theme.of(context).colorScheme.primary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                   onPressed: () async {
@@ -831,7 +891,9 @@ class _DetailScreenState extends State<DetailScreen> {
                     if (auth.isLoggedIn) {
                       await _service.saveListEntry(
                           mediaId: anime.id, status: _toAniListStatus(selectedStatus),
-                          progress: progress, score: score, token: auth.token!);
+                          progress: progress, score: score, token: auth.token!,
+                          notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+                          customLists: selectedCustomLists.toList());
                       _load();
                       listRefreshNotifier.value++;
                     }
@@ -874,7 +936,7 @@ class _DetailScreenState extends State<DetailScreen> {
       onTap: () => onTap(value),
       child: Chip(
         label: Text(label),
-        backgroundColor: isSelected ? const Color(0xFF02A9FF) : Theme.of(context).colorScheme.surfaceContainerHighest,
+        backgroundColor: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.surfaceContainerHighest,
         labelStyle: TextStyle(color: isSelected ? Colors.white : null, fontSize: 12),
         padding: const EdgeInsets.symmetric(horizontal: 4),
       ),
@@ -916,11 +978,11 @@ class _SummarySectionState extends State<_SummarySection> {
           if (!_expanded)
             GestureDetector(
               onTap: () => setState(() => _expanded = true),
-              child: const Padding(
-                padding: EdgeInsets.only(top: 4),
+              child: Builder(builder: (ctx) => Padding(
+                padding: const EdgeInsets.only(top: 4),
                 child: Text('Read more',
-                    style: TextStyle(color: Color(0xFF02A9FF), fontSize: 12)),
-              ),
+                    style: TextStyle(color: Theme.of(ctx).colorScheme.primary, fontSize: 12)),
+              )),
             ),
         ],
       ),

@@ -158,10 +158,14 @@ class AuthService extends ChangeNotifier {
             anime {
               count episodesWatched meanScore minutesWatched
               genres { genre count meanScore minutesWatched }
+              scoreDistribution { score amount }
+              releaseYears { releaseYear count meanScore }
             }
             manga {
               count chaptersRead meanScore
               genres { genre count meanScore }
+              scoreDistribution { score amount }
+              releaseYears { releaseYear count meanScore }
             }
           }
         }

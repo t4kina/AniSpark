@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import '../services/anilist_service.dart';
+import '../services/auth_service.dart';
+import '../providers/settings_provider.dart';
 import '../widgets/anime_card.dart';
 import 'detail_screen.dart';
 import 'search_screen.dart';
@@ -22,6 +25,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<dynamic> _trendingManga = [];
   List<dynamic> _topManga = [];
   List<dynamic> _manhwa = [];
+  List<dynamic> _weeklySchedule = [];
   bool _loading = true;
   bool _hasError = false;
 
@@ -29,6 +33,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCalendar());
+  }
+
+  Future<void> _loadCalendar() async {
+    final auth = context.read<AuthService>();
+    if (!auth.isLoggedIn || auth.token == null) return;
+    final schedule = await _service.getWeeklySchedule(auth.token!);
+    if (mounted) setState(() => _weeklySchedule = schedule);
   }
 
   Future<List<dynamic>> _safe(Future<List<dynamic>> f) =>
@@ -124,6 +136,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          if (_weeklySchedule.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            _sectionHeader('THIS WEEK'),
+                            const SizedBox(height: 10),
+                            _buildWeeklySchedule(),
+                            const SizedBox(height: 8),
+                            const Divider(indent: 16, endIndent: 16),
+                          ],
                           const SizedBox(height: 12),
                           _sectionHeader('CURRENTLY TRENDING ANIME', items: _trending),
                           const SizedBox(height: 10),
@@ -188,14 +208,14 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (_) => _BrowseAllScreen(title: title, items: items),
                   ),
                 ),
-                child: const Text(
+                child: Builder(builder: (ctx) => Text(
                   'See all',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF02A9FF),
+                    color: Theme.of(ctx).colorScheme.primary,
                     fontWeight: FontWeight.w500,
                   ),
-                ),
+                )),
               ),
           ],
         ),
@@ -216,6 +236,89 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       );
+
+  Widget _buildWeeklySchedule() {
+    final settings = context.read<SettingsProvider>();
+    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+    return SizedBox(
+      height: 130,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.only(left: 16, right: 8),
+        itemCount: _weeklySchedule.length,
+        itemBuilder: (ctx, i) {
+          final item = _weeklySchedule[i];
+          final media = item['media'] as Map<String, dynamic>? ?? {};
+          final id = media['id'] as int?;
+          final cover = media['coverImage']?['large'] as String?;
+          final title = settings.resolveTitle(media['title'] as Map<String, dynamic>?);
+          final airingAt = (item['airingAt'] as num?)?.toInt() ?? 0;
+          final episode = (item['episode'] as num?)?.toInt() ?? 0;
+          final dt = DateTime.fromMillisecondsSinceEpoch(airingAt * 1000);
+          final dayLabel = days[dt.weekday - 1];
+          final timeLabel = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+
+          return GestureDetector(
+            onTap: id != null
+                ? () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)))
+                : null,
+            child: Container(
+              width: 220,
+              margin: const EdgeInsets.only(right: 10),
+              decoration: BoxDecoration(
+                color: Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
+                    child: cover != null
+                        ? CachedNetworkImage(
+                            imageUrl: cover,
+                            width: 70,
+                            height: 130,
+                            fit: BoxFit.cover,
+                            memCacheWidth: 140,
+                          )
+                        : Container(width: 70, color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
+                  ),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.all(10),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Builder(builder: (c) => Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Theme.of(c).colorScheme.primary.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              '$dayLabel  $timeLabel',
+                              style: TextStyle(fontSize: 10, color: Theme.of(c).colorScheme.primary, fontWeight: FontWeight.w600),
+                            ),
+                          )),
+                          const SizedBox(height: 6),
+                          Text(title, maxLines: 2, overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 4),
+                          Text('Episode $episode', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
 
   Widget _buildError() => Center(
         child: Column(

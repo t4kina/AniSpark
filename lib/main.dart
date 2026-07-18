@@ -55,12 +55,12 @@ class MyAnimeApp extends StatelessWidget {
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
         scaffoldBackgroundColor: const Color(0xFFD8D8DC),
-        colorScheme: const ColorScheme.light(
-          primary: Color(0xFF02A9FF),
-          surface: Color(0xFFE2E2E6),
-          surfaceContainerHighest: Color(0xFFD0D0D4),
-          outline: Color(0xFFB8B8BC),
-          onSurface: Color(0xFF1A1A2E),
+        colorScheme: ColorScheme.light(
+          primary: settings.accentColor,
+          surface: const Color(0xFFE2E2E6),
+          surfaceContainerHighest: const Color(0xFFD0D0D4),
+          outline: const Color(0xFFB8B8BC),
+          onSurface: const Color(0xFF1A1A2E),
           onSurfaceVariant: Colors.black54,
         ),
         appBarTheme: const AppBarTheme(
@@ -77,21 +77,21 @@ class MyAnimeApp extends StatelessWidget {
           overlayColor: WidgetStateProperty.all(Colors.transparent),
           iconTheme: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const IconThemeData(color: Color(0xFF02A9FF));
+              return IconThemeData(color: settings.accentColor);
             }
             return const IconThemeData(color: Colors.grey);
           }),
           labelTextStyle: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const TextStyle(color: Color(0xFF02A9FF), fontSize: 11, fontWeight: FontWeight.w600);
+              return TextStyle(color: settings.accentColor, fontSize: 11, fontWeight: FontWeight.w600);
             }
             return const TextStyle(color: Colors.grey, fontSize: 11);
           }),
         ),
-        tabBarTheme: const TabBarThemeData(
-          labelColor: Color(0xFF02A9FF),
+        tabBarTheme: TabBarThemeData(
+          labelColor: settings.accentColor,
           unselectedLabelColor: Colors.grey,
-          indicatorColor: Color(0xFF02A9FF),
+          indicatorColor: settings.accentColor,
         ),
         chipTheme: ChipThemeData(
           backgroundColor: const Color(0xFFE5E7F2),
@@ -119,7 +119,7 @@ class MyAnimeApp extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: Color(0xFF02A9FF), width: 1),
+            borderSide: BorderSide(color: settings.accentColor, width: 1),
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           hintStyle: const TextStyle(color: Colors.grey),
@@ -147,15 +147,15 @@ class MyAnimeApp extends StatelessWidget {
         splashColor: Colors.transparent,
         highlightColor: Colors.transparent,
         scaffoldBackgroundColor: const Color(0xFF111113),
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF02A9FF),
-          surface: Color(0xFF1C1C1E),
-          surfaceContainerLow: Color(0xFF1C1C1E),
-          surfaceContainerHighest: Color(0xFF2C2C2E),
-          outlineVariant: Color(0xFF38383A),
-          outline: Color(0xFF48484A),
-          onSurface: Color(0xFFEAEAEA),
-          onSurfaceVariant: Color(0xFFAAAAAA),
+        colorScheme: ColorScheme.dark(
+          primary: settings.accentColor,
+          surface: const Color(0xFF1C1C1E),
+          surfaceContainerLow: const Color(0xFF1C1C1E),
+          surfaceContainerHighest: const Color(0xFF2C2C2E),
+          outlineVariant: const Color(0xFF38383A),
+          outline: const Color(0xFF48484A),
+          onSurface: const Color(0xFFEAEAEA),
+          onSurfaceVariant: const Color(0xFFAAAAAA),
         ),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF111113),
@@ -170,22 +170,21 @@ class MyAnimeApp extends StatelessWidget {
           overlayColor: WidgetStateProperty.all(Colors.transparent),
           iconTheme: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const IconThemeData(color: Color(0xFF02A9FF));
+              return IconThemeData(color: settings.accentColor);
             }
             return const IconThemeData(color: Colors.grey);
           }),
           labelTextStyle: WidgetStateProperty.resolveWith((states) {
             if (states.contains(WidgetState.selected)) {
-              return const TextStyle(
-                  color: Color(0xFF02A9FF), fontSize: 11, fontWeight: FontWeight.w600);
+              return TextStyle(color: settings.accentColor, fontSize: 11, fontWeight: FontWeight.w600);
             }
             return const TextStyle(color: Colors.grey, fontSize: 11);
           }),
         ),
-        tabBarTheme: const TabBarThemeData(
-          labelColor: Color(0xFF02A9FF),
+        tabBarTheme: TabBarThemeData(
+          labelColor: settings.accentColor,
           unselectedLabelColor: Colors.grey,
-          indicatorColor: Color(0xFF02A9FF),
+          indicatorColor: settings.accentColor,
         ),
         chipTheme: ChipThemeData(
           backgroundColor: const Color(0xFF2C2C2E),
@@ -212,7 +211,7 @@ class MyAnimeApp extends StatelessWidget {
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
-            borderSide: const BorderSide(color: Color(0xFF02A9FF), width: 1),
+            borderSide: BorderSide(color: settings.accentColor, width: 1),
           ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           hintStyle: const TextStyle(color: Colors.grey),

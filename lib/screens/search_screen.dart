@@ -175,7 +175,7 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     final hasFilters = _selectedGenres.isNotEmpty;
-    final accentColor = const Color(0xFF02A9FF);
+    final accentColor = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
       appBar: AppBar(
@@ -277,7 +277,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         children: [
                           Expanded(child: Text(e.value)),
                           if (e.key == _sort)
-                            const Icon(Icons.check, size: 16, color: Color(0xFF02A9FF)),
+                            Icon(Icons.check, size: 16, color: Theme.of(context).colorScheme.primary),
                         ],
                       ),
                     );
