@@ -10,6 +10,7 @@ import '../main.dart';
 import '../providers/settings_provider.dart';
 import '../utils/translations.dart' show tr;
 import '../utils/refresh_notifier.dart';
+import '../utils/score_utils.dart';
 import '../services/notification_service.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
@@ -283,6 +284,9 @@ class _MediaListState extends State<_MediaList>
   bool _loading = true;
   String? _error;
   final Set<String> _collapsedSections = {};
+  // Media ids with a progress save in flight; further swipes are ignored
+  // until it finishes so quick swipes can't send stale values.
+  final Set<int> _savingProgress = {};
 
   final _statusOrder = [
     'CURRENT',
@@ -408,12 +412,48 @@ class _MediaListState extends State<_MediaList>
     }();
   }
 
+  /// Shows the new progress immediately and saves only the progress field, so
+  /// the entry's score, notes and custom lists are never rewritten. Reverts
+  /// and tells the user if AniList rejects the change.
+  Future<void> _saveProgress(
+      Map<String, dynamic> entry, int mediaId, int newProgress) async {
+    final token = context.read<AuthService>().token;
+    if (token == null || !_savingProgress.add(mediaId)) return;
+    final previous = (entry['progress'] as num?)?.toInt() ?? 0;
+    setState(() => entry['progress'] = newProgress);
+
+    final bool ok;
+    try {
+      ok = await _service.saveListEntry(
+        mediaId: mediaId,
+        progress: newProgress,
+        token: token,
+      );
+    } finally {
+      _savingProgress.remove(mediaId);
+    }
+    if (!mounted) return;
+    if (ok) {
+      _silentReload();
+      return;
+    }
+    setState(() => entry['progress'] = previous);
+    _showSaveError();
+  }
+
+  void _showSaveError() {
+    final lang = context.read<SettingsProvider>().language;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(tr('save_failed', lang))),
+    );
+  }
+
   Future<void> _incrementEpisode(Map<String, dynamic> entry) async {
     final auth = context.read<AuthService>();
     if (!auth.isLoggedIn) return;
     final media = entry['media'] as Map<String, dynamic>? ?? {};
     final mediaId = media['id'] as int?;
-    if (mediaId == null) return;
+    if (mediaId == null || _savingProgress.contains(mediaId)) return;
 
     final progress = (entry['progress'] as num?)?.toInt() ?? 0;
     final total = widget.type == 'ANIME'
@@ -432,19 +472,7 @@ class _MediaListState extends State<_MediaList>
       return;
     }
 
-    final status = (entry['status'] as String?) ?? 'CURRENT';
-    final score = (entry['score'] as num?)?.toDouble() ?? 0;
-    final ok = await _service.saveListEntry(
-      mediaId: mediaId,
-      status: status,
-      progress: newProgress,
-      score: score,
-      token: auth.token!,
-    );
-    if (ok) {
-      setState(() => entry['progress'] = newProgress);
-      _silentReload();
-    }
+    await _saveProgress(entry, mediaId, newProgress);
   }
 
   Future<void> _showCompletionDialog(
@@ -481,15 +509,24 @@ class _MediaListState extends State<_MediaList>
         initialScore: initialScore,
         type: widget.type,
         onComplete: (score) async {
-          final auth = context.read<AuthService>();
-          if (!auth.isLoggedIn || !mounted) return;
-          final ok = await _service.saveListEntry(
-            mediaId: mediaId,
-            status: 'COMPLETED',
-            progress: total,
-            score: score,
-            token: auth.token!,
-          );
+          final token = context.read<AuthService>().token;
+          if (token == null || !mounted || !_savingProgress.add(mediaId)) {
+            return false;
+          }
+          final bool ok;
+          try {
+            ok = await _service.saveListEntry(
+              mediaId: mediaId,
+              status: 'COMPLETED',
+              progress: total,
+              // Only write the score when the user changed it, so AniList keeps
+              // the exact value in the user's own score format otherwise.
+              scoreRaw: score != initialScore ? toRawScore(score) : null,
+              token: token,
+            );
+          } finally {
+            _savingProgress.remove(mediaId);
+          }
           if (ok && mounted) {
             setState(() {
               entry['progress'] = newProgress;
@@ -498,6 +535,7 @@ class _MediaListState extends State<_MediaList>
             });
             _silentReload();
           }
+          return ok;
         },
       ),
     );
@@ -508,26 +546,12 @@ class _MediaListState extends State<_MediaList>
     if (!auth.isLoggedIn) return;
     final media = entry['media'] as Map<String, dynamic>? ?? {};
     final mediaId = media['id'] as int?;
-    if (mediaId == null) return;
+    if (mediaId == null || _savingProgress.contains(mediaId)) return;
 
     final progress = (entry['progress'] as num?)?.toInt() ?? 0;
     if (progress <= 0) return;
 
-    final newProgress = progress - 1;
-    final status = (entry['status'] as String?) ?? 'CURRENT';
-    final score = (entry['score'] as num?)?.toDouble() ?? 0;
-
-    final ok = await _service.saveListEntry(
-      mediaId: mediaId,
-      status: status,
-      progress: newProgress,
-      score: score,
-      token: auth.token!,
-    );
-    if (ok) {
-      setState(() => entry['progress'] = newProgress);
-      _silentReload();
-    }
+    await _saveProgress(entry, mediaId, progress - 1);
   }
 
 
@@ -589,7 +613,7 @@ class _MediaListState extends State<_MediaList>
               FilledButton.icon(
                 onPressed: _load,
                 icon: const Icon(Icons.refresh),
-                label: const Text('Reintentar'),
+                label: Text(tr('retry', context.read<SettingsProvider>().language)),
               ),
             ],
           ],
@@ -1070,7 +1094,8 @@ class _CompletionDialog extends StatefulWidget {
   final double? averageScore;
   final double initialScore;
   final String type;
-  final Future<void> Function(double score) onComplete;
+  /// Saves the completion; returns whether AniList accepted it.
+  final Future<bool> Function(double score) onComplete;
 
   const _CompletionDialog({
     required this.title,
@@ -1115,8 +1140,18 @@ class _CompletionDialogState extends State<_CompletionDialog> {
 
   Future<void> _complete() async {
     setState(() => _completing = true);
-    await widget.onComplete(_score);
-    if (mounted) Navigator.pop(context);
+    final ok = await widget.onComplete(_score);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(context);
+      return;
+    }
+    // Keep the dialog open so the user can retry instead of losing the change.
+    setState(() => _completing = false);
+    final lang = context.read<SettingsProvider>().language;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(tr('save_failed', lang))),
+    );
   }
 
   void _openScorePicker() {
@@ -1141,7 +1176,10 @@ class _CompletionDialogState extends State<_CompletionDialog> {
   Widget build(BuildContext context) {
     final unitLabel = widget.type == 'ANIME' ? 'series' : 'manga';
 
-    return Scaffold(
+    // Back is blocked while saving so the list can't be swiped mid-request.
+    return PopScope(
+      canPop: !_completing,
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
@@ -1345,6 +1383,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

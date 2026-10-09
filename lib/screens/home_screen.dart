@@ -5,6 +5,7 @@ import 'package:shimmer/shimmer.dart';
 import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
 import '../providers/settings_provider.dart';
+import '../utils/translations.dart' show tr;
 import '../widgets/anime_card.dart';
 import 'detail_screen.dart';
 import 'search_screen.dart';
@@ -320,23 +321,26 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildError() => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            const Text('No se pudo cargar el contenido',
-                style: TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reintentar'),
-            ),
-          ],
-        ),
-      );
+  Widget _buildError() {
+    final lang = context.watch<SettingsProvider>().language;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text(tr('load_error', lang),
+              style: const TextStyle(color: Colors.grey)),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _load,
+            icon: const Icon(Icons.refresh),
+            label: Text(tr('retry', lang)),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildShimmer() {
     final isDark = Theme.of(context).brightness == Brightness.dark;

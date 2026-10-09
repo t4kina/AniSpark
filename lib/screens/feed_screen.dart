@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../providers/settings_provider.dart';
 import '../utils/refresh_notifier.dart';
+import '../utils/translations.dart' show tr;
 import 'detail_screen.dart';
 import 'user_profile_screen.dart';
 
@@ -208,6 +209,7 @@ class _FeedScreenState extends State<FeedScreen>
   Widget build(BuildContext context) {
     super.build(context);
     final auth = context.watch<AuthService>();
+    final lang = context.watch<SettingsProvider>().language;
 
     if (!auth.isLoggedIn) {
       return Scaffold(
@@ -253,13 +255,13 @@ class _FeedScreenState extends State<FeedScreen>
                     children: [
                       const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
                       const SizedBox(height: 12),
-                      const Text('No se pudo cargar el feed',
-                          style: TextStyle(color: Colors.grey)),
+                      Text(tr('feed_load_error', lang),
+                          style: const TextStyle(color: Colors.grey)),
                       const SizedBox(height: 16),
                       FilledButton.icon(
                         onPressed: _load,
                         icon: const Icon(Icons.refresh),
-                        label: const Text('Reintentar'),
+                        label: Text(tr('retry', lang)),
                       ),
                     ],
                   ),
@@ -404,7 +406,7 @@ class _ActivityCard extends StatelessWidget {
           if (coverImage != null) ...[
             const SizedBox(width: 10),
             GestureDetector(
-              onTap: media?['id'] != null && media?['type'] == 'ANIME'
+              onTap: media?['id'] != null
                   ? () => Navigator.push(
                         context,
                         MaterialPageRoute(

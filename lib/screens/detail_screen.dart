@@ -5,9 +5,11 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import '../providers/anime_list_provider.dart';
 import '../models/anime.dart';
 import '../utils/refresh_notifier.dart';
+import '../utils/score_utils.dart';
 import '../utils/translations.dart';
 import '../providers/settings_provider.dart';
 import 'character_screen.dart';
@@ -52,7 +54,11 @@ class _DetailScreenState extends State<DetailScreen> {
     if (!auth.isLoggedIn) return;
     final wasFav = _data!['isFavourite'] == true;
     setState(() { _togglingFav = true; _data!['isFavourite'] = !wasFav; });
-    final ok = await _service.toggleFavourite(animeId: widget.animeId, token: auth.token!);
+    final ok = await _service.toggleFavourite(
+      mediaId: widget.animeId,
+      isManga: _data!['type'] == 'MANGA',
+      token: auth.token!,
+    );
     if (mounted) {
       setState(() {
         _togglingFav = false;
@@ -112,7 +118,12 @@ class _DetailScreenState extends State<DetailScreen> {
     final popularity = d['popularity'] as int?;
     final favourites = d['favourites'] as int?;
     final trending = d['trending'] as int?;
+    final isManga = d['type'] == 'MANGA';
     final episodes = d['episodes'] as int?;
+    final chapters = d['chapters'] as int?;
+    final volumes = d['volumes'] as int?;
+    final progressTotal = isManga ? chapters : episodes;
+    final progressUnit = isManga ? 'CH' : 'EP';
     final duration = d['duration'] as int?;
     final format = d['format'] as String?;
     final genres = (d['genres'] as List? ?? []).cast<String>();
@@ -241,7 +252,7 @@ class _DetailScreenState extends State<DetailScreen> {
                                 if (nextAiring != null) ...[
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Episode ${nextAiring['episode']} airs en ${_airingCountdown(nextAiring['airingAt'] as int)}',
+                                    'Episode ${nextAiring['episode']} airs in ${_airingCountdown(nextAiring['airingAt'] as int)}',
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(color: Colors.grey, fontSize: 13),
                                   ),
@@ -335,9 +346,9 @@ class _DetailScreenState extends State<DetailScreen> {
                       const SizedBox(width: 8),
                       _actionBtn(
                         context,
-                        episodes != null
-                            ? '$listProgress / $episodes EP'
-                            : '$listProgress EP',
+                        progressTotal != null
+                            ? '$listProgress / $progressTotal $progressUnit'
+                            : '$listProgress $progressUnit',
                         icon: Icons.play_circle_outline_rounded,
                         sublabel: 'PROGRESS',
                         onTap: () => _showEditModal(context, provider, listStatus, listProgress, listScore),
@@ -371,8 +382,10 @@ class _DetailScreenState extends State<DetailScreen> {
                     const SizedBox(height: 12),
                     _infoGrid([
                       if (format != null) _InfoItem('TYPE', _formatLabel(format)),
-                      if (airingRange.isNotEmpty) _InfoItem('AIRING', airingRange),
+                      if (airingRange.isNotEmpty) _InfoItem(isManga ? 'PUBLISHED' : 'AIRING', airingRange),
                       if (episodes != null) _InfoItem('EPISODES', '$episodes'),
+                      if (chapters != null) _InfoItem('CHAPTERS', '$chapters'),
+                      if (volumes != null) _InfoItem('VOLUMES', '$volumes'),
                       if (duration != null) _InfoItem('RUNTIME', '${_durationStr(duration, settings.language)} per episode'),
                       if (totalDuration != null) _InfoItem('ESTIMATED TOTAL DURATION', _durationStr(totalDuration, settings.language)),
                       if (remaining != null && remaining > 0) _InfoItem('TIME REMAINING TO FINISH', _durationStr(remaining, settings.language)),
@@ -709,7 +722,7 @@ class _DetailScreenState extends State<DetailScreen> {
     final y = d['year']; final m = d['month']; final day = d['day'];
     if (y == null) return '';
     if (m == null) return '$y';
-    final months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     final mStr = (m as int) >= 1 && m <= 12 ? months[m - 1] : '$m';
     if (day == null) return '$mStr $y';
     return '$day $mStr $y';
@@ -718,7 +731,8 @@ class _DetailScreenState extends State<DetailScreen> {
   String _formatLabel(String f) => switch (f) {
     'TV' => 'TV', 'MOVIE' => 'Movie', 'OVA' => 'OVA',
     'ONA' => 'ONA', 'SPECIAL' => 'Special', 'MUSIC' => 'Music',
-    'TV_SHORT' => 'TV Short', _ => f,
+    'TV_SHORT' => 'TV Short', 'MANGA' => 'Manga', 'NOVEL' => 'Light Novel',
+    'ONE_SHOT' => 'One Shot', _ => f,
   };
 
   String _statusLabel(String s) {
@@ -770,9 +784,15 @@ class _DetailScreenState extends State<DetailScreen> {
     final totalEps = (_data!['episodes'] ?? _data!['chapters']) as int?;
     final isManga = (_data!['type'] as String?) == 'MANGA';
 
+    final lang = context.read<SettingsProvider>().language;
+    final entryId = _data!['mediaListEntry']?['id'] as int?;
+    final progressUnit = isManga ? 'ch' : 'ep';
+
     String selectedStatus = initialStatus;
     int progress = initialProgress;
     double score = initialScore;
+    bool saving = false;
+    String? errorText;
     final initialNotes = (_data!['mediaListEntry']?['notes'] as String?) ?? '';
     final notesController = TextEditingController(text: initialNotes);
 
@@ -818,7 +838,7 @@ class _DetailScreenState extends State<DetailScreen> {
               Row(children: [
                 _counterBtn(ctx, Icons.remove, () { if (progress > 0) setModal(() => progress--); }),
                 const SizedBox(width: 12),
-                Expanded(child: Text(totalEps != null ? '$progress / $totalEps ep' : '$progress ep',
+                Expanded(child: Text(totalEps != null ? '$progress / $totalEps $progressUnit' : '$progress $progressUnit',
                     textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
                 const SizedBox(width: 12),
                 _counterBtn(ctx, Icons.add, () { if (totalEps == null || progress < totalEps) setModal(() => progress++); }),
@@ -876,38 +896,84 @@ class _DetailScreenState extends State<DetailScreen> {
                 ),
               ),
               const SizedBox(height: 24),
+              if (errorText != null) ...[
+                Text(errorText ?? '', style: const TextStyle(color: Colors.red, fontSize: 12)),
+                const SizedBox(height: 8),
+              ],
               Row(children: [
                 Expanded(child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Theme.of(context).colorScheme.primary,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  onPressed: () async {
+                  onPressed: saving ? null : () async {
                     anime.status = selectedStatus;
                     anime.episodesWatched = progress;
                     anime.userScore = score.round();
-                    provider.addAnime(anime);
-                    final auth = context.read<AuthService>();
-                    if (auth.isLoggedIn) {
-                      await _service.saveListEntry(
-                          mediaId: anime.id, status: _toAniListStatus(selectedStatus),
-                          progress: progress, score: score, token: auth.token!,
-                          notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
-                          customLists: selectedCustomLists.toList());
-                      _load();
-                      listRefreshNotifier.value++;
+                    final token = context.read<AuthService>().token;
+                    final messenger = ScaffoldMessenger.of(context);
+                    if (token == null) {
+                      provider.addAnime(anime);
+                      Navigator.pop(sheetContext);
+                      return;
                     }
-                    if (!context.mounted) return;
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${anime.title} saved!')));
+                    setModal(() { saving = true; errorText = null; });
+                    final notes = notesController.text.trim();
+                    final customListsChanged = selectedCustomLists.length != initialCustom.length ||
+                        !selectedCustomLists.containsAll(initialCustom);
+                    // Unchanged fields are left out so AniList keeps them exactly as they are.
+                    final ok = await _service.saveListEntry(
+                      mediaId: anime.id,
+                      status: _toAniListStatus(selectedStatus),
+                      progress: progress,
+                      scoreRaw: score != initialScore ? toRawScore(score) : null,
+                      notes: notes != initialNotes.trim() ? notes : null,
+                      customLists: customListsChanged ? selectedCustomLists.toList() : null,
+                      token: token,
+                    );
+                    if (!ok) {
+                      if (sheetContext.mounted) {
+                        setModal(() { saving = false; errorText = tr('save_failed', lang); });
+                      }
+                      return;
+                    }
+                    provider.addAnime(anime);
+                    _load();
+                    listRefreshNotifier.value++;
+                    if (sheetContext.mounted) Navigator.pop(sheetContext);
+                    messenger.showSnackBar(SnackBar(content: Text('${anime.title} saved!')));
                   },
-                  child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: saving
+                      ? const SizedBox(width: 18, height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 )),
-                if (provider.isInList(widget.animeId)) ...[
+                if (entryId != null || provider.isInList(widget.animeId)) ...[
                   const SizedBox(width: 12),
                   IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () { provider.removeAnime(widget.animeId); Navigator.pop(context); },
+                    tooltip: tr('remove_from_list', lang),
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    onPressed: saving ? null : () async {
+                      final token = context.read<AuthService>().token;
+                      final messenger = ScaffoldMessenger.of(context);
+                      if (!await _confirmRemoval(ctx, lang)) return;
+                      if (entryId != null && token != null) {
+                        setModal(() { saving = true; errorText = null; });
+                        final ok = await _service.deleteListEntry(entryId: entryId, token: token);
+                        if (!ok) {
+                          if (sheetContext.mounted) {
+                            setModal(() { saving = false; errorText = tr('remove_failed', lang); });
+                          }
+                          return;
+                        }
+                        NotificationService().cancelForMedia(widget.animeId);
+                        listRefreshNotifier.value++;
+                      }
+                      provider.removeAnime(widget.animeId);
+                      _load();
+                      if (sheetContext.mounted) Navigator.pop(sheetContext);
+                      messenger.showSnackBar(SnackBar(content: Text(tr('removed_from_list', lang))));
+                    },
                   ),
                 ],
               ]),
@@ -916,6 +982,27 @@ class _DetailScreenState extends State<DetailScreen> {
         ),
       ),
     );
+  }
+
+  Future<bool> _confirmRemoval(BuildContext context, String lang) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(tr('remove_from_list', lang)),
+        content: Text(tr('remove_from_list_confirm', lang)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: Text(tr('cancel', lang)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(tr('remove', lang), style: const TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    return confirmed ?? false;
   }
 
   Widget _counterBtn(BuildContext context, IconData icon, VoidCallback onTap) =>

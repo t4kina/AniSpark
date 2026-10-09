@@ -1,9 +1,16 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import '../utils/refresh_notifier.dart' show authExpiredNotifier, rateLimitActiveNotifier;
 
 class AniListService {
+  AniListService({http.Client? client}) : _client = client ?? _sharedClient;
+
   static const String _baseUrl = 'https://graphql.anilist.co';
+
+  // Shared across instances so connections are kept alive between requests.
+  static final http.Client _sharedClient = http.Client();
+  final http.Client _client;
 
   Future<Map<String, String>> _headers([String? token]) => Future.value({
         'Content-Type': 'application/json',
@@ -19,17 +26,28 @@ class AniListService {
   // Sends a GraphQL request, retrying once after Retry-After seconds on 429.
   Future<http.Response> _post(String body, [String? token]) async {
     final headers = await _headers(token);
-    var response = await http.post(Uri.parse(_baseUrl), headers: headers, body: body);
+    var response = await _client.post(Uri.parse(_baseUrl), headers: headers, body: body);
     if (response.statusCode == 429) {
       _rateLimitCount++;
       if (_rateLimitCount == 1) rateLimitActiveNotifier.value = true;
       final retryAfter = int.tryParse(response.headers['retry-after'] ?? '') ?? 60;
       await Future.delayed(Duration(seconds: retryAfter));
-      response = await http.post(Uri.parse(_baseUrl), headers: headers, body: body);
+      response = await _client.post(Uri.parse(_baseUrl), headers: headers, body: body);
       _rateLimitCount--;
       if (_rateLimitCount == 0) rateLimitActiveNotifier.value = false;
     }
     return response;
+  }
+
+  /// Runs a mutation, turning network errors and malformed responses into
+  /// `false` so callers can revert optimistic UI instead of getting stuck.
+  Future<bool> _mutate(String name, Future<bool> Function() run) async {
+    try {
+      return await run();
+    } on Exception catch (e) {
+      debugPrint('[AniList] $name failed: $e');
+      return false;
+    }
   }
 
   Future<List<dynamic>> _query(String query,
@@ -234,7 +252,7 @@ class AniListService {
         Media(id: \$id) {
           id title { romaji english native }
           coverImage { large extraLarge } bannerImage
-          episodes chapters averageScore popularity favourites trending
+          episodes chapters volumes averageScore popularity favourites trending
           genres status type format source duration synonyms
           description(asHtml: false)
           studios { nodes { name isAnimationStudio } }
@@ -298,7 +316,7 @@ class AniListService {
           lists {
             name status isCustomList
             entries {
-              id mediaId progress score(format: POINT_10) notes customLists
+              id mediaId progress score(format: POINT_10_DECIMAL) notes customLists
               media {
                 id title { romaji english native }
                 coverImage { large }
@@ -336,7 +354,7 @@ class AniListService {
           lists {
             name status isCustomList
             entries {
-              id mediaId progress score(format: POINT_10) notes customLists
+              id mediaId progress score(format: POINT_10_DECIMAL) notes customLists
               media {
                 id title { romaji english native }
                 coverImage { large }
@@ -644,38 +662,59 @@ class AniListService {
     };
   }
 
+  static const _saveEntryArgTypes = {
+    'mediaId': 'Int',
+    'status': 'MediaListStatus',
+    'progress': 'Int',
+    'scoreRaw': 'Int',
+    'notes': 'String',
+    'customLists': '[String]',
+  };
+
+  /// Creates or updates a list entry, sending only the fields that are
+  /// provided so a progress update never overwrites the score, notes or
+  /// custom lists. [scoreRaw] is on a 0–100 scale, which AniList converts to
+  /// the user's own score format.
   Future<bool> saveListEntry({
     required int mediaId,
-    required String status,
-    required int progress,
-    required double score,
     required String token,
+    String? status,
+    int? progress,
+    int? scoreRaw,
     String? notes,
     List<String>? customLists,
   }) async {
-    const mutation = '''
-      mutation(\$mediaId: Int, \$status: MediaListStatus,
-               \$progress: Int, \$score: Float, \$notes: String, \$customLists: [String]) {
-        SaveMediaListEntry(mediaId: \$mediaId, status: \$status,
-                           progress: \$progress, score: \$score, notes: \$notes,
-                           customLists: \$customLists) {
-          id status progress score notes customLists
+    final variables = <String, dynamic>{
+      'mediaId': mediaId,
+      'status': ?status,
+      'progress': ?progress,
+      'scoreRaw': ?scoreRaw,
+      'notes': ?notes,
+      'customLists': ?customLists,
+    };
+    final declarations = variables.keys
+        .map((name) => '\$$name: ${_saveEntryArgTypes[name]}')
+        .join(', ');
+    final arguments = variables.keys.map((name) => '$name: \$$name').join(', ');
+    final mutation = '''
+      mutation($declarations) {
+        SaveMediaListEntry($arguments) {
+          id status progress
         }
       }
     ''';
-    final response = await _post(jsonEncode({
-      'query': mutation,
-      'variables': {
-        'mediaId': mediaId, 'status': status, 'progress': progress,
-        'score': score, 'notes': notes, 'customLists': customLists,
-      },
-    }), token);
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['data']?['SaveMediaListEntry'] != null;
-    }
-    _handle401(response.statusCode);
-    return false;
+    return _mutate('SaveMediaListEntry', () async {
+      final response = await _post(
+        jsonEncode({'query': mutation, 'variables': variables}),
+        token,
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['data']?['SaveMediaListEntry'] != null;
+      }
+      _handle401(response.statusCode);
+      return false;
+    });
   }
 
   Future<bool> deleteListEntry({
@@ -689,17 +728,18 @@ class AniListService {
         }
       }
     ''';
-    final response = await _post(jsonEncode({
-      'query': mutation,
-      'variables': {'id': entryId},
-      }),
-    );
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['data']?['DeleteMediaListEntry']?['deleted'] == true;
-    }
-    _handle401(response.statusCode);
-    return false;
+    return _mutate('DeleteMediaListEntry', () async {
+      final response = await _post(
+        jsonEncode({'query': mutation, 'variables': {'id': entryId}}),
+        token,
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['data']?['DeleteMediaListEntry']?['deleted'] == true;
+      }
+      _handle401(response.statusCode);
+      return false;
+    });
   }
 
   /// Returns a map of "YYYY-MM-DD" → activity count for the past year.
@@ -788,19 +828,25 @@ class AniListService {
     return true;
   }
 
+  /// Toggles an anime or manga favourite. Returns whether AniList accepted it.
   Future<bool> toggleFavourite({
-    required int animeId,
+    required int mediaId,
     required String token,
+    bool isManga = false,
   }) async {
-    const mutation = '''
-      mutation(\$animeId: Int) {
-        ToggleFavourite(animeId: \$animeId) {
-          anime { nodes { id } }
+    final idArgument = isManga ? 'mangaId' : 'animeId';
+    final connection = isManga ? 'manga' : 'anime';
+    final mutation = '''
+      mutation(\$id: Int) {
+        ToggleFavourite($idArgument: \$id) {
+          $connection { nodes { id } }
         }
       }
     ''';
-    final response = await _post(jsonEncode({'query': mutation, 'variables': {'animeId': animeId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
-    return true;
+    return _mutate('ToggleFavourite', () async {
+      final response = await _post(jsonEncode({'query': mutation, 'variables': {'id': mediaId}}), token);
+      if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
+      return jsonDecode(response.body)['data']?['ToggleFavourite'] != null;
+    });
   }
 }
