@@ -393,6 +393,8 @@ class _MediaListState extends State<_MediaList>
         : media['chapters'] as int?;
     final newProgress = progress + delta;
     if (newProgress < 0 || (total != null && newProgress > total)) return;
+    // An Undo for an earlier change must not stay tappable while this one saves.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
     HapticFeedback.selectionClick();
 
     // For the last episode, show the completion dialog BEFORE saving.

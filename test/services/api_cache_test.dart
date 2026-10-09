@@ -162,6 +162,34 @@ void main() {
       ]);
     });
 
+    test('a fetch that finishes after clear() is not written back', () async {
+      await cache.load<List<String>>(
+        key: 'k',
+        fetch: () async {
+          await cache.clear();
+          return ['late'];
+        },
+        decode: decodeStrings,
+        onData: (value, {required isFresh}) {},
+      );
+
+      expect(await cache.read('k'), isNull);
+    });
+
+    test('any decode failure is treated as a miss', () async {
+      await cache.write('k', ['cached']);
+      final emitted = <String>[];
+
+      await cache.load<String>(
+        key: 'k',
+        fetch: () async => 'fresh',
+        decode: (_) => throw StateError('unexpected shape'),
+        onData: (value, {required isFresh}) => emitted.add(value),
+      );
+
+      expect(emitted, ['fresh']);
+    });
+
     test('a cached value with an unexpected shape is treated as a miss', () async {
       await cache.write('k', {'not': 'a list'});
       final emitted = <(String, bool)>[];

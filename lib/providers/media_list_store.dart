@@ -16,19 +16,30 @@ const customListPrefix = 'custom:';
 /// instantly, refreshes them from AniList, and applies edits locally from
 /// the mutation response instead of re-downloading the whole collection.
 class MediaListStore extends ChangeNotifier {
-  MediaListStore({required AniListService service, required ApiCache cache})
-      : _service = service,
-        _cache = cache;
+  MediaListStore({
+    required AniListService service,
+    required ApiCache cache,
+    Duration persistDelay = const Duration(milliseconds: 800),
+  })  : _service = service,
+        _cache = cache,
+        _persistDelay = persistDelay;
 
   final AniListService _service;
   final ApiCache _cache;
+  // Edits are written to disk after this quiet period, so a burst of swipes
+  // encodes the whole list once instead of once per swipe.
+  final Duration _persistDelay;
 
   final Map<String, MediaLists> _lists = {};
   final Map<String, Object> _errors = {};
   final Set<String> _loading = {};
   final Set<String> _reloadRequested = {};
   final Set<int> _saving = {};
+  final Map<String, Timer> _persistTimers = {};
   int? _userId;
+  // Bumped by reset() so work started for a previous session (e.g. a slow
+  // load from before an account switch) can't touch the current state.
+  int _generation = 0;
 
   MediaLists? listsOf(String type) => _lists[type];
   Object? errorOf(String type) => _errors[type];
@@ -53,6 +64,7 @@ class MediaListStore extends ChangeNotifier {
       _reloadRequested.add(type);
       return false;
     }
+    final generation = _generation;
     _loading.add(type);
     _errors.remove(type);
     notifyListeners();
@@ -65,7 +77,10 @@ class MediaListStore extends ChangeNotifier {
         decode: _decodeLists,
         force: force,
         onData: (lists, {required isFresh}) {
-          if (_userId != userId) return;
+          if (generation != _generation) return;
+          // Cached data only fills an empty screen; it never replaces lists
+          // that are already in memory (and possibly edited since).
+          if (!isFresh && _lists[type] != null) return;
           _lists[type] = lists;
           gotFresh = gotFresh || isFresh;
           notifyListeners();
@@ -73,13 +88,15 @@ class MediaListStore extends ChangeNotifier {
       );
     } on Exception catch (e) {
       debugPrint('[MediaListStore] Loading $type failed: $e');
-      if (_userId == userId) _errors[type] = e;
+      if (generation == _generation) _errors[type] = e;
     } finally {
-      _loading.remove(type);
-      notifyListeners();
+      if (generation == _generation) {
+        _loading.remove(type);
+        notifyListeners();
+      }
     }
 
-    if (_reloadRequested.remove(type) && _userId == userId) {
+    if (generation == _generation && _reloadRequested.remove(type)) {
       final reloaded = await load(type, userId: userId, token: token, force: true);
       return gotFresh || reloaded;
     }
@@ -164,6 +181,11 @@ class MediaListStore extends ChangeNotifier {
 
   /// Forgets everything, e.g. after logout.
   void reset() {
+    _generation++;
+    for (final timer in _persistTimers.values) {
+      timer.cancel();
+    }
+    _persistTimers.clear();
     _lists.clear();
     _errors.clear();
     _loading.clear();
@@ -224,12 +246,24 @@ class MediaListStore extends ChangeNotifier {
   }
 
   void _persist(String type) {
-    final userId = _userId;
-    final lists = _lists[type];
-    if (userId == null || lists == null) return;
-    unawaited(_cache.write(_cacheKey(userId, type), lists).onError<Exception>(
-          (e, _) => debugPrint('[MediaListStore] Caching $type failed: $e'),
-        ));
+    _persistTimers[type]?.cancel();
+    _persistTimers[type] = Timer(_persistDelay, () {
+      _persistTimers.remove(type);
+      final userId = _userId;
+      final lists = _lists[type];
+      if (userId == null || lists == null) return;
+      unawaited(_cache.write(_cacheKey(userId, type), lists).onError<Exception>(
+            (e, _) => debugPrint('[MediaListStore] Caching $type failed: $e'),
+          ));
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final timer in _persistTimers.values) {
+      timer.cancel();
+    }
+    super.dispose();
   }
 
   Future<MediaLists> _fetch(String type, int userId, String token) async {

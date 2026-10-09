@@ -33,6 +33,9 @@ class ApiCache {
 
   final CacheStore _store;
   final DateTime Function() _now;
+  // Bumped by clear() so responses that were in flight during a logout are
+  // not written back to disk afterwards.
+  int _generation = 0;
 
   static String userKey(int userId, String name) => 'u$userId:$name';
 
@@ -66,7 +69,10 @@ class ApiCache {
 
   Future<void> remove(String key) => _store.delete(_storeKey(key));
 
-  Future<void> clear() => _store.clear();
+  Future<void> clear() {
+    _generation++;
+    return _store.clear();
+  }
 
   /// Emits the cached value (if any) through [onData], then fetches a fresh
   /// one unless the cached copy is younger than [maxAge]. Fresh values that
@@ -82,6 +88,7 @@ class ApiCache {
     bool force = false,
     bool Function(T value)? isValid,
   }) async {
+    final generation = _generation;
     if (!force) {
       final cached = await read(key);
       final decoded = cached == null ? null : _tryDecode(cached.value, decode);
@@ -94,14 +101,15 @@ class ApiCache {
     final fresh = await fetch();
     if (isValid != null && !isValid(fresh)) return;
     onData(fresh, isFresh: true);
-    await write(key, fresh);
+    if (generation == _generation) await write(key, fresh);
   }
 
   (T,)? _tryDecode<T>(Object? json, T Function(Object? json) decode) {
     try {
       return (decode(json),);
-    } on TypeError {
-      // Saved before a change in the data's shape: treat it as a cache miss.
+    } on Object {
+      // Persisted data that doesn't decode (e.g. saved before a change in
+      // its shape) is treated as a cache miss rather than breaking the screen.
       return null;
     }
   }

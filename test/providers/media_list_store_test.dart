@@ -1,9 +1,13 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:anispark/providers/media_list_store.dart';
 import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/utils/refresh_notifier.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import '../helpers/memory_cache_store.dart';
 import '../helpers/mock_anilist.dart';
@@ -43,6 +47,16 @@ Map<String, dynamic> _saved(int mediaId, {required String status, required int p
       },
     };
 
+class _CountingCacheStore extends MemoryCacheStore {
+  int writes = 0;
+
+  @override
+  Future<void> write(String key, String value, DateTime at) {
+    writes++;
+    return super.write(key, value, at);
+  }
+}
+
 int _progressOf(MediaListStore store, String listKey, int mediaId) =>
     store.listsOf('ANIME')![listKey]!.firstWhere((e) => e['mediaId'] == mediaId)['progress'] as int;
 
@@ -51,9 +65,10 @@ void main() {
   late ApiCache cache;
   late http.Response Function(RecordedRequest request) respond;
 
-  MediaListStore buildStore() => MediaListStore(
+  MediaListStore buildStore({Duration persistDelay = Duration.zero}) => MediaListStore(
         service: AniListService(client: mockAniList(log, (r) => respond(r))),
         cache: cache,
+        persistDelay: persistDelay,
       );
 
   setUp(() {
@@ -116,6 +131,51 @@ void main() {
       await store.load('ANIME', userId: 99, token: _token);
 
       expect(store.listsOf('ANIME'), isNull);
+    });
+
+    test('a late load for a previous account does not disturb the current one', () async {
+      final gates = {7: Completer<void>(), 99: Completer<void>()};
+      final store = MediaListStore(
+        service: AniListService(
+          client: MockClient((request) async {
+            final variables = (jsonDecode(request.body) as Map)['variables'] as Map;
+            final userId = variables['userId'] as int;
+            await gates[userId]!.future;
+            return jsonResponse(_collection([
+              _list('CURRENT', [_entry(userId)]),
+            ]));
+          }),
+        ),
+        cache: cache,
+        persistDelay: Duration.zero,
+      );
+
+      final first = store.load('ANIME', userId: 7, token: _token);
+      await pumpEventQueue();
+      final second = store.load('ANIME', userId: 99, token: _token);
+      await pumpEventQueue();
+      gates[7]!.complete();
+      await first;
+
+      expect(store.isLoading('ANIME'), isTrue);
+      expect(store.listsOf('ANIME'), isNull);
+
+      gates[99]!.complete();
+      await second;
+      expect(store.listsOf('ANIME')!['CURRENT']!.single['mediaId'], 99);
+    });
+
+    test('cached data never replaces lists already in memory', () async {
+      final store = buildStore();
+      await store.load('ANIME', userId: _userId, token: _token);
+      await cache.write(ApiCache.userKey(_userId, 'list:ANIME'), {
+        'CURRENT': [_entry(1, progress: 1)],
+      });
+      respond = (_) => throw http.ClientException('offline');
+
+      await store.load('ANIME', userId: _userId, token: _token);
+
+      expect(_progressOf(store, 'CURRENT', 1), 3);
     });
 
     test('a load requested while one is running runs again afterwards', () async {
@@ -200,6 +260,24 @@ void main() {
       final current = (cached!.value as Map)['CURRENT'] as List;
       expect((current.single as Map)['progress'], 4);
     });
+  });
+
+  test('rapid edits are written to the cache once', () async {
+    final counting = _CountingCacheStore();
+    cache = ApiCache(counting);
+    final store = buildStore(persistDelay: const Duration(milliseconds: 20));
+    await store.load('ANIME', userId: _userId, token: _token);
+    final writesAfterLoad = counting.writes;
+
+    respond = (_) => jsonResponse(_saved(1, status: 'CURRENT', progress: 4));
+    await store.setProgress('ANIME', 1, 4, token: _token);
+    respond = (_) => jsonResponse(_saved(1, status: 'CURRENT', progress: 5));
+    await store.setProgress('ANIME', 1, 5, token: _token);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+
+    expect(counting.writes - writesAfterLoad, 1);
+    final cached = await cache.read(ApiCache.userKey(_userId, 'list:ANIME'));
+    expect((((cached!.value as Map)['CURRENT'] as List).single as Map)['progress'], 5);
   });
 
   test('removeEntry deletes every copy of an entry', () async {

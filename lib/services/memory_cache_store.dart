@@ -1,6 +1,7 @@
-import 'package:anispark/services/api_cache.dart';
+import 'api_cache.dart';
 
-/// In-memory [CacheStore] for tests.
+/// In-memory [CacheStore]: used in tests, and as a fallback when the disk
+/// cache can't be opened so the app still starts.
 class MemoryCacheStore implements CacheStore {
   final Map<String, String> values = {};
   final Map<String, DateTime> _writtenAt = {};

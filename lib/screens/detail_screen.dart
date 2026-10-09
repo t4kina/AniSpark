@@ -70,8 +70,9 @@ class _DetailScreenState extends State<DetailScreen> {
       );
     } on Exception catch (e) {
       debugPrint('[DetailScreen] Loading ${widget.animeId} failed: $e');
+    } finally {
+      if (mounted && _loading) setState(() => _loading = false);
     }
-    if (mounted && _loading) setState(() => _loading = false);
   }
 
   /// Custom list names are only needed by the edit sheet, so they load in

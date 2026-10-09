@@ -21,7 +21,7 @@ void main() async {
 
   await Hive.initFlutter();
   unawaited(_deleteLegacyListBox());
-  final apiCache = ApiCache(await HiveCacheStore.open());
+  final apiCache = ApiCache(await HiveCacheStore.openOrFallback());
   unawaited(apiCache.prune(maxAge: const Duration(days: 14), maxEntries: 300));
 
   final authService = AuthService();
@@ -62,7 +62,8 @@ void main() async {
 Future<void> _deleteLegacyListBox() async {
   try {
     await Hive.deleteBoxFromDisk('myAnimeList');
-  } on Exception catch (e) {
+  } on Object catch (e) {
+    // Best-effort cleanup (Hive errors are Errors, not Exceptions).
     debugPrint('[Startup] Could not delete legacy list box: $e');
   }
 }
