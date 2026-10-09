@@ -65,7 +65,7 @@ class AniListService {
     );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return data['data']['Page']['media'] ?? [];
+      return data['data']?['Page']?['media'] ?? [];
     }
     _handle401(response.statusCode);
     return [];
@@ -309,7 +309,7 @@ class AniListService {
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'id': id}}), token);
     if (response.statusCode == 200) {
-      return jsonDecode(response.body)['data']['Media'];
+      return jsonDecode(response.body)['data']?['Media'];
     }
     _handle401(response.statusCode);
     return null;
@@ -632,8 +632,9 @@ class AniListService {
     return jsonDecode(response.body)['data']?['Page']?['activities'] as List? ?? [];
   }
 
-  /// Follows or unfollows a user. Returns whether the user is now being followed.
-  Future<bool> toggleFollow(int userId, String token) async {
+  /// Follows or unfollows a user. Returns whether the user is now being
+  /// followed, or null if the toggle failed.
+  Future<bool?> toggleFollow(int userId, String token) async {
     const mutation = '''
       mutation(\$userId: Int!) {
         ToggleFollow(userId: \$userId) {
@@ -641,10 +642,12 @@ class AniListService {
         }
       }
     ''';
-    final response = await _post(jsonEncode({'query': mutation, 'variables': {'userId': userId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
-    final data = jsonDecode(response.body)['data']?['ToggleFollow'];
-    return data?['isFollowing'] == true;
+    return _mutate<bool?>('ToggleFollow', null, () async {
+      final response = await _post(jsonEncode({'query': mutation, 'variables': {'userId': userId}}), token);
+      if (response.statusCode != 200) { _handle401(response.statusCode); return null; }
+      final isFollowing = jsonDecode(response.body)['data']?['ToggleFollow']?['isFollowing'];
+      return isFollowing is bool ? isFollowing : null;
+    });
   }
 
   static const _saveEntryArgTypes = {
@@ -809,9 +812,11 @@ class AniListService {
         }
       }
     ''';
-    final response = await _post(jsonEncode({'query': mutation, 'variables': {'characterId': characterId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
-    return true;
+    return _mutate('ToggleFavourite', false, () async {
+      final response = await _post(jsonEncode({'query': mutation, 'variables': {'characterId': characterId}}), token);
+      if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
+      return jsonDecode(response.body)['data']?['ToggleFavourite'] != null;
+    });
   }
 
   /// Toggles an anime or manga favourite. Returns whether AniList accepted it.

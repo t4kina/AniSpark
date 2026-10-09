@@ -14,7 +14,7 @@ class AnimeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final id = animeData['id'];
+    final id = animeData['id'] as int?;
     final title = animeData['title']['english'] ??
         animeData['title']['romaji'] ??
         'Unknown';
@@ -22,12 +22,14 @@ class AnimeCard extends StatelessWidget {
     final score = animeData['averageScore'];
 
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => DetailScreen(animeId: id),
-        ),
-      ),
+      onTap: id == null
+          ? null
+          : () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DetailScreen(animeId: id),
+                ),
+              ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
