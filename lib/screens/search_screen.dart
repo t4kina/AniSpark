@@ -1,8 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
+import '../utils/translations.dart' show tr;
 import 'detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
@@ -20,6 +23,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   List<dynamic> _results = [];
   bool _loading = false;
+  bool _hasError = false;
   bool _searched = false;
   bool _focused = false;
 
@@ -94,6 +98,8 @@ class _SearchScreenState extends State<SearchScreen> {
       setState(() {
         _results = [];
         _searched = false;
+        _loading = false;
+        _hasError = false;
       });
       return;
     }
@@ -107,22 +113,40 @@ class _SearchScreenState extends State<SearchScreen> {
       setState(() {
         _results = _cache[key]!;
         _searched = true;
+        _loading = false;
+        _hasError = false;
       });
       return;
     }
-    setState(() => _loading = true);
-    final genres = _selectedGenres.isEmpty ? null : _selectedGenres.toList();
-    final results = _contentType == 'ANIME'
-        ? await _service.searchAnime(query, genres: genres, sort: _sort)
-        : await _service.searchManga(query, genres: genres, sort: _sort);
-    if (!mounted) return;
-    _cache[key] = results;
-    _saveSearch(query);
     setState(() {
-      _results = results;
-      _loading = false;
-      _searched = true;
+      _loading = true;
+      _hasError = false;
     });
+    final genres = _selectedGenres.isEmpty ? null : _selectedGenres.toList();
+    try {
+      final results = _contentType == 'ANIME'
+          ? await _service.searchAnime(query, genres: genres, sort: _sort)
+          : await _service.searchManga(query, genres: genres, sort: _sort);
+      if (!mounted) return;
+      // The service returns [] on HTTP errors; don't remember that for the
+      // whole session.
+      if (results.isNotEmpty) _cache[key] = results;
+      _saveSearch(query);
+      // A newer query/filter replaced this one while it was in flight.
+      if (key != _cacheKey) return;
+      setState(() {
+        _results = results;
+        _loading = false;
+        _searched = true;
+      });
+    } on Exception catch (e) {
+      debugPrint('[SearchScreen] Search for "$query" failed: $e');
+      if (!mounted || key != _cacheKey) return;
+      setState(() {
+        _loading = false;
+        _hasError = true;
+      });
+    }
   }
 
   void _onContentTypeChanged(String type) {
@@ -198,6 +222,8 @@ class _SearchScreenState extends State<SearchScreen> {
                         setState(() {
                           _results = [];
                           _searched = false;
+                          _loading = false;
+                          _hasError = false;
                         });
                       },
                     )
@@ -217,6 +243,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   _results = [];
                   _searched = false;
                   _focused = false;
+                  _loading = false;
+                  _hasError = false;
                 });
               },
               child: const Text('Cancel'),
@@ -303,15 +331,38 @@ class _SearchScreenState extends State<SearchScreen> {
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : !_searched
-                    ? _buildEmptyState()
-                    : _results.isEmpty
-                        ? const Center(child: Text('No results found'))
-                        : ListView.builder(
-                            padding: const EdgeInsets.only(top: 8, bottom: 16),
-                            itemCount: _results.length,
-                            itemBuilder: (_, i) => _ResultCard(data: _results[i]),
-                          ),
+                : _hasError
+                    ? _buildError()
+                    : !_searched
+                        ? _buildEmptyState()
+                        : _results.isEmpty
+                            ? const Center(child: Text('No results found'))
+                            : ListView.builder(
+                                padding: const EdgeInsets.only(top: 8, bottom: 16),
+                                itemCount: _results.length,
+                                itemBuilder: (_, i) => _ResultCard(data: _results[i]),
+                              ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    final lang = context.watch<SettingsProvider>().language;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text(tr('load_error', lang),
+              style: const TextStyle(color: Colors.grey)),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: () => _search(_controller.text.trim()),
+            icon: const Icon(Icons.refresh),
+            label: Text(tr('retry', lang)),
           ),
         ],
       ),
@@ -432,10 +483,12 @@ class _ResultCard extends StatelessWidget {
     ];
 
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => DetailScreen(animeId: id ?? 0)),
-      ),
+      onTap: id == null
+          ? null
+          : () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)),
+              ),
       child: Container(
         height: 140,
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),

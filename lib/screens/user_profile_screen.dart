@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
+import '../services/api_cache.dart';
 import '../services/auth_service.dart';
+import '../utils/translations.dart' show tr;
 import '../widgets/overlay_button.dart';
 import 'detail_screen.dart';
 import 'character_screen.dart';
@@ -30,6 +33,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Map<String, dynamic>? _profile;
   List<dynamic> _recentActivity = [];
   bool _loading = true;
+  // ToggleFollow flips whatever AniList has, so the follow button waits for a
+  // fresh profile instead of trusting a possibly stale cached isFollowing.
+  bool _profileIsFresh = false;
   bool _isFollowing = false;
   bool _isFollower = false;
   bool _togglingFollow = false;
@@ -41,30 +47,114 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  /// Cache key for data that depends on who is looking (isFollowing etc.).
+  String _viewerKey(String name) {
+    final viewerId = context.read<AuthService>().user?['id'] as int?;
+    final key = '$name:${widget.userId}';
+    return viewerId != null ? ApiCache.userKey(viewerId, key) : 'anon:$key';
+  }
+
   Future<void> _load() async {
     final auth = context.read<AuthService>();
     final token = auth.isLoggedIn ? auth.token : null;
-    final results = await Future.wait([
-      _service.getPublicUserProfile(widget.userId, token: token),
-      _service.getUserRecentActivity(widget.userId, token: token),
-    ]);
-    if (!mounted) return;
-    final data = results[0] as Map<String, dynamic>?;
-    setState(() {
-      _profile = data;
-      _recentActivity = results[1] as List<dynamic>;
-      _isFollowing = data?['isFollowing'] == true;
-      _isFollower = data?['isFollower'] == true;
-      _loading = false;
-    });
+    final cache = context.read<ApiCache>();
+    final profileKey = _viewerKey('profile');
+    final activityKey = _viewerKey('activity');
+    try {
+      await Future.wait([
+        _loadProfile(cache, profileKey, token),
+        _loadActivity(cache, activityKey, token),
+      ]);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadProfile(ApiCache cache, String key, String? token) async {
+    try {
+      await cache.load<Map<String, dynamic>?>(
+        key: key,
+        fetch: () => _service.getPublicUserProfile(widget.userId, token: token),
+        decode: (json) => (json as Map).cast<String, dynamic>(),
+        onData: (data, {required isFresh}) {
+          if (!mounted) return;
+          setState(() {
+            _profile = data;
+            _profileIsFresh = isFresh;
+            _isFollowing = data?['isFollowing'] == true;
+            _isFollower = data?['isFollower'] == true;
+            _loading = false;
+          });
+        },
+        isValid: (data) => data != null,
+      );
+    } on Exception catch (e) {
+      debugPrint('[UserProfileScreen] Loading profile ${widget.userId} failed: $e');
+    }
+  }
+
+  Future<void> _loadActivity(ApiCache cache, String key, String? token) async {
+    try {
+      await cache.load<List<dynamic>>(
+        key: key,
+        fetch: () => _service.getUserRecentActivity(widget.userId, token: token),
+        decode: (json) => json as List<dynamic>,
+        onData: (activity, {required isFresh}) {
+          if (mounted) setState(() => _recentActivity = activity);
+        },
+      );
+    } on Exception catch (e) {
+      debugPrint('[UserProfileScreen] Loading activity of ${widget.userId} failed: $e');
+    }
+  }
+
+  void _retry() {
+    setState(() => _loading = true);
+    _load();
   }
 
   Future<void> _toggleFollow() async {
     final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn || _togglingFollow) return;
+    final token = auth.token;
+    if (!auth.isLoggedIn || token == null || _togglingFollow) return;
+    final cache = context.read<ApiCache>();
+    final profileKey = _viewerKey('profile');
+    final lang = context.read<SettingsProvider>().language;
+    final messenger = ScaffoldMessenger.of(context);
+    final wasFollowing = _isFollowing;
     setState(() => _togglingFollow = true);
-    final nowFollowing = await _service.toggleFollow(widget.userId, auth.token!);
-    if (mounted) setState(() { _isFollowing = nowFollowing; _togglingFollow = false; });
+    bool? result;
+    try {
+      result = await _service.toggleFollow(widget.userId, token);
+    } on Exception catch (e) {
+      debugPrint('[UserProfileScreen] Toggling follow failed: $e');
+    }
+    // toggleFollow also reports an HTTP error as "not following", so an
+    // unchanged state means the toggle didn't go through.
+    if (result == null || result == wasFollowing) {
+      if (!mounted) return;
+      setState(() => _togglingFollow = false);
+      messenger.showSnackBar(SnackBar(content: Text(tr('save_failed', lang))));
+      return;
+    }
+    final nowFollowing = result;
+    final profile = _profile;
+    final updated =
+        profile == null ? null : {...profile, 'isFollowing': nowFollowing};
+    if (mounted) {
+      setState(() {
+        if (updated != null) _profile = updated;
+        _isFollowing = nowFollowing;
+        _togglingFollow = false;
+      });
+    }
+    if (updated == null) return;
+    try {
+      // So the next visit doesn't flash the old follow state.
+      await cache.write(profileKey, updated);
+    } on Exception catch (e) {
+      debugPrint('[UserProfileScreen] Caching the follow state failed: $e');
+    }
   }
 
   Future<void> _openAniListProfile() async {
@@ -89,7 +179,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               onPressed: () => Navigator.pop(context),
             ),
           ),
-          if (!_loading && auth.isLoggedIn && !isOwnProfile)
+          if (!_loading && _profileIsFresh && auth.isLoggedIn && !isOwnProfile)
             Positioned(
               top: MediaQuery.of(context).padding.top + 6,
               right: 12,
@@ -210,9 +300,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   Widget _buildContent() {
     final p = _profile;
-    if (p == null) {
-      return const Center(child: Text('Could not load profile.'));
-    }
+    if (p == null) return _LoadErrorView(onRetry: _retry);
 
     final banner = p['bannerImage'] as String?;
     final avatar = p['avatar']?['large'] as String? ?? widget.avatarUrl;
@@ -873,6 +961,7 @@ class _UserListSheetState extends State<_UserListSheet>
   late final TabController _tabs;
   Map<String, List<dynamic>>? _lists;
   bool _loading = true;
+  bool _hasError = false;
 
   static const _statuses = ['CURRENT', 'COMPLETED', 'DROPPED', 'PAUSED', 'PLANNING'];
   static const _labels = {
@@ -897,8 +986,18 @@ class _UserListSheetState extends State<_UserListSheet>
   }
 
   Future<void> _load() async {
-    final data = await widget.service.getPublicUserList(widget.userId, widget.type);
-    if (mounted) setState(() { _lists = data; _loading = false; });
+    try {
+      final data = await widget.service.getPublicUserList(widget.userId, widget.type);
+      if (mounted) setState(() { _lists = data; _loading = false; });
+    } on Exception catch (e) {
+      debugPrint('[UserProfileScreen] Loading ${widget.type} list of ${widget.userId} failed: $e');
+      if (mounted) setState(() { _loading = false; _hasError = true; });
+    }
+  }
+
+  void _retry() {
+    setState(() { _loading = true; _hasError = false; });
+    _load();
   }
 
   @override
@@ -993,6 +1092,8 @@ class _UserListSheetState extends State<_UserListSheet>
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
+                  : _hasError
+                  ? _LoadErrorView(onRetry: _retry)
                   : TabBarView(
                       controller: _tabs,
                       children: _statuses.map((s) {
@@ -1015,6 +1116,34 @@ class _UserListSheetState extends State<_UserListSheet>
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _LoadErrorView extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _LoadErrorView({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text(tr('load_error', lang),
+              style: const TextStyle(color: Colors.grey)),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: Text(tr('retry', lang)),
+          ),
+        ],
       ),
     );
   }

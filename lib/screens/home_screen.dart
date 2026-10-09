@@ -3,6 +3,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import '../services/anilist_service.dart';
+import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../providers/settings_provider.dart';
 import '../utils/translations.dart' show tr;
@@ -30,6 +31,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
   bool _hasError = false;
 
+  static const _sectionMaxAge = Duration(hours: 1);
+  static const _scheduleMaxAge = Duration(minutes: 30);
+
   @override
   void initState() {
     super.initState();
@@ -37,42 +41,115 @@ class _HomeScreenState extends State<HomeScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadCalendar());
   }
 
-  Future<void> _loadCalendar() async {
-    final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn || auth.token == null) return;
-    final schedule = await _service.getWeeklySchedule(auth.token!);
-    if (mounted) setState(() => _weeklySchedule = schedule);
+  Future<void> _refresh() async {
+    await Future.wait([_load(force: true), _loadCalendar(force: true)]);
   }
 
-  Future<List<dynamic>> _safe(Future<List<dynamic>> f) =>
-      f.catchError((_) => <dynamic>[]);
+  Future<void> _loadCalendar({bool force = false}) async {
+    final auth = context.read<AuthService>();
+    final token = auth.token;
+    if (!auth.isLoggedIn || token == null) return;
+    final userId = auth.user?['id'] as int?;
+    final cache = context.read<ApiCache>();
+    void show(List<dynamic> schedule) {
+      if (mounted) setState(() => _weeklySchedule = schedule);
+    }
 
-  Future<void> _load() async {
-    setState(() { _loading = true; _hasError = false; });
     try {
-      final results = await Future.wait([
-        _safe(_service.getTrending()),
-        _safe(_service.getThisSeason()),
-        _safe(_service.getNextSeason()),
-        _safe(_service.getTopAiring()),
-        _safe(_service.getTrendingManga()),
-        _safe(_service.getTopManga()),
-        _safe(_service.getManhwa()),
+      if (userId == null) {
+        // Account id not fetched yet, so there is no cache namespace for it.
+        show(await _service.getWeeklySchedule(token));
+        return;
+      }
+      await cache.load<List<dynamic>>(
+        key: ApiCache.userKey(userId, 'schedule'),
+        fetch: () => _service.getWeeklySchedule(token),
+        decode: (json) => _upcomingOnly(json as List<dynamic>),
+        onData: (schedule, {required isFresh}) => show(schedule),
+        maxAge: _scheduleMaxAge,
+        force: force,
+      );
+    } on Exception catch (e) {
+      debugPrint('[HomeScreen] Loading the weekly schedule failed: $e');
+    }
+  }
+
+  // A cached schedule can be days old; drop episodes that have already aired.
+  static List<dynamic> _upcomingOnly(List<dynamic> schedule) {
+    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+    return schedule
+        .where((s) => s is Map && ((s['airingAt'] as num?) ?? 0) > now)
+        .toList();
+  }
+
+  bool get _hasAnySection => [
+        _trending, _seasonal, _popular, _topAiring,
+        _trendingManga, _topManga, _manhwa,
+      ].any((items) => items.isNotEmpty);
+
+  /// Shows each section from the cache right away and refreshes it once the
+  /// cached copy is older than [_sectionMaxAge] (or always when [force]).
+  Future<void> _load({bool force = false}) async {
+    setState(() {
+      _hasError = false;
+      _loading = !_hasAnySection;
+    });
+    final cache = context.read<ApiCache>();
+    final season = _currentSeasonLabel.replaceAll(' ', '-');
+    final nextSeason = _nextSeasonLabel.replaceAll(' ', '-');
+
+    Future<void> section(
+      String key,
+      Future<List<dynamic>> Function() fetch,
+      void Function(List<dynamic> items) apply,
+    ) async {
+      try {
+        await cache.load<List<dynamic>>(
+          key: key,
+          fetch: fetch,
+          decode: (json) => json as List<dynamic>,
+          onData: (items, {required isFresh}) {
+            if (!mounted) return;
+            setState(() {
+              apply(items);
+              _loading = false;
+            });
+          },
+          maxAge: _sectionMaxAge,
+          force: force,
+          // The service returns [] on HTTP errors; never let that replace
+          // good cached data.
+          isValid: (items) => items.isNotEmpty,
+        );
+      } on Exception catch (e) {
+        debugPrint('[HomeScreen] Loading $key failed: $e');
+      }
+    }
+
+    try {
+      await Future.wait([
+        section('discover:trending', _service.getTrending,
+            (items) => _trending = items),
+        section('discover:season:$season', _service.getThisSeason,
+            (items) => _seasonal = items),
+        section('discover:nextSeason:$nextSeason', _service.getNextSeason,
+            (items) => _popular = items),
+        section('discover:topAiring', _service.getTopAiring,
+            (items) => _topAiring = items),
+        section('discover:trendingManga', _service.getTrendingManga,
+            (items) => _trendingManga = items),
+        section('discover:topManga', _service.getTopManga,
+            (items) => _topManga = items),
+        section('discover:manhwa', _service.getManhwa,
+            (items) => _manhwa = items),
       ]);
-      final allEmpty = results.every((r) => r.isEmpty);
-      setState(() {
-        _trending = results[0];
-        _seasonal = results[1];
-        _popular = results[2];
-        _topAiring = results[3];
-        _trendingManga = results[4];
-        _topManga = results[5];
-        _manhwa = results[6];
-        _loading = false;
-        _hasError = allEmpty;
-      });
-    } catch (_) {
-      setState(() { _loading = false; _hasError = true; });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          _hasError = !_hasAnySection;
+        });
+      }
     }
   }
 
@@ -131,7 +208,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 : _hasError
                     ? _buildError()
                     : RefreshIndicator(
-                    onRefresh: _load,
+                    onRefresh: _refresh,
                     child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       child: Column(

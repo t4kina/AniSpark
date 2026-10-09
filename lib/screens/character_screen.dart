@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
+import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
+import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../utils/refresh_notifier.dart';
+import '../utils/translations.dart' show tr;
 import '../widgets/overlay_button.dart';
 import 'detail_screen.dart';
 
@@ -27,6 +30,9 @@ class _CharacterScreenState extends State<CharacterScreen> {
   final _service = AniListService();
   Map<String, dynamic>? _data;
   bool _loading = true;
+  // ToggleFavourite flips whatever AniList has, so the button waits for a
+  // fresh copy instead of trusting a possibly stale cached isFavourite.
+  bool _isFresh = false;
   bool _descExpanded = false;
 
   @override
@@ -35,21 +41,69 @@ class _CharacterScreenState extends State<CharacterScreen> {
     _load();
   }
 
-  Future<void> _load() async {
-    final token = context.read<AuthService>().token;
-    final data = await _service.getCharacterDetail(widget.characterId, token);
-    if (mounted) setState(() { _data = data; _loading = false; });
+  Future<void> _load({bool force = false}) async {
+    final auth = context.read<AuthService>();
+    final token = auth.token;
+    final viewerId = auth.user?['id'] as int?;
+    final id = widget.characterId;
+    // The response carries the viewer's own isFavourite.
+    final key = viewerId != null
+        ? ApiCache.userKey(viewerId, 'character:$id')
+        : 'anon:character:$id';
+    final cache = context.read<ApiCache>();
+    try {
+      await cache.load<Map<String, dynamic>?>(
+        key: key,
+        fetch: () => _service.getCharacterDetail(id, token),
+        decode: (json) => (json as Map).cast<String, dynamic>(),
+        onData: (data, {required isFresh}) {
+          if (!mounted) return;
+          setState(() {
+            _data = data;
+            _isFresh = isFresh;
+            _loading = false;
+          });
+        },
+        force: force,
+        isValid: (data) => data != null,
+      );
+    } on Exception catch (e) {
+      debugPrint('[CharacterScreen] Loading character $id failed: $e');
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _retry() {
+    setState(() => _loading = true);
+    _load();
   }
 
   Future<void> _toggleFavourite() async {
     final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn) return;
-    final ok = await _service.toggleCharacterFavourite(
-        characterId: widget.characterId, token: auth.token!);
-    if (ok && mounted) {
-      _load();
-      profileRefreshNotifier.value++;
+    final token = auth.token;
+    if (!auth.isLoggedIn || token == null) return;
+    final lang = context.read<SettingsProvider>().language;
+    final messenger = ScaffoldMessenger.of(context);
+    final wasFav = _data?['isFavourite'] == true;
+    var ok = false;
+    try {
+      ok = await _service.toggleCharacterFavourite(
+          characterId: widget.characterId, token: token);
+    } on Exception catch (e) {
+      debugPrint('[CharacterScreen] Toggling favourite failed: $e');
     }
+    if (!mounted) return;
+    if (!ok) {
+      messenger.showSnackBar(SnackBar(content: Text(tr('save_failed', lang))));
+      return;
+    }
+    final current = _data;
+    if (current != null) {
+      setState(() => _data = {...current, 'isFavourite': !wasFav});
+    }
+    _load(force: true);
+    profileRefreshNotifier.value++;
   }
 
   @override
@@ -73,7 +127,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
                 overlayBtn(
                   icon: isFav ? Icons.favorite : Icons.favorite_border,
                   color: isFav ? Colors.red : Colors.white,
-                  onPressed: _loading ? null : _toggleFavourite,
+                  onPressed: _isFresh ? _toggleFavourite : null,
                 ),
               ],
             ),
@@ -104,7 +158,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
 
   Widget _buildContent() {
     final d = _data;
-    if (d == null) return const Center(child: Text('Could not load character.'));
+    if (d == null) return _buildError();
 
     final image = d['image']?['large'] as String? ?? widget.imageUrl;
     final name = d['name']?['full'] as String? ?? widget.name ?? '';
@@ -298,6 +352,27 @@ class _CharacterScreenState extends State<CharacterScreen> {
 
         const SliverToBoxAdapter(child: SizedBox(height: 40)),
       ],
+    );
+  }
+
+  Widget _buildError() {
+    final lang = context.watch<SettingsProvider>().language;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text(tr('load_error', lang),
+              style: const TextStyle(color: Colors.grey)),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: _retry,
+            icon: const Icon(Icons.refresh),
+            label: Text(tr('retry', lang)),
+          ),
+        ],
+      ),
     );
   }
 
