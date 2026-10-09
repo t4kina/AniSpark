@@ -32,6 +32,8 @@ class AuthService extends ChangeNotifier {
   Future<void> init() async {
     _box = await Hive.openBox('auth');
     _token = _box.get('token');
+    // Show the last known profile right away; fetchUser() refreshes it.
+    if (_token != null) _user = _readCachedUser();
     final rawExtras = _box.get('profileExtras');
     if (rawExtras != null) {
       _profileExtras = Map<String, dynamic>.from(
@@ -57,6 +59,17 @@ class AuthService extends ChangeNotifier {
     if (_token != null) {
       notifyListeners();
       fetchUser();
+    }
+  }
+
+  Map<String, dynamic>? _readCachedUser() {
+    final raw = _box.get('user');
+    if (raw is! String) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } on FormatException {
+      return null;
     }
   }
 
@@ -150,6 +163,7 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> fetchUser() async {
+    final requestToken = _token;
     const query = '''
       query {
         Viewer {
@@ -185,9 +199,11 @@ class AuthService extends ChangeNotifier {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      if (data['data'] != null) {
+      // Ignore a response that arrives after logout or an account switch.
+      if (data['data'] != null && _token != null && _token == requestToken) {
         _user = data['data']['Viewer'];
         notifyListeners();
+        await _box.put('user', jsonEncode(_user));
       }
     }
   }
@@ -199,6 +215,7 @@ class AuthService extends ChangeNotifier {
     _user = null;
     _profileExtras = null;
     await _box.delete('token');
+    await _box.delete('user');
     await _box.delete('profileExtras');
     _loggingOut = false;
     notifyListeners();
