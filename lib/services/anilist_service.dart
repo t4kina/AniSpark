@@ -47,13 +47,13 @@ class AniListService {
   }
 
   /// Runs a mutation, turning network errors and malformed responses into
-  /// `false` so callers can revert optimistic UI instead of getting stuck.
-  Future<bool> _mutate(String name, Future<bool> Function() run) async {
+  /// [failure] so callers can revert optimistic UI instead of getting stuck.
+  Future<T> _mutate<T>(String name, T failure, Future<T> Function() run) async {
     try {
       return await run();
     } on Exception catch (e) {
       debugPrint('[AniList] $name failed: $e');
-      return false;
+      return failure;
     }
   }
 
@@ -659,8 +659,9 @@ class AniListService {
   /// Creates or updates a list entry, sending only the fields that are
   /// provided so a progress update never overwrites the score, notes or
   /// custom lists. [scoreRaw] is on a 0–100 scale, which AniList converts to
-  /// the user's own score format.
-  Future<bool> saveListEntry({
+  /// the user's own score format. Returns the saved entry (`id`, `status`,
+  /// `progress`, 0–10 `score`) or null if AniList rejected the change.
+  Future<Map<String, dynamic>?> saveListEntry({
     required int mediaId,
     required String token,
     String? status,
@@ -684,21 +685,21 @@ class AniListService {
     final mutation = '''
       mutation($declarations) {
         SaveMediaListEntry($arguments) {
-          id status progress
+          id status progress score(format: POINT_10_DECIMAL)
         }
       }
     ''';
-    return _mutate('SaveMediaListEntry', () async {
+    return _mutate<Map<String, dynamic>?>('SaveMediaListEntry', null, () async {
       final response = await _post(
         jsonEncode({'query': mutation, 'variables': variables}),
         token,
       );
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['data']?['SaveMediaListEntry'] != null;
+        final saved = jsonDecode(response.body)['data']?['SaveMediaListEntry'];
+        return saved is Map<String, dynamic> ? saved : null;
       }
       _handle401(response.statusCode);
-      return false;
+      return null;
     });
   }
 
@@ -713,7 +714,7 @@ class AniListService {
         }
       }
     ''';
-    return _mutate('DeleteMediaListEntry', () async {
+    return _mutate('DeleteMediaListEntry', false, () async {
       final response = await _post(
         jsonEncode({'query': mutation, 'variables': {'id': entryId}}),
         token,
@@ -828,7 +829,7 @@ class AniListService {
         }
       }
     ''';
-    return _mutate('ToggleFavourite', () async {
+    return _mutate('ToggleFavourite', false, () async {
       final response = await _post(jsonEncode({'query': mutation, 'variables': {'id': mediaId}}), token);
       if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
       return jsonDecode(response.body)['data']?['ToggleFavourite'] != null;

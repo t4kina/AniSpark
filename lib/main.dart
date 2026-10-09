@@ -2,7 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
+import 'providers/media_list_store.dart';
 import 'providers/settings_provider.dart';
+import 'services/anilist_service.dart';
 import 'services/api_cache.dart';
 import 'services/auth_service.dart';
 import 'services/hive_cache_store.dart';
@@ -27,10 +29,16 @@ void main() async {
 
   await NotificationService().init();
 
+  final mediaListStore = MediaListStore(service: AniListService(), cache: apiCache);
+
   authExpiredNotifier.addListener(() => authService.logout());
   // Cached API data belongs to the signed-in account; drop it on logout.
   authService.addListener(() {
-    if (!authService.isLoggedIn) unawaited(apiCache.clear());
+    if (authService.isLoggedIn) return;
+    unawaited(apiCache.clear());
+    if (mediaListStore.listsOf('ANIME') != null || mediaListStore.listsOf('MANGA') != null) {
+      mediaListStore.reset();
+    }
   });
 
   final settingsProvider = SettingsProvider();
@@ -41,6 +49,7 @@ void main() async {
       providers: [
         Provider.value(value: apiCache),
         ChangeNotifierProvider.value(value: authService),
+        ChangeNotifierProvider.value(value: mediaListStore),
         ChangeNotifierProvider.value(value: settingsProvider),
       ],
       child: const MyAnimeApp(),

@@ -1,9 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../providers/media_list_store.dart';
 import '../services/anilist_service.dart';
+import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../utils/refresh_notifier.dart';
@@ -24,6 +27,7 @@ class _DetailScreenState extends State<DetailScreen> {
   final _service = AniListService();
   Map<String, dynamic>? _data;
   List<String> _customListNames = [];
+  bool _customListsRequested = false;
   bool _loading = true;
   bool _togglingFav = false;
 
@@ -33,17 +37,75 @@ class _DetailScreenState extends State<DetailScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  // The response includes the viewer's list entry and favourite, so the
+  // cache key is per account.
+  String _cacheKey(int? userId) => userId != null
+      ? ApiCache.userKey(userId, 'media:${widget.animeId}')
+      : 'anon:media:${widget.animeId}';
+
+  /// Shows the cached detail instantly (when this media was opened before)
+  /// and refreshes it. [force] skips the cache, e.g. right after an edit.
+  Future<void> _load({bool force = false}) async {
     final auth = context.read<AuthService>();
+    final cache = context.read<ApiCache>();
     final token = auth.isLoggedIn ? auth.token : null;
-    final data = await _service.getAnimeDetail(widget.animeId, token);
-    if (!mounted) return;
-    if (auth.isLoggedIn && auth.user?['id'] != null && token != null) {
-      final type = data?['type'] as String? ?? 'ANIME';
-      _customListNames = await _service.getCustomListNames(
-          auth.user!['id'] as int, type, token);
+    final userId = auth.isLoggedIn ? (auth.user?['id'] as int?) : null;
+    try {
+      await cache.load<Map<String, dynamic>?>(
+        key: _cacheKey(userId),
+        force: force,
+        fetch: () => _service.getAnimeDetail(widget.animeId, token),
+        decode: (json) => json as Map<String, dynamic>?,
+        isValid: (data) => data != null,
+        onData: (data, {required isFresh}) {
+          if (!mounted || data == null) return;
+          setState(() {
+            _data = data;
+            _loading = false;
+          });
+          if (userId != null && token != null) {
+            _loadCustomListNames(userId, data['type'] as String? ?? 'ANIME', token);
+          }
+        },
+      );
+    } on Exception catch (e) {
+      debugPrint('[DetailScreen] Loading ${widget.animeId} failed: $e');
     }
-    if (mounted) setState(() { if (data != null) _data = data; _loading = false; });
+    if (mounted && _loading) setState(() => _loading = false);
+  }
+
+  /// Custom list names are only needed by the edit sheet, so they load in
+  /// the background instead of delaying the page.
+  Future<void> _loadCustomListNames(int userId, String type, String token) async {
+    if (_customListsRequested) return;
+    _customListsRequested = true;
+    try {
+      await context.read<ApiCache>().load<List<String>>(
+        key: ApiCache.userKey(userId, 'customLists:$type'),
+        maxAge: const Duration(hours: 1),
+        fetch: () => _service.getCustomListNames(userId, type, token),
+        decode: (json) => [for (final name in json as List) name as String],
+        onData: (names, {required isFresh}) {
+          if (mounted) setState(() => _customListNames = names);
+        },
+      );
+    } on Exception catch (e) {
+      debugPrint('[DetailScreen] Loading custom lists failed: $e');
+    }
+  }
+
+  /// Refreshes the user's list of this media's type after an edit here.
+  void _refreshList() {
+    final auth = context.read<AuthService>();
+    final userId = auth.user?['id'] as int?;
+    final token = auth.token;
+    if (userId == null || token == null) return;
+    unawaited(context.read<MediaListStore>().load(
+          _data?['type'] as String? ?? 'ANIME',
+          userId: userId,
+          token: token,
+          force: true,
+        ));
   }
 
   Future<void> _toggleFav() async {
@@ -62,7 +124,12 @@ class _DetailScreenState extends State<DetailScreen> {
         _togglingFav = false;
         if (!ok) _data!['isFavourite'] = wasFav; // revert on failure
       });
-      if (ok) profileRefreshNotifier.value++;
+      if (ok) {
+        profileRefreshNotifier.value++;
+        // Keep the cached copy in sync so the next visit doesn't flash the old state.
+        final userId = auth.user?['id'] as int?;
+        unawaited(context.read<ApiCache>().write(_cacheKey(userId), _data));
+      }
     }
   }
 
@@ -103,7 +170,31 @@ class _DetailScreenState extends State<DetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (_data == null) return const Scaffold(body: Center(child: Text('Failed to load')));
+    if (_data == null) {
+      final lang = context.read<SettingsProvider>().language;
+      return Scaffold(
+        appBar: AppBar(),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+              const SizedBox(height: 12),
+              Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () {
+                  setState(() => _loading = true);
+                  _load(force: true);
+                },
+                icon: const Icon(Icons.refresh),
+                label: Text(tr('retry', lang)),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     final settings = context.read<SettingsProvider>();
     final d = _data!;
@@ -907,7 +998,7 @@ class _DetailScreenState extends State<DetailScreen> {
                     final customListsChanged = selectedCustomLists.length != initialCustom.length ||
                         !selectedCustomLists.containsAll(initialCustom);
                     // Unchanged fields are left out so AniList keeps them exactly as they are.
-                    final ok = await _service.saveListEntry(
+                    final saved = await _service.saveListEntry(
                       mediaId: widget.animeId,
                       status: _toAniListStatus(selectedStatus),
                       progress: progress,
@@ -916,14 +1007,15 @@ class _DetailScreenState extends State<DetailScreen> {
                       customLists: customListsChanged ? selectedCustomLists.toList() : null,
                       token: token,
                     );
-                    if (!ok) {
+                    if (saved == null) {
                       if (sheetContext.mounted) {
                         setModal(() { saving = false; errorText = tr('save_failed', lang); });
                       }
                       return;
                     }
-                    _load();
-                    listRefreshNotifier.value++;
+                    if (!mounted) return;
+                    _load(force: true);
+                    _refreshList();
                     if (sheetContext.mounted) Navigator.pop(sheetContext);
                     messenger.showSnackBar(SnackBar(content: Text('$resolvedTitle saved!')));
                   },
@@ -939,6 +1031,8 @@ class _DetailScreenState extends State<DetailScreen> {
                     icon: const Icon(Icons.delete_outline, color: Colors.red),
                     onPressed: saving ? null : () async {
                       final token = context.read<AuthService>().token;
+                      final store = context.read<MediaListStore>();
+                      final type = _data?['type'] as String? ?? 'ANIME';
                       final messenger = ScaffoldMessenger.of(context);
                       if (token == null || !await _confirmRemoval(ctx, lang)) return;
                       setModal(() { saving = true; errorText = null; });
@@ -950,8 +1044,9 @@ class _DetailScreenState extends State<DetailScreen> {
                         return;
                       }
                       NotificationService().cancelForMedia(widget.animeId);
-                      listRefreshNotifier.value++;
-                      _load();
+                      store.removeEntry(type, widget.animeId);
+                      if (!mounted) return;
+                      _load(force: true);
                       if (sheetContext.mounted) Navigator.pop(sheetContext);
                       messenger.showSnackBar(SnackBar(content: Text(tr('removed_from_list', lang))));
                     },

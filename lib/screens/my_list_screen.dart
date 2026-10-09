@@ -1,9 +1,10 @@
 import 'dart:math' show pi;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:confetti/confetti.dart';
-import '../services/anilist_service.dart';
+import '../providers/media_list_store.dart';
 import '../services/auth_service.dart';
 import '../screens/detail_screen.dart';
 import '../main.dart';
@@ -279,14 +280,7 @@ class _MediaListState extends State<_MediaList>
   @override
   bool get wantKeepAlive => true;
 
-  final _service = AniListService();
-  Map<String, List<Map<String, dynamic>>> _lists = {};
-  bool _loading = true;
-  String? _error;
   final Set<String> _collapsedSections = {};
-  // Media ids with a progress save in flight; further swipes are ignored
-  // until it finishes so quick swipes can't send stale values.
-  final Set<int> _savingProgress = {};
 
   final _statusOrder = [
     'CURRENT',
@@ -315,173 +309,134 @@ class _MediaListState extends State<_MediaList>
     'REPEATING': tr('rereading', lang),
   };
 
-  late final AuthService _auth;
+  AuthService? _auth;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _auth = context.read<AuthService>();
-      _auth.addListener(_onAuthChanged);
+      if (!mounted) return;
+      _auth = context.read<AuthService>()..addListener(_onAuthChanged);
       _load();
     });
-    listRefreshNotifier.addListener(_silentReload);
+    listRefreshNotifier.addListener(_onRefreshRequested);
   }
 
   @override
   void dispose() {
-    _auth.removeListener(_onAuthChanged);
-    listRefreshNotifier.removeListener(_silentReload);
+    _auth?.removeListener(_onAuthChanged);
+    listRefreshNotifier.removeListener(_onRefreshRequested);
     super.dispose();
   }
 
   void _onAuthChanged() {
-    if (_auth.isLoggedIn && _lists.isEmpty) {
-      _load();
-    } else if (!_auth.isLoggedIn) {
-      setState(() {
-        _lists = {};
-        _loading = false;
-        _error = 'Connect your AniList from the Profile tab';
-      });
-    }
+    final auth = _auth;
+    if (auth == null || !mounted || !auth.isLoggedIn) return;
+    if (context.read<MediaListStore>().listsOf(widget.type) == null) _load();
   }
 
-  Future<void> _load() async {
+  void _onRefreshRequested() => _load(force: true);
+
+  /// Shows the cached list instantly and refreshes it from AniList, then
+  /// reschedules episode notifications whenever a fresh anime list arrives.
+  Future<void> _load({bool force = false}) async {
     final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn) {
-      setState(() {
-        _loading = false;
-        _error = 'Connect your AniList from the Profile tab';
-      });
-      return;
-    }
-
-    final userId = auth.user?['id'];
-    if (userId == null) {
-      setState(() {
-        _loading = false;
-        _error = 'Could not get user ID';
-      });
-      return;
-    }
-
-    setState(() { _loading = true; _error = null; });
-    try {
-      final raw = widget.type == 'ANIME'
-          ? await _service.getUserAnimeList(userId, auth.token!)
-          : await _service.getUserMangaList(userId, auth.token!);
-      final typed = raw.map(
-        (k, v) => MapEntry(k, v.cast<Map<String, dynamic>>()),
-      );
-      setState(() {
-        _lists = typed;
-        _loading = false;
-      });
-      if (mounted) {
-        final settings = context.read<SettingsProvider>();
-        if (widget.type == 'ANIME') {
-          NotificationService().scheduleForAnimeList(typed, settings);
-        }
-      }
-    } catch (e) {
-      setState(() {
-        _loading = false;
-        _error = e.toString();
-      });
-    }
-  }
-
-  void _silentReload() {
-    final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn) return;
-    final userId = auth.user?['id'];
-    if (userId == null) return;
-
-    () async {
-      try {
-        final raw = widget.type == 'ANIME'
-            ? await _service.getUserAnimeList(userId, auth.token!)
-            : await _service.getUserMangaList(userId, auth.token!);
-        if (!mounted) return;
-        final typed = raw.map(
-          (k, v) => MapEntry(k, v.cast<Map<String, dynamic>>()),
-        );
-        setState(() => _lists = typed);
-      } catch (_) {}
-    }();
-  }
-
-  /// Shows the new progress immediately and saves only the progress field, so
-  /// the entry's score, notes and custom lists are never rewritten. Reverts
-  /// and tells the user if AniList rejects the change.
-  Future<void> _saveProgress(
-      Map<String, dynamic> entry, int mediaId, int newProgress) async {
-    final token = context.read<AuthService>().token;
-    if (token == null || !_savingProgress.add(mediaId)) return;
-    final previous = (entry['progress'] as num?)?.toInt() ?? 0;
-    setState(() => entry['progress'] = newProgress);
-
-    final bool ok;
-    try {
-      ok = await _service.saveListEntry(
-        mediaId: mediaId,
-        progress: newProgress,
-        token: token,
-      );
-    } finally {
-      _savingProgress.remove(mediaId);
-    }
-    if (!mounted) return;
-    if (ok) {
-      _silentReload();
-      return;
-    }
-    setState(() => entry['progress'] = previous);
-    _showSaveError();
-  }
-
-  void _showSaveError() {
-    final lang = context.read<SettingsProvider>().language;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(tr('save_failed', lang))),
+    final userId = auth.user?['id'] as int?;
+    final token = auth.token;
+    if (userId == null || token == null) return;
+    final store = context.read<MediaListStore>();
+    final settings = context.read<SettingsProvider>();
+    final gotFresh = await store.load(
+      widget.type,
+      userId: userId,
+      token: token,
+      force: force,
     );
+    final lists = store.listsOf(widget.type);
+    if (gotFresh && widget.type == 'ANIME' && lists != null) {
+      NotificationService().scheduleForAnimeList(lists, settings);
+    }
   }
 
-  Future<void> _incrementEpisode(Map<String, dynamic> entry) async {
-    final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn) return;
+  Future<void> _refresh() async {
+    await _load(force: true);
+    if (!mounted) return;
+    if (context.read<MediaListStore>().errorOf(widget.type) != null) {
+      _showSnack(tr('load_error', context.read<SettingsProvider>().language));
+    }
+  }
+
+  void _showSnack(String message, {SnackBarAction? action}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message, maxLines: 1, overflow: TextOverflow.ellipsis),
+        duration: const Duration(seconds: 3),
+        action: action,
+      ));
+  }
+
+  /// Adds [delta] to an entry's progress. The row updates instantly; the last
+  /// episode opens the completion dialog instead, and a failed save is
+  /// reverted with a message.
+  Future<void> _changeProgress(Map<String, dynamic> entry, int delta) async {
+    final token = context.read<AuthService>().token;
+    final store = context.read<MediaListStore>();
+    final settings = context.read<SettingsProvider>();
     final media = entry['media'] as Map<String, dynamic>? ?? {};
     final mediaId = media['id'] as int?;
-    if (mediaId == null || _savingProgress.contains(mediaId)) return;
+    if (token == null || mediaId == null || store.isSaving(mediaId)) return;
 
     final progress = (entry['progress'] as num?)?.toInt() ?? 0;
     final total = widget.type == 'ANIME'
         ? media['episodes'] as int?
         : media['chapters'] as int?;
-    if (total != null && progress >= total) return;
-
-    final newProgress = progress + 1;
-    final isLastEpisode = total != null && newProgress == total;
+    final newProgress = progress + delta;
+    if (newProgress < 0 || (total != null && newProgress > total)) return;
+    HapticFeedback.selectionClick();
 
     // For the last episode, show the completion dialog BEFORE saving.
-    // The dialog's onComplete callback handles both the progress save and
-    // the status change. If the user dismisses, nothing is written to AniList.
-    if (isLastEpisode && mounted) {
-      await _showCompletionDialog(entry, mediaId, total, newProgress);
+    // If the user dismisses it, nothing is written to AniList.
+    if (delta > 0 && total != null && newProgress == total) {
+      await _showCompletionDialog(entry, mediaId, total);
       return;
     }
 
-    await _saveProgress(entry, mediaId, newProgress);
+    final ok = await store.setProgress(widget.type, mediaId, newProgress, token: token);
+    if (!mounted) return;
+    final lang = settings.language;
+    if (!ok) {
+      _showSnack(tr('save_failed', lang));
+      return;
+    }
+    final title = settings.resolveTitle(media['title'] as Map<String, dynamic>?);
+    final unit = widget.type == 'ANIME' ? tr('episode', lang) : tr('chapter', lang);
+    _showSnack(
+      '$title · $unit $newProgress',
+      action: SnackBarAction(
+        label: tr('undo', lang),
+        onPressed: () => _undoProgress(mediaId, progress),
+      ),
+    );
+  }
+
+  Future<void> _undoProgress(int mediaId, int previousProgress) async {
+    if (!mounted) return;
+    final token = context.read<AuthService>().token;
+    final store = context.read<MediaListStore>();
+    final lang = context.read<SettingsProvider>().language;
+    if (token == null) return;
+    final ok = await store.setProgress(widget.type, mediaId, previousProgress, token: token);
+    if (!ok && mounted) _showSnack(tr('save_failed', lang));
   }
 
   Future<void> _showCompletionDialog(
     Map<String, dynamic> entry,
     int mediaId,
     int total,
-    int newProgress,
   ) async {
     final settings = context.read<SettingsProvider>();
+    final store = context.read<MediaListStore>();
     final media = entry['media'] as Map<String, dynamic>? ?? {};
     final title = settings.resolveTitle(media['title'] as Map<String, dynamic>?);
     final coverImage = media['coverImage']?['large'] as String?;
@@ -510,48 +465,20 @@ class _MediaListState extends State<_MediaList>
         type: widget.type,
         onComplete: (score) async {
           final token = context.read<AuthService>().token;
-          if (token == null || !mounted || !_savingProgress.add(mediaId)) {
-            return false;
-          }
-          final bool ok;
-          try {
-            ok = await _service.saveListEntry(
-              mediaId: mediaId,
-              status: 'COMPLETED',
-              progress: total,
-              // Only write the score when the user changed it, so AniList keeps
-              // the exact value in the user's own score format otherwise.
-              scoreRaw: score != initialScore ? toRawScore(score) : null,
-              token: token,
-            );
-          } finally {
-            _savingProgress.remove(mediaId);
-          }
-          if (ok && mounted) {
-            setState(() {
-              entry['progress'] = newProgress;
-              entry['status'] = 'COMPLETED';
-              if (score > 0) entry['score'] = score;
-            });
-            _silentReload();
-          }
-          return ok;
+          if (token == null || !mounted) return false;
+          return store.saveFields(
+            widget.type,
+            mediaId,
+            status: 'COMPLETED',
+            progress: total,
+            // Only write the score when the user changed it, so AniList keeps
+            // the exact value in the user's own score format otherwise.
+            scoreRaw: score != initialScore ? toRawScore(score) : null,
+            token: token,
+          );
         },
       ),
     );
-  }
-
-  Future<void> _decrementEpisode(Map<String, dynamic> entry) async {
-    final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn) return;
-    final media = entry['media'] as Map<String, dynamic>? ?? {};
-    final mediaId = media['id'] as int?;
-    if (mediaId == null || _savingProgress.contains(mediaId)) return;
-
-    final progress = (entry['progress'] as num?)?.toInt() ?? 0;
-    if (progress <= 0) return;
-
-    await _saveProgress(entry, mediaId, progress - 1);
   }
 
 
@@ -592,35 +519,32 @@ class _MediaListState extends State<_MediaList>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final isLoggedIn = context.select<AuthService, bool>((auth) => auth.isLoggedIn);
+    final (lists, loading, error) = context.select<MediaListStore, (MediaLists?, bool, Object?)>(
+        (store) => (store.listsOf(widget.type), store.isLoading(widget.type), store.errorOf(widget.type)));
 
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      final isNetworkError = _error != 'Connect your AniList from the Profile tab'
-          && _error != 'Could not get user ID';
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isNetworkError ? Icons.wifi_off_rounded : Icons.list_alt_outlined,
-              size: 52,
-              color: Colors.grey,
-            ),
-            const SizedBox(height: 12),
-            Text(_error!, style: const TextStyle(color: Colors.grey)),
-            if (isNetworkError) ...[
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh),
-                label: Text(tr('retry', context.read<SettingsProvider>().language)),
-              ),
-            ],
-          ],
+    if (!isLoggedIn) {
+      return const _ListMessage(
+        icon: Icons.list_alt_outlined,
+        message: 'Connect your AniList from the Profile tab',
+      );
+    }
+    if (lists == null) {
+      if (loading || error == null) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      final lang = context.read<SettingsProvider>().language;
+      return _ListMessage(
+        icon: Icons.wifi_off_rounded,
+        message: tr('load_error', lang),
+        action: FilledButton.icon(
+          onPressed: _load,
+          icon: const Icon(Icons.refresh),
+          label: Text(tr('retry', lang)),
         ),
       );
     }
-    if (_lists.isEmpty) {
+    if (lists.isEmpty) {
       final isAnime = widget.type == 'ANIME';
       final cs = Theme.of(context).colorScheme;
       return Center(
@@ -692,7 +616,7 @@ class _MediaListState extends State<_MediaList>
     // Build a flat item list: headers + entries (only when expanded)
     final items = <({bool isHeader, String? status, String? label, int? count, Map<String, dynamic>? entry, bool isCustom})>[];
     for (final status in _statusOrder) {
-      final raw = _lists[status];
+      final raw = lists[status];
       if (raw == null || raw.isEmpty) continue;
       final filtered = _filterEntries(raw);
       if (filtered.isEmpty) continue;
@@ -706,12 +630,12 @@ class _MediaListState extends State<_MediaList>
     }
 
     // Custom list sections
-    final customKeys = _lists.keys.where((k) => k.startsWith('custom:')).toList();
+    final customKeys = lists.keys.where((k) => k.startsWith(customListPrefix)).toList();
     if (customKeys.isNotEmpty && items.isNotEmpty) {
       items.add((isHeader: false, status: null, label: null, count: null, entry: null, isCustom: false));
     }
     for (final key in customKeys) {
-      final raw = _lists[key]!;
+      final raw = lists[key]!;
       final filtered = _filterEntries(raw);
       if (filtered.isEmpty) continue;
       final name = key.substring('custom:'.length);
@@ -745,7 +669,7 @@ class _MediaListState extends State<_MediaList>
     }
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: _refresh,
       child: ListView.builder(
         padding: const EdgeInsets.only(bottom: 16),
         itemCount: items.length,
@@ -807,13 +731,36 @@ class _MediaListState extends State<_MediaList>
             key: ValueKey(mediaId ?? entryId ?? i),
             entry: item.entry!,
             type: widget.type,
-            onAddEpisode: () => _incrementEpisode(item.entry!),
-            onRemove: () => _decrementEpisode(item.entry!),
+            onAddEpisode: () => _changeProgress(item.entry!, 1),
+            onRemove: () => _changeProgress(item.entry!, -1),
           );
         },
       ),
     );
   }
+}
+
+class _ListMessage extends StatelessWidget {
+  final IconData icon;
+  final String message;
+  final Widget? action;
+  const _ListMessage({required this.icon, required this.message, this.action});
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 52, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(message, style: const TextStyle(color: Colors.grey)),
+            if (action != null) ...[
+              const SizedBox(height: 16),
+              action!,
+            ],
+          ],
+        ),
+      );
 }
 
 // ─── Swipeable Row ──────────────────────────────────────────────────────────

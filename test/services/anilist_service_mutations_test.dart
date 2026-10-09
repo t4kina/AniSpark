@@ -21,22 +21,23 @@ void main() {
   });
 
   group('saveListEntry', () {
-    final saved = {
+    final savedResponse = {
       'data': {
         'SaveMediaListEntry': {'id': 1, 'status': 'CURRENT', 'progress': 5},
       },
     };
 
-    test('progress-only update sends only mediaId and progress', () async {
-      final service = serviceReturning(saved);
+    test('progress-only update sends only mediaId and progress and returns the entry', () async {
+      final service = serviceReturning(savedResponse);
 
-      final ok = await service.saveListEntry(
+      final saved = await service.saveListEntry(
         mediaId: 42,
         progress: 5,
         token: token,
       );
 
-      expect(ok, isTrue);
+      expect(saved, containsPair('progress', 5));
+      expect(log.single.query, contains('score(format: POINT_10_DECIMAL)'));
       expect(log.single.variables, {'mediaId': 42, 'progress': 5});
       for (final field in ['score', 'scoreRaw', 'notes', 'customLists', 'status']) {
         expect(log.single.query, isNot(contains('\$$field')),
@@ -45,7 +46,7 @@ void main() {
     });
 
     test('score is written as format-independent scoreRaw', () async {
-      final service = serviceReturning(saved);
+      final service = serviceReturning(savedResponse);
 
       await service.saveListEntry(mediaId: 42, scoreRaw: 75, token: token);
 
@@ -55,7 +56,7 @@ void main() {
     });
 
     test('sends status, notes and custom lists when provided', () async {
-      final service = serviceReturning(saved);
+      final service = serviceReturning(savedResponse);
 
       await service.saveListEntry(
         mediaId: 42,
@@ -76,14 +77,14 @@ void main() {
     });
 
     test('sends the bearer token', () async {
-      final service = serviceReturning(saved);
+      final service = serviceReturning(savedResponse);
 
       await service.saveListEntry(mediaId: 42, progress: 1, token: token);
 
       expect(log.single.authorization, 'Bearer $token');
     });
 
-    test('returns false when the response has no entry', () async {
+    test('returns null when the response has no entry', () async {
       final service = serviceReturning({
         'data': {'SaveMediaListEntry': null},
         'errors': [
@@ -91,17 +92,17 @@ void main() {
         ],
       });
 
-      final ok = await service.saveListEntry(mediaId: 42, progress: 1, token: token);
+      final saved = await service.saveListEntry(mediaId: 42, progress: 1, token: token);
 
-      expect(ok, isFalse);
+      expect(saved, isNull);
     });
 
-    test('returns false and fires authExpiredNotifier on 401', () async {
+    test('returns null and fires authExpiredNotifier on 401', () async {
       final service = serviceReturning({'errors': []}, status: 401);
 
-      final ok = await service.saveListEntry(mediaId: 42, progress: 1, token: token);
+      final saved = await service.saveListEntry(mediaId: 42, progress: 1, token: token);
 
-      expect(ok, isFalse);
+      expect(saved, isNull);
       expect(authExpiredNotifier.value, 1);
     });
   });
@@ -192,10 +193,10 @@ void main() {
       );
     });
 
-    test('saveListEntry returns false instead of throwing', () async {
-      final ok = await offline.saveListEntry(mediaId: 42, progress: 1, token: token);
+    test('saveListEntry returns null instead of throwing', () async {
+      final saved = await offline.saveListEntry(mediaId: 42, progress: 1, token: token);
 
-      expect(ok, isFalse);
+      expect(saved, isNull);
     });
 
     test('deleteListEntry returns false instead of throwing', () async {
@@ -215,9 +216,9 @@ void main() {
         client: mockAniList(log, (_) => http.Response('<html>oops</html>', 200)),
       );
 
-      final ok = await service.saveListEntry(mediaId: 42, progress: 1, token: token);
+      final saved = await service.saveListEntry(mediaId: 42, progress: 1, token: token);
 
-      expect(ok, isFalse);
+      expect(saved, isNull);
     });
   });
 
