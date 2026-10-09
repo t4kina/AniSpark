@@ -33,12 +33,8 @@ class AuthService extends ChangeNotifier {
     _box = await Hive.openBox('auth');
     _token = _box.get('token');
     // Show the last known profile right away; fetchUser() refreshes it.
-    if (_token != null) _user = _readCachedUser();
-    final rawExtras = _box.get('profileExtras');
-    if (rawExtras != null) {
-      _profileExtras = Map<String, dynamic>.from(
-          jsonDecode(rawExtras as String) as Map);
-    }
+    if (_token != null) _user = _readCachedMap('user');
+    _profileExtras = _readCachedMap('profileExtras');
 
     if (kIsWeb) {
       final fragment = Uri.base.fragment;
@@ -62,8 +58,10 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  Map<String, dynamic>? _readCachedUser() {
-    final raw = _box.get('user');
+  /// Reads a JSON map saved under [key]; corrupted data reads as null rather
+  /// than crashing startup.
+  Map<String, dynamic>? _readCachedMap(String key) {
+    final raw = _box.get(key);
     if (raw is! String) return null;
     try {
       final decoded = jsonDecode(raw);

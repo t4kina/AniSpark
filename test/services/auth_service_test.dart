@@ -84,6 +84,19 @@ void main() {
     }, viewerClient);
   });
 
+  test('survives corrupted profile extras', () async {
+    await seedBox({'token': 'test-token', 'profileExtras': 'not json'});
+
+    await http.runWithClient(() async {
+      final auth = AuthService();
+      await auth.init();
+
+      expect(auth.isLoggedIn, isTrue);
+      expect(auth.profileExtras, isNull);
+      await pumpEventQueue();
+    }, viewerClient);
+  });
+
   test('logout removes the token and the cached viewer', () async {
     await seedBox({'token': 'test-token', 'user': jsonEncode(_cachedViewer)});
 
