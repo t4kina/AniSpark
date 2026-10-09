@@ -1077,15 +1077,6 @@ class _SwipeableRowState extends State<_SwipeableRow> {
   }
 }
 
-// ─── Legacy MyListScreen (kept for backward compat) ────────────────────────
-
-class MyListScreen extends StatelessWidget {
-  const MyListScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) => const AnimeListScreen();
-}
-
 // ─── Completion Dialog ─────────────────────────────────────────────────────
 
 class _CompletionDialog extends StatefulWidget {

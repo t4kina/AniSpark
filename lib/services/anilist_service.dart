@@ -8,6 +8,9 @@ class AniListService {
 
   static const String _baseUrl = 'https://graphql.anilist.co';
 
+  // Without a timeout a stalled connection leaves screens loading forever.
+  static const _requestTimeout = Duration(seconds: 20);
+
   // Shared across instances so connections are kept alive between requests.
   static final http.Client _sharedClient = http.Client();
   final http.Client _client;
@@ -26,13 +29,17 @@ class AniListService {
   // Sends a GraphQL request, retrying once after Retry-After seconds on 429.
   Future<http.Response> _post(String body, [String? token]) async {
     final headers = await _headers(token);
-    var response = await _client.post(Uri.parse(_baseUrl), headers: headers, body: body);
+    var response = await _client
+        .post(Uri.parse(_baseUrl), headers: headers, body: body)
+        .timeout(_requestTimeout);
     if (response.statusCode == 429) {
       _rateLimitCount++;
       if (_rateLimitCount == 1) rateLimitActiveNotifier.value = true;
       final retryAfter = int.tryParse(response.headers['retry-after'] ?? '') ?? 60;
       await Future.delayed(Duration(seconds: retryAfter));
-      response = await _client.post(Uri.parse(_baseUrl), headers: headers, body: body);
+      response = await _client
+          .post(Uri.parse(_baseUrl), headers: headers, body: body)
+          .timeout(_requestTimeout);
       _rateLimitCount--;
       if (_rateLimitCount == 0) rateLimitActiveNotifier.value = false;
     }
@@ -638,28 +645,6 @@ class AniListService {
     if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
     final data = jsonDecode(response.body)['data']?['ToggleFollow'];
     return data?['isFollowing'] == true;
-  }
-
-  /// Returns a map of AniList status → entry count for the user's anime list.
-  Future<Map<String, int>> getUserListCounts(int userId, String token) async {
-    const query = '''
-      query(\$userId: Int!) {
-        MediaListCollection(userId: \$userId, type: ANIME) {
-          lists {
-            status
-            entries { mediaId }
-          }
-        }
-      }
-    ''';
-    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return {}; }
-    final lists =
-        jsonDecode(response.body)['data']['MediaListCollection']['lists'] as List;
-    return {
-      for (final list in lists)
-        list['status'] as String: (list['entries'] as List).length,
-    };
   }
 
   static const _saveEntryArgTypes = {

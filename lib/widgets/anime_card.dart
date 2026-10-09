@@ -1,32 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import '../models/anime.dart';
 import '../screens/detail_screen.dart';
 
 class AnimeCard extends StatelessWidget {
   final dynamic animeData; // from API
-  final Anime? localAnime; // from local storage
   final bool showScore;
 
   const AnimeCard({
     super.key,
-    this.animeData,
-    this.localAnime,
+    required this.animeData,
     this.showScore = true,
   });
 
   @override
   Widget build(BuildContext context) {
-    final id = animeData?['id'] ?? localAnime?.id;
-    final title = animeData != null
-        ? (animeData['title']['english'] ??
-            animeData['title']['romaji'] ??
-            'Unknown')
-        : localAnime?.title ?? 'Unknown';
-    final image = animeData?['coverImage']?['large'] ?? localAnime?.coverImage;
-    final score = animeData?['averageScore'];
-    final watched = localAnime?.episodesWatched ?? 0;
-    final total = localAnime?.episodes;
+    final id = animeData['id'];
+    final title = animeData['title']['english'] ??
+        animeData['title']['romaji'] ??
+        'Unknown';
+    final image = animeData['coverImage']?['large'];
+    final score = animeData['averageScore'];
 
     return GestureDetector(
       onTap: () => Navigator.push(
@@ -55,22 +48,6 @@ class AnimeCard extends StatelessWidget {
                               Container(color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
                         )
                       : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                  if (localAnime != null && watched > 0)
-                    Positioned(
-                      bottom: 0,
-                      left: 0,
-                      right: 0,
-                      child: Container(
-                        color: Colors.black54,
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Text(
-                          '$watched${total != null ? "/$total" : ""}',
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              fontSize: 10, color: Colors.white),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),

@@ -6,8 +6,6 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
-import '../providers/anime_list_provider.dart';
-import '../models/anime.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
 import '../utils/translations.dart';
@@ -107,7 +105,6 @@ class _DetailScreenState extends State<DetailScreen> {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     if (_data == null) return const Scaffold(body: Center(child: Text('Failed to load')));
 
-    final provider = context.watch<AnimeListProvider>();
     final settings = context.read<SettingsProvider>();
     final d = _data!;
 
@@ -143,7 +140,7 @@ class _DetailScreenState extends State<DetailScreen> {
     final producers = studios.where((s) => s['isAnimationStudio'] != true).map((s) => s['name'] as String).toList();
 
     final listEntry = d['mediaListEntry'] as Map<String, dynamic>?;
-    final inList = listEntry != null || provider.isInList(widget.animeId);
+    final inList = listEntry != null;
 
     String listStatus = 'plan_to_watch';
     int listProgress = 0;
@@ -152,13 +149,6 @@ class _DetailScreenState extends State<DetailScreen> {
       listStatus = _fromAniListStatus(listEntry['status'] as String? ?? 'PLANNING');
       listProgress = (listEntry['progress'] as num?)?.toInt() ?? 0;
       listScore = (listEntry['score'] as num?)?.toDouble() ?? 0;
-    } else if (provider.isInList(widget.animeId)) {
-      final a = provider.getAnime(widget.animeId);
-      if (a != null) {
-        listStatus = a.status;
-        listProgress = a.episodesWatched;
-        listScore = (a.userScore ?? 0).toDouble();
-      }
     }
 
     final allTimeRated = rankings.where((r) => r['type'] == 'RATED' && r['allTime'] == true).toList();
@@ -341,7 +331,7 @@ class _DetailScreenState extends State<DetailScreen> {
                         inList ? _statusLabel(listStatus) : 'ADD TO LIST',
                         icon: inList ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
                         sublabel: 'STATUS',
-                        onTap: () => _showEditModal(context, provider, listStatus, listProgress, listScore),
+                        onTap: () => _showEditModal(context, listStatus, listProgress, listScore),
                       ),
                       const SizedBox(width: 8),
                       _actionBtn(
@@ -351,7 +341,7 @@ class _DetailScreenState extends State<DetailScreen> {
                             : '$listProgress $progressUnit',
                         icon: Icons.play_circle_outline_rounded,
                         sublabel: 'PROGRESS',
-                        onTap: () => _showEditModal(context, provider, listStatus, listProgress, listScore),
+                        onTap: () => _showEditModal(context, listStatus, listProgress, listScore),
                       ),
                       const SizedBox(width: 8),
                       _actionBtn(
@@ -359,7 +349,7 @@ class _DetailScreenState extends State<DetailScreen> {
                         listScore == 0 ? 'NOT SCORED' : listScore.toStringAsFixed(1),
                         icon: listScore == 0 ? Icons.star_outline_rounded : Icons.star_rounded,
                         sublabel: 'SCORE',
-                        onTap: () => _showEditModal(context, provider, listStatus, listProgress, listScore),
+                        onTap: () => _showEditModal(context, listStatus, listProgress, listScore),
                       ),
                     ],
                   ),
@@ -542,7 +532,7 @@ class _DetailScreenState extends State<DetailScreen> {
                 const SizedBox(width: 8),
                 _overlayBtn(
                   icon: Icons.more_horiz,
-                  onPressed: () => _showEditModal(context, provider, listStatus, listProgress, listScore),
+                  onPressed: () => _showEditModal(context, listStatus, listProgress, listScore),
                 ),
               ],
             ),
@@ -777,9 +767,8 @@ class _DetailScreenState extends State<DetailScreen> {
     if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
-  void _showEditModal(BuildContext context, AnimeListProvider provider,
+  void _showEditModal(BuildContext context,
       String initialStatus, int initialProgress, double initialScore) {
-    final anime = Anime.fromApi(_data!);
     final resolvedTitle = context.read<SettingsProvider>().resolveTitle(_data!['title'] as Map<String, dynamic>?);
     final totalEps = (_data!['episodes'] ?? _data!['chapters']) as int?;
     final isManga = (_data!['type'] as String?) == 'MANGA';
@@ -907,14 +896,10 @@ class _DetailScreenState extends State<DetailScreen> {
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
                   onPressed: saving ? null : () async {
-                    anime.status = selectedStatus;
-                    anime.episodesWatched = progress;
-                    anime.userScore = score.round();
                     final token = context.read<AuthService>().token;
                     final messenger = ScaffoldMessenger.of(context);
                     if (token == null) {
-                      provider.addAnime(anime);
-                      Navigator.pop(sheetContext);
+                      setModal(() => errorText = tr('connect_anilist', lang));
                       return;
                     }
                     setModal(() { saving = true; errorText = null; });
@@ -923,7 +908,7 @@ class _DetailScreenState extends State<DetailScreen> {
                         !selectedCustomLists.containsAll(initialCustom);
                     // Unchanged fields are left out so AniList keeps them exactly as they are.
                     final ok = await _service.saveListEntry(
-                      mediaId: anime.id,
+                      mediaId: widget.animeId,
                       status: _toAniListStatus(selectedStatus),
                       progress: progress,
                       scoreRaw: score != initialScore ? toRawScore(score) : null,
@@ -937,18 +922,17 @@ class _DetailScreenState extends State<DetailScreen> {
                       }
                       return;
                     }
-                    provider.addAnime(anime);
                     _load();
                     listRefreshNotifier.value++;
                     if (sheetContext.mounted) Navigator.pop(sheetContext);
-                    messenger.showSnackBar(SnackBar(content: Text('${anime.title} saved!')));
+                    messenger.showSnackBar(SnackBar(content: Text('$resolvedTitle saved!')));
                   },
                   child: saving
                       ? const SizedBox(width: 18, height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                       : const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 )),
-                if (entryId != null || provider.isInList(widget.animeId)) ...[
+                if (entryId != null) ...[
                   const SizedBox(width: 12),
                   IconButton(
                     tooltip: tr('remove_from_list', lang),
@@ -956,20 +940,17 @@ class _DetailScreenState extends State<DetailScreen> {
                     onPressed: saving ? null : () async {
                       final token = context.read<AuthService>().token;
                       final messenger = ScaffoldMessenger.of(context);
-                      if (!await _confirmRemoval(ctx, lang)) return;
-                      if (entryId != null && token != null) {
-                        setModal(() { saving = true; errorText = null; });
-                        final ok = await _service.deleteListEntry(entryId: entryId, token: token);
-                        if (!ok) {
-                          if (sheetContext.mounted) {
-                            setModal(() { saving = false; errorText = tr('remove_failed', lang); });
-                          }
-                          return;
+                      if (token == null || !await _confirmRemoval(ctx, lang)) return;
+                      setModal(() { saving = true; errorText = null; });
+                      final ok = await _service.deleteListEntry(entryId: entryId, token: token);
+                      if (!ok) {
+                        if (sheetContext.mounted) {
+                          setModal(() { saving = false; errorText = tr('remove_failed', lang); });
                         }
-                        NotificationService().cancelForMedia(widget.animeId);
-                        listRefreshNotifier.value++;
+                        return;
                       }
-                      provider.removeAnime(widget.animeId);
+                      NotificationService().cancelForMedia(widget.animeId);
+                      listRefreshNotifier.value++;
                       _load();
                       if (sheetContext.mounted) Navigator.pop(sheetContext);
                       messenger.showSnackBar(SnackBar(content: Text(tr('removed_from_list', lang))));

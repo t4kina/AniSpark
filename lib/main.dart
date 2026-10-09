@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
-import 'providers/anime_list_provider.dart';
 import 'providers/settings_provider.dart';
+import 'services/api_cache.dart';
 import 'services/auth_service.dart';
+import 'services/hive_cache_store.dart';
 import 'services/notification_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/my_list_screen.dart';
@@ -14,8 +17,10 @@ import 'utils/refresh_notifier.dart' show authExpiredNotifier, rateLimitActiveNo
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final animeProvider = AnimeListProvider();
-  await animeProvider.init();
+  await Hive.initFlutter();
+  unawaited(_deleteLegacyListBox());
+  final apiCache = ApiCache(await HiveCacheStore.open());
+  unawaited(apiCache.prune(maxAge: const Duration(days: 14), maxEntries: 300));
 
   final authService = AuthService();
   await authService.init();
@@ -23,6 +28,10 @@ void main() async {
   await NotificationService().init();
 
   authExpiredNotifier.addListener(() => authService.logout());
+  // Cached API data belongs to the signed-in account; drop it on logout.
+  authService.addListener(() {
+    if (!authService.isLoggedIn) unawaited(apiCache.clear());
+  });
 
   final settingsProvider = SettingsProvider();
   await settingsProvider.load();
@@ -30,13 +39,23 @@ void main() async {
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: animeProvider),
+        Provider.value(value: apiCache),
         ChangeNotifierProvider.value(value: authService),
         ChangeNotifierProvider.value(value: settingsProvider),
       ],
       child: const MyAnimeApp(),
     ),
   );
+}
+
+/// Removes the old local-only list box. It only mirrored AniList entries and
+/// was never shown anywhere, so there is nothing to migrate.
+Future<void> _deleteLegacyListBox() async {
+  try {
+    await Hive.deleteBoxFromDisk('myAnimeList');
+  } on Exception catch (e) {
+    debugPrint('[Startup] Could not delete legacy list box: $e');
+  }
 }
 
 class MyAnimeApp extends StatelessWidget {
