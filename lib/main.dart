@@ -285,7 +285,7 @@ class _SplashScreenState extends State<SplashScreen>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 400),
     );
     _fadeIn = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
     _controller.forward();
@@ -297,7 +297,9 @@ class _SplashScreenState extends State<SplashScreen>
       );
     });
 
-    Future.delayed(const Duration(seconds: 2), () {
+    // Everything needed to render is already loaded (cached lists and
+    // profile), so the splash only stays long enough for the logo fade.
+    Future.delayed(const Duration(milliseconds: 600), () {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(

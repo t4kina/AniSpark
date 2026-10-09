@@ -109,6 +109,10 @@ class _LoggedInProfile extends StatefulWidget {
 }
 
 class _LoggedInProfileState extends State<_LoggedInProfile> {
+  // The activity heatmap alone takes up to 6 requests, so stats are only
+  // refreshed automatically once they are this old (pull-to-refresh forces).
+  static const _statsMaxAge = Duration(minutes: 30);
+
   final _service = AniListService();
   int _followersCount = 0;
   int _followingCount = 0;
@@ -129,11 +133,14 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = context.read<AuthService>();
       final cached = auth.profileExtras;
-      if (cached != null) {
-        _loadFromCache(cached);
-      } else {
-        _fetchStats();
-      }
+      if (cached != null) _loadFromCache(cached);
+      // Show the cached profile instantly, refreshing it in the background
+      // once it is older than [_statsMaxAge] (or was saved without a date).
+      final savedAt = cached?['savedAt'] as int?;
+      final age = savedAt == null
+          ? null
+          : DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(savedAt));
+      if (age == null || age.isNegative || age > _statsMaxAge) _fetchStats();
     });
     profileRefreshNotifier.addListener(_onRefresh);
   }
@@ -171,12 +178,19 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       setState(() => _bannerImage = auth.user?['bannerImage'] as String?);
     }
 
-    final results = await Future.wait([
-      _service.getUserProfileStats(userId, auth.token!),
-      _service.getUserFollowCounts(userId, auth.token!),
-      _service.getUserActivityDays(userId, auth.token!),
-      _service.getFollowing(userId, auth.token!),
-    ]);
+    final List<Object> results;
+    try {
+      results = await Future.wait([
+        _service.getUserProfileStats(userId, auth.token!),
+        _service.getUserFollowCounts(userId, auth.token!),
+        _service.getUserActivityDays(userId, auth.token!),
+        _service.getFollowing(userId, auth.token!),
+      ]);
+    } on Exception catch (e) {
+      // Keep whatever is already on screen (cached stats) and try next time.
+      debugPrint('[ProfileScreen] Loading stats failed: $e');
+      return;
+    }
 
     if (!mounted) return;
     final statsResult = results[0] as Map<String, dynamic>;
@@ -204,6 +218,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
 
     // Persist so next launch loads instantly without re-fetching
     auth.saveProfileExtras({
+      'savedAt': DateTime.now().millisecondsSinceEpoch,
       'bannerImage': newBanner,
       'favoriteAnime': newFavAnime,
       'favoriteCharacters': newFavChars,
