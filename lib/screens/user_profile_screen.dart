@@ -9,6 +9,7 @@ import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/overlay_button.dart';
+import '../widgets/profile/affinity_card.dart';
 import 'detail_screen.dart';
 import 'character_screen.dart';
 
@@ -486,6 +487,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ),
           ),
         ),
+
+        // ── Affinity with the viewer (hides itself when not applicable) ──
+        SliverToBoxAdapter(child: AffinityCard(userId: widget.userId, userName: name)),
 
         // ── Bio ────────────────────────────────────────────────────────
         if (about.isNotEmpty)
