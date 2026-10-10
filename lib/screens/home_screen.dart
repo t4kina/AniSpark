@@ -6,10 +6,13 @@ import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../providers/settings_provider.dart';
+import '../utils/anime_season.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/anime_card.dart';
+import 'calendar_screen.dart';
 import 'detail_screen.dart';
 import 'search_screen.dart';
+import 'season_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -236,9 +239,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
+                          _buildShortcuts(lang),
                           if (_weeklySchedule.isNotEmpty) ...[
                             const SizedBox(height: 12),
-                            _sectionHeader(tr('home_this_week', lang), lang),
+                            _sectionHeader(tr('home_this_week', lang), lang,
+                                onSeeAll: _openCalendar),
                             const SizedBox(height: 10),
                             _buildWeeklySchedule(lang),
                             const SizedBox(height: 8),
@@ -252,14 +257,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           _sectionHeader(
                               _seasonHeader('home_current_season', _currentSeason, lang),
                               lang,
-                              items: _seasonal),
+                              onSeeAll: () => _openSeason(_currentSeason)),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_seasonal),
                           const SizedBox(height: 20),
                           _sectionHeader(
                               _seasonHeader('home_upcoming_season', _nextSeason, lang),
                               lang,
-                              items: _popular),
+                              onSeeAll: () => _openSeason(_nextSeason)),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_popular),
                           const SizedBox(height: 20),
@@ -293,8 +298,59 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _sectionHeader(String title, String lang, {List<dynamic>? items}) =>
-      Padding(
+  void _openCalendar() => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => const CalendarScreen()),
+      );
+
+  void _openSeason((String, int) season) {
+    final (name, year) = season;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SeasonScreen(initial: SeasonYear.tryParse(name, year)),
+      ),
+    );
+  }
+
+  /// "Calendar" and "Seasons" shortcuts at the top of Discover.
+  Widget _buildShortcuts(String lang) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Row(
+          children: [
+            Expanded(
+              child: FilledButton.tonalIcon(
+                onPressed: _openCalendar,
+                icon: const Icon(Icons.calendar_month_outlined, size: 18),
+                label: Text(tr('cal_shortcut', lang), overflow: TextOverflow.ellipsis),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: FilledButton.tonalIcon(
+                onPressed: () => _openSeason(_currentSeason),
+                icon: const Icon(Icons.grid_view_outlined, size: 18),
+                label: Text(tr('season_shortcut', lang), overflow: TextOverflow.ellipsis),
+              ),
+            ),
+          ],
+        ),
+      );
+
+  /// Section title with a "See all" link that runs [onSeeAll], or else
+  /// opens [items] in a grid when there are any.
+  Widget _sectionHeader(String title, String lang,
+      {List<dynamic>? items, VoidCallback? onSeeAll}) {
+    final seeAll = onSeeAll ??
+        (items != null && items.isNotEmpty
+            ? () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => _BrowseAllScreen(title: title, items: items),
+                  ),
+                )
+            : null);
+    return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
@@ -309,14 +365,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ),
-            if (items != null && items.isNotEmpty)
+            if (seeAll != null)
               GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => _BrowseAllScreen(title: title, items: items),
-                  ),
-                ),
+                onTap: seeAll,
                 child: Builder(builder: (ctx) => Text(
                   tr('home_see_all', lang),
                   style: TextStyle(
@@ -329,6 +380,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       );
+  }
 
   Widget _buildHorizontalRow(List<dynamic> items) => SizedBox(
         height: 222,
