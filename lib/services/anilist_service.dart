@@ -258,7 +258,7 @@ class AniListService {
       query(\$id: Int) {
         Media(id: \$id) {
           id title { romaji english native }
-          coverImage { large extraLarge } bannerImage
+          coverImage { large extraLarge color } bannerImage
           episodes chapters volumes averageScore popularity favourites trending
           genres status type format source duration synonyms
           description(asHtml: false)
