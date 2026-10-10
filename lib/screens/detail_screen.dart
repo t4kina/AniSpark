@@ -10,7 +10,10 @@ import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/external_url.dart';
+import '../utils/media_color.dart';
 import '../utils/score_utils.dart';
+import '../widgets/overlay_button.dart';
+import '../widgets/skeletons.dart';
 import '../utils/translations.dart';
 import '../providers/settings_provider.dart';
 import 'character_screen.dart';
@@ -171,9 +174,26 @@ class _DetailScreenState extends State<DetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
     final settings = context.watch<SettingsProvider>();
     final lang = settings.language;
+    if (_loading) {
+      return Scaffold(
+        body: Stack(
+          children: [
+            const DetailSkeleton(),
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 2,
+              left: 8,
+              child: overlayBtn(
+                icon: Icons.arrow_back,
+                tooltip: tr('tooltip_back', lang),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     if (_data == null) {
       return Scaffold(
         appBar: AppBar(),
@@ -268,8 +288,16 @@ class _DetailScreenState extends State<DetailScreen> {
     final watched = listProgress;
     final remaining = (episodes != null && duration != null)
         ? (episodes - watched) * duration : null;
+    final scoreFormat = scoreFormatOf(context.select<AuthService, Map<String, dynamic>?>((a) => a.user));
 
-    return Scaffold(
+    // The page picks up the cover's colour (made readable for the theme).
+    final theme = Theme.of(context);
+    final accent = mediaAccentColor(d['coverImage']?['color'] as String?, theme.brightness);
+    final pageTheme = accent == null
+        ? theme
+        : theme.copyWith(colorScheme: theme.colorScheme.copyWith(primary: accent));
+
+    return Theme(data: pageTheme, child: Builder(builder: (context) => Scaffold(
       body: Stack(
         children: [
           CustomScrollView(
@@ -442,7 +470,7 @@ class _DetailScreenState extends State<DetailScreen> {
                       const SizedBox(width: 8),
                       _actionBtn(
                         context,
-                        listScore == 0 ? tr('detail_not_scored', lang) : listScore.toStringAsFixed(1),
+                        listScore == 0 ? tr('detail_not_scored', lang) : formatScore(listScore, scoreFormat),
                         icon: listScore == 0 ? Icons.star_outline_rounded : Icons.star_rounded,
                         sublabel: tr('detail_score', lang),
                         onTap: () => _showEditModal(context, listStatus, listProgress, listScore),
@@ -603,31 +631,34 @@ class _DetailScreenState extends State<DetailScreen> {
         ],
       ),
 
-          // ── Overlay buttons ──
+          // ── Overlay buttons ── (44px touch targets around 36px circles,
+          // so offsets are 4px smaller than the visible spacing)
           Positioned(
-            top: MediaQuery.of(context).padding.top + 6,
-            left: 12,
-            right: 12,
+            top: MediaQuery.of(context).padding.top + 2,
+            left: 8,
+            right: 8,
             child: Row(
               children: [
-                _overlayBtn(
+                overlayBtn(
                   icon: Icons.arrow_back,
+                  tooltip: tr('tooltip_back', lang),
                   onPressed: () => Navigator.pop(context),
                 ),
                 const Spacer(),
-                _overlayBtn(
+                overlayBtn(
                   icon: Icons.ios_share_rounded,
+                  tooltip: tr('tooltip_share', lang),
                   onPressed: _copyLink,
                 ),
-                const SizedBox(width: 8),
-                _overlayBtn(
+                overlayBtn(
                   icon: d['isFavourite'] == true ? Icons.favorite : Icons.favorite_border,
                   color: d['isFavourite'] == true ? Colors.red : Colors.white,
+                  tooltip: tr('tooltip_favourite', lang),
                   onPressed: _toggleFav,
                 ),
-                const SizedBox(width: 8),
-                _overlayBtn(
+                overlayBtn(
                   icon: Icons.more_horiz,
+                  tooltip: tr('tooltip_edit_entry', lang),
                   onPressed: () => _showEditModal(context, listStatus, listProgress, listScore),
                 ),
               ],
@@ -635,28 +666,10 @@ class _DetailScreenState extends State<DetailScreen> {
           ),
         ],
       ),
-    );
+    )));
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
-
-  static Widget _overlayBtn({
-    required IconData icon,
-    Color color = Colors.white,
-    required VoidCallback onPressed,
-  }) =>
-      GestureDetector(
-        onTap: onPressed,
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 20),
-        ),
-      );
 
   Widget _statCell(String label, String value, Color? valueColor, {String? sub}) =>
       Expanded(

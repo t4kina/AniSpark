@@ -422,6 +422,11 @@ const _en = {
   'notif_activity_progress': '{name} {status} {progress} of {title}',
   'notif_a_friend': 'A friend',
   'notif_something': 'something',
+  'tooltip_back': 'Back',
+  'tooltip_share': 'Copy link',
+  'tooltip_favourite': 'Favourite',
+  'tooltip_edit_entry': 'Edit list entry',
+  'tooltip_settings': 'Settings',
 };
 
 // ─── Spanish ─────────────────────────────────────────────────────────────────
@@ -799,6 +804,11 @@ const _es = {
   'notif_activity_progress': '{name} {status} {progress} de {title}',
   'notif_a_friend': 'Un amigo',
   'notif_something': 'algo',
+  'tooltip_back': 'Atrás',
+  'tooltip_share': 'Copiar enlace',
+  'tooltip_favourite': 'Favorito',
+  'tooltip_edit_entry': 'Editar entrada',
+  'tooltip_settings': 'Ajustes',
 };
 
 // ─── Japanese ────────────────────────────────────────────────────────────────
@@ -1176,6 +1186,11 @@ const _ja = {
   'notif_activity_progress': '{name} {status} {progress}（{title}）',
   'notif_a_friend': 'フレンド',
   'notif_something': '何か',
+  'tooltip_back': '戻る',
+  'tooltip_share': 'リンクをコピー',
+  'tooltip_favourite': 'お気に入り',
+  'tooltip_edit_entry': 'リストを編集',
+  'tooltip_settings': '設定',
 };
 
 // ─── French ──────────────────────────────────────────────────────────────────
@@ -1553,6 +1568,11 @@ const _fr = {
   'notif_activity_progress': '{name} {status} {progress} de {title}',
   'notif_a_friend': 'Un ami',
   'notif_something': 'quelque chose',
+  'tooltip_back': 'Retour',
+  'tooltip_share': 'Copier le lien',
+  'tooltip_favourite': 'Favori',
+  'tooltip_edit_entry': 'Modifier l\'entrée',
+  'tooltip_settings': 'Paramètres',
 };
 
 // ─── German ──────────────────────────────────────────────────────────────────
@@ -1930,6 +1950,11 @@ const _de = {
   'notif_activity_progress': '{name} {status} {progress} von {title}',
   'notif_a_friend': 'Ein Freund',
   'notif_something': 'etwas',
+  'tooltip_back': 'Zurück',
+  'tooltip_share': 'Link kopieren',
+  'tooltip_favourite': 'Favorit',
+  'tooltip_edit_entry': 'Eintrag bearbeiten',
+  'tooltip_settings': 'Einstellungen',
 };
 
 // ─── Portuguese ──────────────────────────────────────────────────────────────
@@ -2307,6 +2332,11 @@ const _pt = {
   'notif_activity_progress': '{name} {status} {progress} de {title}',
   'notif_a_friend': 'Um amigo',
   'notif_something': 'algo',
+  'tooltip_back': 'Voltar',
+  'tooltip_share': 'Copiar link',
+  'tooltip_favourite': 'Favorito',
+  'tooltip_edit_entry': 'Editar entrada',
+  'tooltip_settings': 'Configurações',
 };
 
 // ─── Italian ─────────────────────────────────────────────────────────────────
@@ -2684,6 +2714,11 @@ const _it = {
   'notif_activity_progress': '{name} {status} {progress} di {title}',
   'notif_a_friend': 'Un amico',
   'notif_something': 'qualcosa',
+  'tooltip_back': 'Indietro',
+  'tooltip_share': 'Copia link',
+  'tooltip_favourite': 'Preferito',
+  'tooltip_edit_entry': 'Modifica voce',
+  'tooltip_settings': 'Impostazioni',
 };
 
 // ─── Korean ──────────────────────────────────────────────────────────────────
@@ -3061,4 +3096,9 @@ const _ko = {
   'notif_activity_progress': '{name} {status} {progress} ({title})',
   'notif_a_friend': '친구',
   'notif_something': '무언가',
+  'tooltip_back': '뒤로',
+  'tooltip_share': '링크 복사',
+  'tooltip_favourite': '즐겨찾기',
+  'tooltip_edit_entry': '목록 항목 편집',
+  'tooltip_settings': '설정',
 };

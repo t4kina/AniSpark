@@ -703,7 +703,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final status = activity['status'] as String? ?? '';
     final progress = activity['progress'];
     final cover = media?['coverImage']?['medium'] as String?;
-    final title = (media?['title']?['english'] ?? media?['title']?['romaji'] ?? '') as String;
+    final title = context.read<SettingsProvider>().resolveTitle(media?['title'] as Map<String, dynamic>?);
     final mediaId = media?['id'] as int?;
     final isAnime = media?['type'] == 'ANIME';
     final actionText = progress != null ? '$status $progress' : status;
@@ -854,8 +854,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final a = anime as Map<String, dynamic>;
     final id = a['id'] as int?;
     final image = a['coverImage']?['large'] as String?;
-    final title =
-        (a['title']?['english'] ?? a['title']?['romaji'] ?? '') as String;
+    final title = context.read<SettingsProvider>().resolveTitle(a['title'] as Map<String, dynamic>?);
     return Padding(
       padding: const EdgeInsets.only(right: 10),
       child: GestureDetector(
@@ -1161,7 +1160,7 @@ class _EntryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final media = entry['media'] as Map<String, dynamic>? ?? {};
     final id = media['id'] as int?;
-    final title = (media['title']?['english'] ?? media['title']?['romaji'] ?? '') as String;
+    final title = context.read<SettingsProvider>().resolveTitle(media['title'] as Map<String, dynamic>?);
     final image = media['coverImage']?['medium'] as String?;
     final progress = (entry['progress'] as num?)?.toInt() ?? 0;
     final score = (entry['score'] as num?)?.toDouble() ?? 0.0;

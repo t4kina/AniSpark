@@ -12,6 +12,7 @@ import '../providers/settings_provider.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
+import '../widgets/skeletons.dart';
 import '../services/notification_service.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
@@ -554,7 +555,7 @@ class _MediaListState extends State<_MediaList>
     }
     if (lists == null) {
       if (loading || error == null) {
-        return const Center(child: CircularProgressIndicator());
+        return const ListSkeleton();
       }
       return _ListMessage(
         icon: Icons.wifi_off_rounded,
@@ -835,6 +836,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
     final media = widget.entry['media'] as Map<String, dynamic>? ?? {};
     final progress = (widget.entry['progress'] as num?)?.toInt() ?? 0;
     final score = (widget.entry['score'] as num?)?.toDouble() ?? 0;
+    final scoreFormat = context.select<AuthService, String?>((a) => scoreFormatOf(a.user));
     final title = settings.resolveTitle(media['title'] as Map<String, dynamic>?);
     final image = media['coverImage']?['large'] as String?;
     final total = widget.type == 'ANIME'
@@ -977,7 +979,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                               size: 13, color: Color(0xFFFFC107)),
                           const SizedBox(width: 3),
                           Text(
-                            score.toStringAsFixed(1),
+                            formatScore(score, scoreFormat),
                             style: const TextStyle(
                                 fontSize: 12, color: Colors.grey),
                           ),

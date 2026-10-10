@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../utils/external_url.dart';
 import '../providers/settings_provider.dart' show SettingsProvider, accentColorOptions;
 import '../services/auth_service.dart';
@@ -50,7 +51,20 @@ String _labelOf(Map<String, String> keys, String value, String lang) {
   return key == null ? value : tr(key, lang);
 }
 
-const _appVersion = '1.0.0';
+/// Shows the installed app's version (from the build, e.g. pubspec's 1.0.0).
+class _AppVersion extends StatelessWidget {
+  const _AppVersion({required this.builder});
+
+  final Widget Function(String version) builder;
+
+  static final Future<PackageInfo> _info = PackageInfo.fromPlatform();
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<PackageInfo>(
+        future: _info,
+        builder: (_, snapshot) => builder(snapshot.data?.version ?? ''),
+      );
+}
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -252,7 +266,11 @@ class SettingsScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 24),
-          const Center(child: Text('AniSpark v$_appVersion', style: TextStyle(color: Colors.grey, fontSize: 12))),
+          Center(
+            child: _AppVersion(
+              builder: (v) => Text('AniSpark v$v', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            ),
+          ),
           const SizedBox(height: 32),
         ],
       ),
@@ -449,8 +467,10 @@ class SettingsScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(trf('settings_version', lang, {'v': _appVersion}),
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            _AppVersion(
+              builder: (v) => Text(trf('settings_version', lang, {'v': v}),
+                  style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            ),
             const SizedBox(height: 12),
             Text(tr('about_description', lang),
                 style: const TextStyle(color: Colors.grey, height: 1.5, fontSize: 13)),

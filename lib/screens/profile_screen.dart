@@ -532,7 +532,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final a = anime as Map<String, dynamic>;
     final id = a['id'] as int?;
     final image = a['coverImage']?['large'] as String?;
-    final title = (a['title']?['english'] ?? a['title']?['romaji'] ?? '') as String;
+    final title = context.read<SettingsProvider>().resolveTitle(a['title'] as Map<String, dynamic>?);
     return Padding(
       padding: const EdgeInsets.only(right: 10),
       child: GestureDetector(

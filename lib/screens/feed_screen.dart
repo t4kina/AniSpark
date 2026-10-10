@@ -7,6 +7,7 @@ import '../services/notification_service.dart';
 import '../providers/settings_provider.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/skeletons.dart';
 import 'detail_screen.dart';
 import 'user_profile_screen.dart';
 
@@ -252,7 +253,7 @@ class _FeedScreenState extends State<FeedScreen>
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const FeedSkeleton()
           : _hasError
               ? Center(
                   child: Column(
@@ -358,9 +359,10 @@ class _ActivityCard extends StatelessWidget {
     final status = activity['status'] as String? ?? '';
     final progress = activity['progress'];
     final coverImage = media?['coverImage']?['large'] as String?;
-    final title = (media?['title']?['english'] ??
-        media?['title']?['romaji'] ??
-        tr('feed_unknown', lang)) as String;
+    final titleMap = media?['title'] as Map<String, dynamic>?;
+    final title = titleMap == null
+        ? tr('feed_unknown', lang)
+        : context.read<SettingsProvider>().resolveTitle(titleMap);
     final actionText = progress != null
         ? trf('feed_status_progress_of', lang,
             {'status': status, 'progress': progress})
