@@ -19,6 +19,10 @@ class DeviceSecureStore implements SecureStore {
     // Readable once the device has been unlocked after boot, and never
     // synced to other devices or included in backups.
     iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock_this_device),
+    // If the keystore can no longer decrypt its data (e.g. its keys were
+    // invalidated), wipe it so the user can simply log in again; otherwise
+    // every read would keep failing and no session could be saved.
+    aOptions: AndroidOptions(resetOnError: true),
   );
 
   @override
@@ -36,7 +40,19 @@ const storageKeyName = 'local_storage_key';
 /// Returns the AES cipher for the app's Hive boxes, creating its key in the
 /// keystore on first use. Returns null when the keystore can't be used, so
 /// callers fall back to the previous unencrypted storage instead of failing.
-Future<HiveAesCipher?> loadStorageCipher(SecureStore store) async {
+/// A failure is retried once, since a briefly unavailable keystore would
+/// otherwise make an existing session look logged out for that launch.
+Future<HiveAesCipher?> loadStorageCipher(
+  SecureStore store, {
+  Duration retryDelay = const Duration(milliseconds: 300),
+}) async {
+  final cipher = await _loadStorageCipherOnce(store);
+  if (cipher != null) return cipher;
+  await Future<void>.delayed(retryDelay);
+  return _loadStorageCipherOnce(store);
+}
+
+Future<HiveAesCipher?> _loadStorageCipherOnce(SecureStore store) async {
   try {
     final saved = await store.read(storageKeyName);
     final savedKey = saved == null ? null : _decodeKey(saved);

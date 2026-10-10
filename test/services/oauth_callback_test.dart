@@ -42,6 +42,30 @@ void main() {
       expect(result, isA<OAuthTokenReceived>());
     });
 
+    test('rejects a callback without state once AniList is known to echo it', () {
+      final result = parseOAuthCallback(
+        'anispark://callback#access_token=$token',
+        expectedState: state,
+        requireState: true,
+      );
+
+      expect(result, isA<OAuthFailed>().having((r) => r.reason, 'reason', 'missing_state'));
+    });
+
+    test('reports whether the callback echoed the state', () {
+      final echoed = parseOAuthCallback(
+        'anispark://callback#access_token=$token&state=$state',
+        expectedState: state,
+      );
+      final notEchoed = parseOAuthCallback(
+        'anispark://callback?code=abc',
+        expectedState: state,
+      );
+
+      expect(echoed, isA<OAuthTokenReceived>().having((r) => r.stateEchoed, 'stateEchoed', isTrue));
+      expect(notEchoed, isA<OAuthCodeReceived>().having((r) => r.stateEchoed, 'stateEchoed', isFalse));
+    });
+
     test('treats access_denied as a cancellation', () {
       final result = parseOAuthCallback(
         'anispark://callback?error=access_denied&state=$state',

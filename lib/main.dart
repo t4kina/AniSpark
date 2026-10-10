@@ -25,20 +25,21 @@ void main() async {
 
   await Hive.initFlutter();
   unawaited(_deleteLegacyListBox());
+  final settingsProvider = SettingsProvider();
   // AES key for the local boxes, kept in the platform keystore. Null when the
   // keystore can't be used (and on web): storage then stays unencrypted
-  // exactly as before instead of failing.
-  final storageCipher = kIsWeb ? null : await loadStorageCipher(const DeviceSecureStore());
+  // exactly as before instead of failing. Loaded alongside the work that
+  // doesn't need it, to keep startup fast.
+  final (storageCipher, _, _) = await (
+    kIsWeb ? Future<HiveAesCipher?>.value() : loadStorageCipher(const DeviceSecureStore()),
+    NotificationService().init(),
+    settingsProvider.load(),
+  ).wait;
   final apiCache = ApiCache(await HiveCacheStore.openOrFallback(cipher: storageCipher));
   unawaited(apiCache.prune(maxAge: const Duration(days: 14), maxEntries: 300));
 
   final authService = AuthService();
   await authService.init(cipher: storageCipher);
-
-  await NotificationService().init();
-
-  final settingsProvider = SettingsProvider();
-  await settingsProvider.load();
 
   final mediaListStore = MediaListStore(service: AniListService(), cache: apiCache);
   final messengerKey = GlobalKey<ScaffoldMessengerState>();
@@ -74,17 +75,24 @@ void main() async {
   );
 }
 
-/// Removes everything tied to the account that just logged out.
+/// Removes everything tied to the account that just logged out. Each step is
+/// best effort and independent, so one failure doesn't skip the others.
 Future<void> _clearAccountData(ApiCache cache, MediaListStore store) async {
   store.reset();
-  try {
-    await cache.clear();
-    await NotificationService().resetForLogout();
+  await _bestEffort('clearing the API cache', cache.clear);
+  await _bestEffort('resetting notifications', NotificationService().resetForLogout);
+  await _bestEffort('clearing recent searches', () async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(recentSearchesPrefsKey);
+  });
+}
+
+Future<void> _bestEffort(String what, Future<void> Function() step) async {
+  try {
+    await step();
   } on Object catch (e) {
-    // Best effort: the session itself is already gone.
-    debugPrint('[Logout] Clearing account data failed: $e');
+    // The session itself is already gone; leftovers are retried next logout.
+    debugPrint('[Logout] Failed $what: $e');
   }
 }
 

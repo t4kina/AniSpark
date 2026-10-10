@@ -13,13 +13,19 @@ sealed class OAuthCallbackResult {
 }
 
 final class OAuthTokenReceived extends OAuthCallbackResult {
-  const OAuthTokenReceived(this.accessToken);
+  const OAuthTokenReceived(this.accessToken, {this.stateEchoed = false});
   final String accessToken;
+
+  /// Whether the callback carried our `state` back.
+  final bool stateEchoed;
 }
 
 final class OAuthCodeReceived extends OAuthCallbackResult {
-  const OAuthCodeReceived(this.code);
+  const OAuthCodeReceived(this.code, {this.stateEchoed = false});
   final String code;
+
+  /// Whether the callback carried our `state` back.
+  final bool stateEchoed;
 }
 
 final class OAuthCancelled extends OAuthCallbackResult {
@@ -43,10 +49,12 @@ String generateOAuthState() {
 /// fragment, or an authorization code in the query string.
 ///
 /// A `state` that doesn't match [expectedState] is rejected. AniList doesn't
-/// document echoing `state` back, so a callback without one is accepted.
+/// document echoing `state` back, so a callback without one is only rejected
+/// when [requireState] is set — i.e. once AniList has been seen echoing it.
 OAuthCallbackResult parseOAuthCallback(
   String callbackUrl, {
   required String expectedState,
+  bool requireState = false,
 }) {
   final uri = Uri.tryParse(callbackUrl);
   if (uri == null || uri.scheme != oauthCallbackScheme || uri.host != _callbackHost) {
@@ -57,6 +65,8 @@ OAuthCallbackResult parseOAuthCallback(
 
   final state = params['state'];
   if (state != null && state != expectedState) return const OAuthFailed('state_mismatch');
+  if (state == null && requireState) return const OAuthFailed('missing_state');
+  final stateEchoed = state != null;
 
   final error = params['error'];
   if (error != null) {
@@ -64,10 +74,12 @@ OAuthCallbackResult parseOAuthCallback(
   }
   final token = params['access_token'];
   if (token != null) {
-    return _isPlausibleToken(token) ? OAuthTokenReceived(token) : const OAuthFailed('invalid_token');
+    return _isPlausibleToken(token)
+        ? OAuthTokenReceived(token, stateEchoed: stateEchoed)
+        : const OAuthFailed('invalid_token');
   }
   final code = params['code'];
-  if (code != null && code.isNotEmpty) return OAuthCodeReceived(code);
+  if (code != null && code.isNotEmpty) return OAuthCodeReceived(code, stateEchoed: stateEchoed);
   return const OAuthFailed('missing_credentials');
 }
 

@@ -21,7 +21,17 @@ void main() {
     test('returns null when the keystore cannot be read', () async {
       store.failReads = true;
 
-      expect(await loadStorageCipher(store), isNull);
+      expect(await loadStorageCipher(store, retryDelay: Duration.zero), isNull);
+    });
+
+    test('retries once when the keystore is briefly unavailable', () async {
+      await loadStorageCipher(store);
+      store.failingReadsLeft = 1;
+
+      final cipher = await loadStorageCipher(store, retryDelay: Duration.zero);
+
+      expect(cipher, isNotNull);
+      expect(store.values, hasLength(1), reason: 'the existing key is reused, not replaced');
     });
 
     test('returns null when the new key does not persist', () async {

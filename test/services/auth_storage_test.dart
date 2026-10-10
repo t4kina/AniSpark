@@ -94,8 +94,10 @@ void main() {
       expect(secure.values, isNot(contains(AuthStorage.tokenKey)));
     });
 
-    test('an empty old box leaves the keystore token alone', () async {
-      secure.values[AuthStorage.tokenKey] = 'current-token';
+    test('an empty old box leaves the keystore token of this install alone', () async {
+      final first = await AuthStorage.open(secure: secure, cipher: cipher);
+      await first.writeToken('current-token');
+      await Hive.close();
       await seedLegacyBox({});
 
       final storage = await AuthStorage.open(secure: secure, cipher: cipher);
@@ -155,13 +157,87 @@ void main() {
     });
 
     test('a failing keystore read reports no token without deleting it', () async {
-      secure.values[AuthStorage.tokenKey] = 'token';
-      final storage = await AuthStorage.open(secure: secure, cipher: cipher);
+      final first = await AuthStorage.open(secure: secure, cipher: cipher);
+      await first.writeToken('token');
+      final storage = await reopen(withCipher: cipher);
       secure.failReads = true;
 
       expect(await storage.readToken(), isNull);
       expect(secure.values[AuthStorage.tokenKey], 'token');
     });
+  });
+
+  group('stale sessions', () {
+    Future<void> markLogoutPending() async {
+      final box = await Hive.openBox(AuthStorage.boxName, encryptionCipher: cipher);
+      await box.put(AuthStorage.logoutPendingKey, true);
+      await Hive.close();
+    }
+
+    test('the first launch of an install ignores a token left by a previous install', () async {
+      secure.values[AuthStorage.tokenKey] = 'token-from-old-install';
+
+      final storage = await AuthStorage.open(secure: secure, cipher: cipher);
+
+      expect(await storage.readToken(), isNull);
+      expect(secure.values, isNot(contains(AuthStorage.tokenKey)));
+    });
+
+    test('a logout interrupted before reaching the keystore is completed next launch', () async {
+      final storage = await AuthStorage.open(secure: secure, cipher: cipher);
+      await storage.writeToken('token');
+      await Hive.close();
+      await markLogoutPending();
+
+      final next = await AuthStorage.open(secure: secure, cipher: cipher);
+
+      expect(await next.readToken(), isNull);
+      expect(secure.values, isNot(contains(AuthStorage.tokenKey)));
+    });
+
+    test('a pending logout keeps the session closed while the keystore fails', () async {
+      final storage = await AuthStorage.open(secure: secure, cipher: cipher);
+      await storage.writeToken('token');
+      await Hive.close();
+      await markLogoutPending();
+      secure.failDeletes = true;
+
+      final next = await AuthStorage.open(secure: secure, cipher: cipher);
+      expect(await next.readToken(), isNull);
+
+      secure.failDeletes = false;
+      final later = await reopen(withCipher: cipher);
+      expect(await later.readToken(), isNull);
+      expect(secure.values, isNot(contains(AuthStorage.tokenKey)));
+    });
+
+    test('logging in again replaces a pending logout', () async {
+      final storage = await AuthStorage.open(secure: secure, cipher: cipher);
+      await storage.writeToken('old-token');
+      await Hive.close();
+      await markLogoutPending();
+      secure.failDeletes = true;
+
+      final next = await AuthStorage.open(secure: secure, cipher: cipher);
+      await next.writeToken('new-token');
+      expect(await next.readToken(), 'new-token');
+
+      secure.failDeletes = false;
+      final later = await reopen(withCipher: cipher);
+      expect(await later.readToken(), 'new-token');
+    });
+  });
+
+  test('remembers that AniList echoes the OAuth state, across logouts', () async {
+    final storage = await AuthStorage.open(secure: secure, cipher: cipher);
+    expect(storage.stateEchoSeen, isFalse);
+
+    await storage.rememberStateEcho();
+    final next = await reopen(withCipher: cipher);
+    expect(next.stateEchoSeen, isTrue);
+
+    await next.clear();
+    expect(next.stateEchoSeen, isTrue, reason: 'it describes AniList, not the account');
   });
 
   group('without the keystore (no cipher)', () {

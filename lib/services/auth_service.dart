@@ -27,15 +27,17 @@ class AuthService extends ChangeNotifier {
 
   static const _clientId =
       String.fromEnvironment('ANILIST_CLIENT_ID');
-  // Only used by the authorization-code fallback flow. The default implicit
-  // flow keeps the client secret out of the app binary.
-  static const _clientSecret =
-      String.fromEnvironment('ANILIST_CLIENT_SECRET');
   // `implicit` (default; AniList's recommended flow for mobile apps, which
   // can't keep a client secret) or `code` (the previous flow, kept as a
   // fallback: build with --dart-define=ANILIST_OAUTH_FLOW=code).
   static const _oauthFlow =
       String.fromEnvironment('ANILIST_OAUTH_FLOW', defaultValue: 'implicit');
+  // Only the authorization-code fallback needs the client secret. This is a
+  // compile-time constant, so with the implicit flow the secret is not in the
+  // binary even if a build passes ANILIST_CLIENT_SECRET (e.g. via .env.json).
+  static const _clientSecret = _oauthFlow == 'code'
+      ? String.fromEnvironment('ANILIST_CLIENT_SECRET')
+      : '';
   static const _webRedirectUri =
       String.fromEnvironment('WEB_REDIRECT_URI', defaultValue: 'http://localhost:5000/');
   static const _tokenUrl = 'https://anilist.co/api/v2/oauth/token';
@@ -140,10 +142,19 @@ class AuthService extends ChangeNotifier {
       rethrow;
     }
 
-    switch (parseOAuthCallback(callback, expectedState: state)) {
-      case OAuthTokenReceived(:final accessToken):
+    // AniList doesn't document echoing `state`; once it has been seen doing
+    // so, callbacks without it are rejected (trust on first use).
+    final result = parseOAuthCallback(
+      callback,
+      expectedState: state,
+      requireState: _storage.stateEchoSeen,
+    );
+    switch (result) {
+      case OAuthTokenReceived(:final accessToken, :final stateEchoed):
+        if (stateEchoed) await _storage.rememberStateEcho();
         await _startSession(accessToken);
-      case OAuthCodeReceived(:final code):
+      case OAuthCodeReceived(:final code, :final stateEchoed):
+        if (stateEchoed) await _storage.rememberStateEcho();
         await _exchangeCodeForToken(code);
       case OAuthCancelled():
         return;
@@ -179,8 +190,9 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> _startSession(String token) async {
-    _token = token;
+    // Persist first (writeToken never throws), then expose the session.
     await _storage.writeToken(token);
+    _token = token;
     await fetchUser();
     notifyListeners();
   }
