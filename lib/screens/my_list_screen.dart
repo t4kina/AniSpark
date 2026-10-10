@@ -13,6 +13,7 @@ import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/entry_editor/entry_editor_sheet.dart';
 import '../services/notification_service.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
@@ -443,6 +444,29 @@ class _MediaListState extends State<_MediaList>
     );
   }
 
+  /// Opens the full entry editor for a row (long-press). The editor reads
+  /// the fields the list doesn't load before showing them, and a save
+  /// updates the shared store this list is built from.
+  void _openEditor(Map<String, dynamic> entry) {
+    final media = EditorMedia.fromMedia(
+      entry['media'] as Map<String, dynamic>?,
+      isManga: widget.type == 'MANGA',
+    );
+    if (media == null) return;
+    HapticFeedback.mediumImpact();
+    // Entries only know their status through the list they're in.
+    final status = context
+        .read<MediaListStore>()
+        .listsOf(widget.type)
+        ?.entries
+        .where((list) =>
+            !list.key.startsWith(customListPrefix) &&
+            list.value.any((e) => (e['media'] as Map?)?['id'] == media.id))
+        .map((list) => list.key)
+        .firstOrNull;
+    showEntryEditor(context, media: media, entry: {...entry, 'status': ?status});
+  }
+
   Future<void> _undoProgress(int mediaId, int previousProgress) async {
     if (!mounted) return;
     final token = context.read<AuthService>().token;
@@ -753,6 +777,7 @@ class _MediaListState extends State<_MediaList>
             type: widget.type,
             onAddEpisode: () => _changeProgress(item.entry!, 1),
             onRemove: () => _changeProgress(item.entry!, -1),
+            onEdit: () => _openEditor(item.entry!),
           );
         },
       ),
@@ -790,12 +815,15 @@ class _SwipeableRow extends StatefulWidget {
   final String type;
   final VoidCallback onAddEpisode;
   final VoidCallback onRemove;
+  /// Opens the full entry editor (long-press).
+  final VoidCallback onEdit;
   const _SwipeableRow({
     super.key,
     required this.entry,
     required this.type,
     required this.onAddEpisode,
     required this.onRemove,
+    required this.onEdit,
   });
 
   @override
@@ -921,6 +949,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                       builder: (_) => DetailScreen(animeId: id)),
                 )
             : null,
+        onLongPress: widget.onEdit,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           child: Row(

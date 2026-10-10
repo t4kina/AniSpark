@@ -167,6 +167,23 @@ class MediaListStore extends ChangeNotifier {
     }
   }
 
+  /// Shows an entry saved elsewhere (e.g. from the entry editor) right away,
+  /// before the next refresh: copies the fields the lists show from AniList's
+  /// response and moves the entry if its status changed. Does nothing when
+  /// the entry isn't in the loaded lists.
+  void applySavedEntry(String type, int mediaId, Map<String, dynamic> saved) {
+    if (_findEntry(type, mediaId) == null) return;
+    _updateEntry(type, mediaId, (e) => {
+          ...e,
+          for (final field in const ['progress', 'score', 'notes', 'customLists'])
+            if (saved.containsKey(field)) field: saved[field],
+        });
+    final status = saved['status'];
+    if (status is String) _moveToStatus(type, mediaId, status);
+    notifyListeners();
+    _persist(type);
+  }
+
   /// Removes an entry deleted elsewhere (e.g. from the detail screen).
   void removeEntry(String type, int mediaId) {
     final lists = _lists[type];

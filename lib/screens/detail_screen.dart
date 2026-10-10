@@ -3,11 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
-import '../providers/media_list_store.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
-import '../services/notification_service.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/external_url.dart';
 import '../utils/media_color.dart';
@@ -16,6 +14,10 @@ import '../widgets/overlay_button.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/detail/following_section.dart';
 import '../widgets/detail/reviews_section.dart';
+import '../widgets/entry_editor/entry_draft.dart' show FuzzyDate, entryStatusKey;
+import '../widgets/entry_editor/entry_editor_api.dart' show loadCustomListNames;
+import '../widgets/entry_editor/entry_editor_fields.dart' show formatFuzzyDate;
+import '../widgets/entry_editor/entry_editor_sheet.dart';
 import '../utils/translations.dart';
 import '../providers/settings_provider.dart';
 import 'character_screen.dart';
@@ -31,7 +33,6 @@ class DetailScreen extends StatefulWidget {
 class _DetailScreenState extends State<DetailScreen> {
   final _service = AniListService();
   Map<String, dynamic>? _data;
-  List<String> _customListNames = [];
   bool _customListsRequested = false;
   bool _loading = true;
   bool _togglingFav = false;
@@ -69,7 +70,7 @@ class _DetailScreenState extends State<DetailScreen> {
             _loading = false;
           });
           if (userId != null && token != null) {
-            _loadCustomListNames(userId, data['type'] as String? ?? 'ANIME', token);
+            _preloadCustomListNames(userId, data['type'] as String? ?? 'ANIME', token);
           }
         },
       );
@@ -81,37 +82,34 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   /// Custom list names are only needed by the edit sheet, so they load in
-  /// the background instead of delaying the page.
-  Future<void> _loadCustomListNames(int userId, String type, String token) async {
+  /// the background instead of delaying the page; the sheet reads them from
+  /// the same cache.
+  void _preloadCustomListNames(int userId, String type, String token) {
     if (_customListsRequested) return;
     _customListsRequested = true;
-    try {
-      await context.read<ApiCache>().load<List<String>>(
-        key: ApiCache.userKey(userId, 'customLists:$type'),
-        maxAge: const Duration(hours: 1),
-        fetch: () => _service.getCustomListNames(userId, type, token),
-        decode: (json) => [for (final name in json as List) name as String],
-        onData: (names, {required isFresh}) {
-          if (mounted) setState(() => _customListNames = names);
-        },
-      );
-    } on Exception catch (e) {
-      debugPrint('[DetailScreen] Loading custom lists failed: $e');
-    }
+    unawaited(loadCustomListNames(
+      cache: context.read<ApiCache>(),
+      service: _service,
+      userId: userId,
+      type: type,
+      token: token,
+      onData: (_) {},
+    ));
   }
 
-  /// Refreshes the user's list of this media's type after an edit here.
-  void _refreshList() {
-    final auth = context.read<AuthService>();
-    final userId = auth.user?['id'] as int?;
-    final token = auth.token;
-    if (userId == null || token == null) return;
-    unawaited(context.read<MediaListStore>().load(
-          _data?['type'] as String? ?? 'ANIME',
-          userId: userId,
-          token: token,
-          force: true,
-        ));
+  /// Opens the full entry editor. It saves only what changed and keeps My
+  /// List in sync; the page reloads after a save or removal.
+  void _openEditor(BuildContext context) {
+    final media = EditorMedia.fromMedia(_data);
+    if (media == null) return;
+    showEntryEditor(
+      context,
+      media: media,
+      entry: _data?['mediaListEntry'] as Map<String, dynamic>?,
+      onChanged: (_) {
+        if (mounted) _load(force: true);
+      },
+    );
   }
 
   Future<void> _toggleFav() async {
@@ -153,26 +151,6 @@ class _DetailScreenState extends State<DetailScreen> {
       ),
     );
   }
-
-  String _toAniListStatus(String local) => switch (local) {
-    'watching'      => 'CURRENT',
-    'completed'     => 'COMPLETED',
-    'plan_to_watch' => 'PLANNING',
-    'dropped'       => 'DROPPED',
-    'on_hold'       => 'PAUSED',
-    'rewatching'    => 'REPEATING',
-    _               => 'PLANNING',
-  };
-
-  String _fromAniListStatus(String s) => switch (s) {
-    'CURRENT'   => 'watching',
-    'COMPLETED' => 'completed',
-    'PLANNING'  => 'plan_to_watch',
-    'DROPPED'   => 'dropped',
-    'PAUSED'    => 'on_hold',
-    'REPEATING' => 'rewatching',
-    _           => 'plan_to_watch',
-  };
 
   @override
   Widget build(BuildContext context) {
@@ -256,15 +234,9 @@ class _DetailScreenState extends State<DetailScreen> {
 
     final listEntry = d['mediaListEntry'] as Map<String, dynamic>?;
     final inList = listEntry != null;
-
-    String listStatus = 'plan_to_watch';
-    int listProgress = 0;
-    double listScore = 0;
-    if (listEntry != null) {
-      listStatus = _fromAniListStatus(listEntry['status'] as String? ?? 'PLANNING');
-      listProgress = (listEntry['progress'] as num?)?.toInt() ?? 0;
-      listScore = (listEntry['score'] as num?)?.toDouble() ?? 0;
-    }
+    final listStatus = listEntry?['status'] as String? ?? 'PLANNING';
+    final listProgress = (listEntry?['progress'] as num?)?.toInt() ?? 0;
+    final listScore = (listEntry?['score'] as num?)?.toDouble() ?? 0;
 
     final allTimeRated = rankings.where((r) => r['type'] == 'RATED' && r['allTime'] == true).toList();
     final allTimePopular = rankings.where((r) => r['type'] == 'POPULAR' && r['allTime'] == true).toList();
@@ -275,10 +247,8 @@ class _DetailScreenState extends State<DetailScreen> {
     final highestRated = allTimeRated.isNotEmpty ? allTimeRated.first : (yearRated.isNotEmpty ? yearRated.first : null);
     final mostPopular = allTimePopular.isNotEmpty ? allTimePopular.first : (yearPopular.isNotEmpty ? yearPopular.first : null);
 
-    final startDate = d['startDate'];
-    final endDate = d['endDate'];
-    final startStr = _dateStr(startDate, lang);
-    final endStr = _dateStr(endDate, lang);
+    final startStr = formatFuzzyDate(FuzzyDate.fromJson(d['startDate']), lang);
+    final endStr = formatFuzzyDate(FuzzyDate.fromJson(d['endDate']), lang);
     final airingRange = [startStr, endStr].where((s) => s.isNotEmpty).join(' - ');
 
     final season = d['season'] as String?;
@@ -454,10 +424,12 @@ class _DetailScreenState extends State<DetailScreen> {
                     children: [
                       _actionBtn(
                         context,
-                        inList ? _statusLabel(listStatus, lang) : tr('add_to_list', lang).toUpperCase(),
+                        inList
+                            ? tr(entryStatusKey(listStatus, manga: isManga), lang).toUpperCase()
+                            : tr('add_to_list', lang).toUpperCase(),
                         icon: inList ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
                         sublabel: tr('status', lang).toUpperCase(),
-                        onTap: () => _showEditModal(context, listStatus, listProgress, listScore),
+                        onTap: () => _openEditor(context),
                       ),
                       const SizedBox(width: 8),
                       _actionBtn(
@@ -467,7 +439,7 @@ class _DetailScreenState extends State<DetailScreen> {
                             : '$listProgress $progressUnit',
                         icon: Icons.play_circle_outline_rounded,
                         sublabel: tr('progress', lang).toUpperCase(),
-                        onTap: () => _showEditModal(context, listStatus, listProgress, listScore),
+                        onTap: () => _openEditor(context),
                       ),
                       const SizedBox(width: 8),
                       _actionBtn(
@@ -475,7 +447,7 @@ class _DetailScreenState extends State<DetailScreen> {
                         listScore == 0 ? tr('detail_not_scored', lang) : formatScore(listScore, scoreFormat),
                         icon: listScore == 0 ? Icons.star_outline_rounded : Icons.star_rounded,
                         sublabel: tr('detail_score', lang),
-                        onTap: () => _showEditModal(context, listStatus, listProgress, listScore),
+                        onTap: () => _openEditor(context),
                       ),
                     ],
                   ),
@@ -667,7 +639,7 @@ class _DetailScreenState extends State<DetailScreen> {
                 overlayBtn(
                   icon: Icons.more_horiz,
                   tooltip: tr('tooltip_edit_entry', lang),
-                  onPressed: () => _showEditModal(context, listStatus, listProgress, listScore),
+                  onPressed: () => _openEditor(context),
                 ),
               ],
             ),
@@ -828,16 +800,6 @@ class _DetailScreenState extends State<DetailScreen> {
     return '$n';
   }
 
-  String _dateStr(Map<String, dynamic>? d, String lang) {
-    if (d == null) return '';
-    final y = d['year']; final m = d['month']; final day = d['day'];
-    if (y == null) return '';
-    if (m == null) return '$y';
-    final mStr = (m as int) >= 1 && m <= 12 ? tr('detail_month_$m', lang) : '$m';
-    if (day == null) return trf('detail_date_month_year', lang, {'month': mStr, 'year': y});
-    return trf('detail_date_full', lang, {'day': day, 'month': mStr, 'year': y});
-  }
-
   // TV, OVA and ONA read the same in every language, so they fall through.
   String _formatLabel(String f, String lang) => switch (f) {
     'MOVIE' => tr('movie', lang),
@@ -849,19 +811,6 @@ class _DetailScreenState extends State<DetailScreen> {
     'ONE_SHOT' => tr('detail_format_one_shot', lang),
     _ => f,
   };
-
-  /// Translation key of a local list status, worded for reading on manga.
-  static String _statusKey(String status, {required bool manga}) => switch (status) {
-    'watching'      => manga ? 'reading' : 'watching',
-    'plan_to_watch' => manga ? 'plan_to_read' : 'plan_to_watch',
-    'rewatching'    => manga ? 'rereading' : 'rewatching',
-    _               => status, // completed, dropped, on_hold
-  };
-
-  String _statusLabel(String s, String lang) {
-    final manga = (_data?['type'] as String?) == 'MANGA';
-    return tr(_statusKey(s, manga: manga), lang).toUpperCase();
-  }
 
   String _seasonLabel(String s, String lang) => switch (s) {
     'WINTER' => tr('detail_season_winter', lang),
@@ -895,255 +844,6 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   Future<void> _openUrl(String url) => openExternalUrl(url);
-
-  void _showEditModal(BuildContext context,
-      String initialStatus, int initialProgress, double initialScore) {
-    final resolvedTitle = context.read<SettingsProvider>().resolveTitle(_data!['title'] as Map<String, dynamic>?);
-    final totalEps = (_data!['episodes'] ?? _data!['chapters']) as int?;
-    final isManga = (_data!['type'] as String?) == 'MANGA';
-
-    final lang = context.read<SettingsProvider>().language;
-    final entryId = _data!['mediaListEntry']?['id'] as int?;
-    final progressUnit = tr(isManga ? 'detail_unit_ch' : 'detail_unit_ep', lang);
-    String statusText(String status) => tr(_statusKey(status, manga: isManga), lang);
-
-    String selectedStatus = initialStatus;
-    int progress = initialProgress;
-    double score = initialScore;
-    bool saving = false;
-    String? errorText;
-    final initialNotes = (_data!['mediaListEntry']?['notes'] as String?) ?? '';
-    final notesController = TextEditingController(text: initialNotes);
-
-    // Parse current custom lists from entry data
-    final rawCustom = _data!['mediaListEntry']?['customLists'];
-    final initialCustom = <String>{};
-    if (rawCustom is Map) {
-      for (final e in rawCustom.entries) {
-        if (e.value == true) initialCustom.add(e.key as String);
-      }
-    }
-    final selectedCustomLists = Set<String>.from(initialCustom);
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (ctx, setModal) => Padding(
-          padding: EdgeInsets.only(left: 24, right: 24, top: 24, bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)))),
-              Text(resolvedTitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 16),
-              Text(tr('status', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                _statusChip(ctx, statusText('watching'), 'watching', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, statusText('completed'), 'completed', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, statusText('plan_to_watch'), 'plan_to_watch', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, statusText('on_hold'), 'on_hold', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, statusText('dropped'), 'dropped', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, statusText('rewatching'), 'rewatching', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-              ]),
-              const SizedBox(height: 16),
-              Text(tr('progress', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 8),
-              Row(children: [
-                _counterBtn(ctx, Icons.remove, () { if (progress > 0) setModal(() => progress--); }),
-                const SizedBox(width: 12),
-                Expanded(child: Text(totalEps != null ? '$progress / $totalEps $progressUnit' : '$progress $progressUnit',
-                    textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
-                const SizedBox(width: 12),
-                _counterBtn(ctx, Icons.add, () { if (totalEps == null || progress < totalEps) setModal(() => progress++); }),
-              ]),
-              const SizedBox(height: 16),
-              Text(tr('score', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 8),
-              Row(children: [
-                _counterBtn(ctx, Icons.remove, () { if (score > 0) setModal(() => score = (score - 0.5).clamp(0, 10)); }),
-                const SizedBox(width: 12),
-                Expanded(child: Text(score == 0 ? '—' : score.toStringAsFixed(1),
-                    textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
-                const SizedBox(width: 12),
-                _counterBtn(ctx, Icons.add, () { if (score < 10) setModal(() => score = (score + 0.5).clamp(0, 10)); }),
-              ]),
-              if (_customListNames.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                Text(tr('detail_custom_lists', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: _customListNames.map((name) {
-                    final selected = selectedCustomLists.contains(name);
-                    return Builder(builder: (c) => FilterChip(
-                      label: Text(name, style: TextStyle(fontSize: 12, color: selected ? Colors.white : null)),
-                      selected: selected,
-                      selectedColor: Theme.of(c).colorScheme.primary,
-                      checkmarkColor: Colors.white,
-                      onSelected: (v) => setModal(() {
-                        if (v) { selectedCustomLists.add(name); } else { selectedCustomLists.remove(name); }
-                      }),
-                    ));
-                  }).toList(),
-                ),
-              ],
-              const SizedBox(height: 16),
-              Text(tr('detail_notes', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: notesController,
-                maxLines: 3,
-                minLines: 1,
-                style: const TextStyle(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: tr('detail_notes_hint', lang),
-                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-                  filled: true,
-                  fillColor: Theme.of(ctx).colorScheme.surfaceContainerHighest,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                ),
-              ),
-              const SizedBox(height: 24),
-              if (errorText != null) ...[
-                Text(errorText ?? '', style: const TextStyle(color: Colors.red, fontSize: 12)),
-                const SizedBox(height: 8),
-              ],
-              Row(children: [
-                Expanded(child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  onPressed: saving ? null : () async {
-                    final token = context.read<AuthService>().token;
-                    final messenger = ScaffoldMessenger.of(context);
-                    if (token == null) {
-                      setModal(() => errorText = tr('connect_anilist', lang));
-                      return;
-                    }
-                    setModal(() { saving = true; errorText = null; });
-                    final notes = notesController.text.trim();
-                    final customListsChanged = selectedCustomLists.length != initialCustom.length ||
-                        !selectedCustomLists.containsAll(initialCustom);
-                    // Unchanged fields are left out so AniList keeps them exactly as they are.
-                    final saved = await _service.saveListEntry(
-                      mediaId: widget.animeId,
-                      status: _toAniListStatus(selectedStatus),
-                      progress: progress,
-                      scoreRaw: score != initialScore ? toRawScore(score) : null,
-                      notes: notes != initialNotes.trim() ? notes : null,
-                      customLists: customListsChanged ? selectedCustomLists.toList() : null,
-                      token: token,
-                    );
-                    if (saved == null) {
-                      if (sheetContext.mounted) {
-                        setModal(() { saving = false; errorText = tr('save_failed', lang); });
-                      }
-                      return;
-                    }
-                    if (!mounted) return;
-                    _load(force: true);
-                    _refreshList();
-                    if (sheetContext.mounted) Navigator.pop(sheetContext);
-                    messenger.showSnackBar(SnackBar(content: Text(trf('detail_saved', lang, {'title': resolvedTitle}))));
-                  },
-                  child: saving
-                      ? const SizedBox(width: 18, height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : Text(tr('save', lang), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                )),
-                if (entryId != null) ...[
-                  const SizedBox(width: 12),
-                  IconButton(
-                    tooltip: tr('remove_from_list', lang),
-                    icon: const Icon(Icons.delete_outline, color: Colors.red),
-                    onPressed: saving ? null : () async {
-                      final token = context.read<AuthService>().token;
-                      final store = context.read<MediaListStore>();
-                      final type = _data?['type'] as String? ?? 'ANIME';
-                      final messenger = ScaffoldMessenger.of(context);
-                      if (token == null || !await _confirmRemoval(ctx, lang)) return;
-                      setModal(() { saving = true; errorText = null; });
-                      final ok = await _service.deleteListEntry(entryId: entryId, token: token);
-                      if (!ok) {
-                        if (sheetContext.mounted) {
-                          setModal(() { saving = false; errorText = tr('remove_failed', lang); });
-                        }
-                        return;
-                      }
-                      NotificationService().cancelForMedia(widget.animeId);
-                      store.removeEntry(type, widget.animeId);
-                      if (!mounted) return;
-                      _load(force: true);
-                      if (sheetContext.mounted) Navigator.pop(sheetContext);
-                      messenger.showSnackBar(SnackBar(content: Text(tr('removed_from_list', lang))));
-                    },
-                  ),
-                ],
-              ]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Future<bool> _confirmRemoval(BuildContext context, String lang) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(tr('remove_from_list', lang)),
-        content: Text(tr('remove_from_list_confirm', lang)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(tr('cancel', lang)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(tr('remove', lang), style: const TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-    return confirmed ?? false;
-  }
-
-  Widget _counterBtn(BuildContext context, IconData icon, VoidCallback onTap) =>
-      GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 36, height: 36,
-          decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8)),
-          child: Icon(icon, size: 18),
-        ),
-      );
-
-  Widget _statusChip(BuildContext context, String label, String value, String selected, Function(String) onTap) {
-    final isSelected = value == selected;
-    return GestureDetector(
-      onTap: () => onTap(value),
-      child: Chip(
-        label: Text(label),
-        backgroundColor: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.surfaceContainerHighest,
-        labelStyle: TextStyle(color: isSelected ? Colors.white : null, fontSize: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-      ),
-    );
-  }
 }
 
 // ── Extracted section widgets ─────────────────────────────────────────────

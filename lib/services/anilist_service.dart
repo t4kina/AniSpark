@@ -276,7 +276,9 @@ class AniListService {
           tags { name isMediaSpoiler }
           isFavourite
           mediaListEntry {
-            id status progress score(format: POINT_10_DECIMAL) notes customLists
+            id status progress progressVolumes score(format: POINT_10_DECIMAL)
+            repeat private hiddenFromStatusLists notes customLists
+            startedAt { year month day } completedAt { year month day }
           }
           relations {
             edges {
@@ -620,32 +622,55 @@ class AniListService {
     'mediaId': 'Int',
     'status': 'MediaListStatus',
     'progress': 'Int',
+    'progressVolumes': 'Int',
     'scoreRaw': 'Int',
+    'repeat': 'Int',
+    'private': 'Boolean',
+    'hiddenFromStatusLists': 'Boolean',
     'notes': 'String',
     'customLists': '[String]',
+    'startedAt': 'FuzzyDateInput',
+    'completedAt': 'FuzzyDateInput',
   };
 
   /// Creates or updates a list entry, sending only the fields that are
   /// provided so a progress update never overwrites the score, notes or
   /// custom lists. [scoreRaw] is on a 0–100 scale, which AniList converts to
-  /// the user's own score format. Returns the saved entry (`id`, `status`,
-  /// `progress`, 0–10 `score`) or null if AniList rejected the change.
+  /// the user's own score format. [startedAt] and [completedAt] are AniList
+  /// `FuzzyDateInput`s (`year`, `month`, `day`); missing parts are sent as
+  /// null, so an empty map clears the date. Returns the saved entry (`id`,
+  /// `status`, `progress`, 0–10 `score` and the other editable fields) or
+  /// null if AniList rejected the change.
   Future<Map<String, dynamic>?> saveListEntry({
     required int mediaId,
     required String token,
     String? status,
     int? progress,
+    int? progressVolumes,
     int? scoreRaw,
+    int? repeat,
+    bool? private,
+    bool? hiddenFromStatusLists,
     String? notes,
     List<String>? customLists,
+    Map<String, int?>? startedAt,
+    Map<String, int?>? completedAt,
   }) async {
+    Map<String, int?> fuzzyDate(Map<String, int?> date) =>
+        {'year': date['year'], 'month': date['month'], 'day': date['day']};
     final variables = <String, dynamic>{
       'mediaId': mediaId,
       'status': ?status,
       'progress': ?progress,
+      'progressVolumes': ?progressVolumes,
       'scoreRaw': ?scoreRaw,
+      'repeat': ?repeat,
+      'private': ?private,
+      'hiddenFromStatusLists': ?hiddenFromStatusLists,
       'notes': ?notes,
       'customLists': ?customLists,
+      if (startedAt != null) 'startedAt': fuzzyDate(startedAt),
+      if (completedAt != null) 'completedAt': fuzzyDate(completedAt),
     };
     final declarations = variables.keys
         .map((name) => '\$$name: ${_saveEntryArgTypes[name]}')
@@ -654,7 +679,9 @@ class AniListService {
     final mutation = '''
       mutation($declarations) {
         SaveMediaListEntry($arguments) {
-          id status progress score(format: POINT_10_DECIMAL)
+          id status progress progressVolumes score(format: POINT_10_DECIMAL)
+          repeat private hiddenFromStatusLists notes customLists
+          startedAt { year month day } completedAt { year month day }
         }
       }
     ''';

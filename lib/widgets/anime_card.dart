@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../screens/detail_screen.dart';
+import '../services/auth_service.dart';
+import 'entry_editor/entry_editor_sheet.dart';
 
 class AnimeCard extends StatelessWidget {
   final dynamic animeData; // from API
@@ -13,6 +16,18 @@ class AnimeCard extends StatelessWidget {
     required this.animeData,
     this.showScore = true,
   });
+
+  /// Long-press quick add: opens the entry editor, which looks the media up
+  /// in the user's list (a new entry starts as Planning). Does nothing when
+  /// logged out.
+  void _quickAdd(BuildContext context) {
+    final data = animeData;
+    if (data is! Map<String, dynamic> || !context.read<AuthService>().isLoggedIn) return;
+    final media = EditorMedia.fromMedia(data);
+    if (media == null) return;
+    HapticFeedback.mediumImpact();
+    showEntryEditor(context, media: media, entryKnown: false);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +47,7 @@ class AnimeCard extends StatelessWidget {
                   builder: (_) => DetailScreen(animeId: id),
                 ),
               ),
+      onLongPress: id == null ? null : () => _quickAdd(context),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
