@@ -30,6 +30,7 @@ class SettingsProvider extends ChangeNotifier {
 
   ThemeMode get themeMode => switch (_appearance) {
     'Light' => ThemeMode.light,
+    'System' => ThemeMode.system,
     _ => ThemeMode.dark,
   };
 

@@ -290,7 +290,7 @@ void main() {
     test('returns ThemeMode.dark for any unrecognized appearance value',
         () async {
       final provider = SettingsProvider();
-      await provider.setAppearance('System');
+      await provider.setAppearance('Sepia');
 
       expect(provider.themeMode, ThemeMode.dark);
     });

@@ -13,6 +13,14 @@ String tr(String key, String language) {
   return translations[language]?[key] ?? translations['English']?[key] ?? key;
 }
 
+/// Like [tr], replacing `{name}` placeholders in the text with [args]
+/// (e.g. `'episode_n': 'Episode {n}'`).
+String trf(String key, String language, Map<String, Object> args) {
+  var text = tr(key, language);
+  args.forEach((name, value) => text = text.replaceAll('{$name}', '$value'));
+  return text;
+}
+
 // ─── English ─────────────────────────────────────────────────────────────────
 const _en = {
   // Navigation
