@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/translations.dart' show tr;
 
 const accentColorOptions = <String, Color>{
   'Blue':   Color(0xFF02A9FF),
@@ -36,14 +37,15 @@ class SettingsProvider extends ChangeNotifier {
 
   /// Returns the AniList title field key based on preference.
   String resolveTitle(Map<String, dynamic>? titleMap) {
-    if (titleMap == null) return 'Unknown';
+    final unknown = tr('feed_unknown', _language);
+    if (titleMap == null) return unknown;
     switch (_titleLanguage) {
       case 'Romaji':
-        return (titleMap['romaji'] ?? titleMap['english'] ?? 'Unknown') as String;
+        return (titleMap['romaji'] ?? titleMap['english'] ?? unknown) as String;
       case 'Native':
-        return (titleMap['native'] ?? titleMap['romaji'] ?? 'Unknown') as String;
+        return (titleMap['native'] ?? titleMap['romaji'] ?? unknown) as String;
       default: // English
-        return (titleMap['english'] ?? titleMap['romaji'] ?? 'Unknown') as String;
+        return (titleMap['english'] ?? titleMap['romaji'] ?? unknown) as String;
     }
   }
 

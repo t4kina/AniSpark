@@ -109,24 +109,28 @@ class _CharacterScreenState extends State<CharacterScreen> {
   @override
   Widget build(BuildContext context) {
     final isFav = _data?['isFavourite'] == true;
+    final lang = context.watch<SettingsProvider>().language;
     return Scaffold(
       body: Stack(
         children: [
           _loading ? _buildShimmer() : _buildContent(),
+          // 44px touch targets around 36px circles, so offsets are 4px smaller.
           Positioned(
-            top: MediaQuery.of(context).padding.top + 6,
-            left: 12,
-            right: 12,
+            top: MediaQuery.of(context).padding.top + 2,
+            left: 8,
+            right: 8,
             child: Row(
               children: [
                 overlayBtn(
                   icon: Icons.arrow_back,
+                  tooltip: tr('tooltip_back', lang),
                   onPressed: () => Navigator.pop(context),
                 ),
                 const Spacer(),
                 overlayBtn(
                   icon: isFav ? Icons.favorite : Icons.favorite_border,
                   color: isFav ? Colors.red : Colors.white,
+                  tooltip: tr('tooltip_favourite', lang),
                   onPressed: _isFresh ? _toggleFavourite : null,
                 ),
               ],

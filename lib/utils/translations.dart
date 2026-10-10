@@ -427,6 +427,7 @@ const _en = {
   'tooltip_favourite': 'Favourite',
   'tooltip_edit_entry': 'Edit list entry',
   'tooltip_settings': 'Settings',
+  'notif_activity_status': '{name} {status} {title}',
 };
 
 // ─── Spanish ─────────────────────────────────────────────────────────────────
@@ -809,6 +810,7 @@ const _es = {
   'tooltip_favourite': 'Favorito',
   'tooltip_edit_entry': 'Editar entrada',
   'tooltip_settings': 'Ajustes',
+  'notif_activity_status': '{name}: {status} {title}',
 };
 
 // ─── Japanese ────────────────────────────────────────────────────────────────
@@ -1191,6 +1193,7 @@ const _ja = {
   'tooltip_favourite': 'お気に入り',
   'tooltip_edit_entry': 'リストを編集',
   'tooltip_settings': '設定',
+  'notif_activity_status': '{name}：{status} {title}',
 };
 
 // ─── French ──────────────────────────────────────────────────────────────────
@@ -1573,6 +1576,7 @@ const _fr = {
   'tooltip_favourite': 'Favori',
   'tooltip_edit_entry': 'Modifier l\'entrée',
   'tooltip_settings': 'Paramètres',
+  'notif_activity_status': '{name} : {status} {title}',
 };
 
 // ─── German ──────────────────────────────────────────────────────────────────
@@ -1955,6 +1959,7 @@ const _de = {
   'tooltip_favourite': 'Favorit',
   'tooltip_edit_entry': 'Eintrag bearbeiten',
   'tooltip_settings': 'Einstellungen',
+  'notif_activity_status': '{name}: {status} {title}',
 };
 
 // ─── Portuguese ──────────────────────────────────────────────────────────────
@@ -2337,6 +2342,7 @@ const _pt = {
   'tooltip_favourite': 'Favorito',
   'tooltip_edit_entry': 'Editar entrada',
   'tooltip_settings': 'Configurações',
+  'notif_activity_status': '{name}: {status} {title}',
 };
 
 // ─── Italian ─────────────────────────────────────────────────────────────────
@@ -2719,6 +2725,7 @@ const _it = {
   'tooltip_favourite': 'Preferito',
   'tooltip_edit_entry': 'Modifica voce',
   'tooltip_settings': 'Impostazioni',
+  'notif_activity_status': '{name}: {status} {title}',
 };
 
 // ─── Korean ──────────────────────────────────────────────────────────────────
@@ -3101,4 +3108,5 @@ const _ko = {
   'tooltip_favourite': '즐겨찾기',
   'tooltip_edit_entry': '목록 항목 편집',
   'tooltip_settings': '설정',
+  'notif_activity_status': '{name}: {status} {title}',
 };

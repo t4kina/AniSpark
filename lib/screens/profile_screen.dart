@@ -366,11 +366,13 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           ],
         ),
       ),
+          // 44px touch target around a 36px circle, so the offset is 4px smaller.
           Positioned(
-            top: MediaQuery.of(context).padding.top + 6,
-            right: 12,
+            top: MediaQuery.of(context).padding.top + 2,
+            right: 8,
             child: overlayBtn(
               icon: Icons.settings_outlined,
+              tooltip: tr('tooltip_settings', context.watch<SettingsProvider>().language),
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),

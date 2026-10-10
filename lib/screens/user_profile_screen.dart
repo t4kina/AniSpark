@@ -170,11 +170,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       body: Stack(
         children: [
           _loading ? _buildShimmer() : _buildContent(lang),
+          // 44px touch target around a 36px circle, so the offset is 4px smaller.
           Positioned(
-            top: MediaQuery.of(context).padding.top + 6,
-            left: 12,
+            top: MediaQuery.of(context).padding.top + 2,
+            left: 8,
             child: overlayBtn(
               icon: Icons.arrow_back,
+              tooltip: tr('tooltip_back', lang),
               onPressed: () => Navigator.pop(context),
             ),
           ),

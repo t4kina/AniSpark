@@ -239,7 +239,7 @@ class NotificationService {
       return trf('notif_activity_progress', lang,
           {'name': name, 'status': status, 'progress': progress, 'title': title});
     }
-    return '$name $status $title';
+    return trf('notif_activity_status', lang, {'name': name, 'status': status, 'title': title});
   }
 
   Future<String?> _downloadImage(String url) async {
