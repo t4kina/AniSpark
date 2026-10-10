@@ -6,7 +6,7 @@ import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../utils/refresh_notifier.dart';
-import '../utils/translations.dart' show tr;
+import '../utils/translations.dart' show tr, trf;
 import '../widgets/overlay_button.dart';
 import 'detail_screen.dart';
 
@@ -160,15 +160,17 @@ class _CharacterScreenState extends State<CharacterScreen> {
     final d = _data;
     if (d == null) return _buildError();
 
+    final lang = context.watch<SettingsProvider>().language;
     final image = d['image']?['large'] as String? ?? widget.imageUrl;
     final name = d['name']?['full'] as String? ?? widget.name ?? '';
     final nativeName = d['name']?['native'] as String?;
     final description = (d['description'] as String? ?? '').trim();
-    final gender = d['gender'] as String?;
+    final rawGender = d['gender'] as String?;
+    final gender = rawGender != null ? _genderLabel(rawGender, lang) : null;
     final age = d['age'] as String?;
     final bloodType = d['bloodType'] as String?;
     final dob = d['dateOfBirth'] as Map<String, dynamic>?;
-    final dobStr = _dobStr(dob);
+    final dobStr = _dobStr(dob, lang);
     final media = (d['media']?['nodes'] as List<dynamic>?) ?? [];
 
     final surface = Theme.of(context).colorScheme.surface;
@@ -286,7 +288,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _sectionLabel('ABOUT'),
+                  _sectionLabel(tr('char_about', lang)),
                   const SizedBox(height: 8),
                   AnimatedCrossFade(
                     duration: const Duration(milliseconds: 200),
@@ -316,7 +318,9 @@ class _CharacterScreenState extends State<CharacterScreen> {
                       child: Padding(
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
-                          _descExpanded ? 'Show less' : 'Read more',
+                          _descExpanded
+                              ? tr('char_show_less', lang)
+                              : tr('detail_read_more', lang),
                           style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
@@ -334,7 +338,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
-              child: _sectionLabel('APPEARS IN'),
+              child: _sectionLabel(tr('char_appears_in', lang)),
             ),
           ),
           SliverToBoxAdapter(
@@ -454,14 +458,26 @@ class _CharacterScreenState extends State<CharacterScreen> {
     );
   }
 
-  String? _dobStr(Map<String, dynamic>? dob) {
+  /// AniList's gender is free text; the common values are translated and
+  /// anything else is shown as written.
+  String _genderLabel(String gender, String lang) =>
+      switch (gender.toLowerCase()) {
+        'male' => tr('char_gender_male', lang),
+        'female' => tr('char_gender_female', lang),
+        'non-binary' => tr('char_gender_non_binary', lang),
+        _ => gender,
+      };
+
+  String? _dobStr(Map<String, dynamic>? dob, String lang) {
     if (dob == null) return null;
     final month = dob['month'] as int?;
     final day = dob['day'] as int?;
     if (month == null && day == null) return null;
-    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    final m = month != null ? months[month - 1] : '';
-    final d = day != null ? ' $day' : '';
-    return '$m$d';
+    final m = month == null
+        ? ''
+        : (month >= 1 && month <= 12 ? tr('detail_month_$month', lang) : '$month');
+    if (day == null) return m;
+    // Trimmed so a birthday without a month doesn't keep the separator.
+    return trf('char_birthday_date', lang, {'month': m, 'day': day}).trim();
   }
 }

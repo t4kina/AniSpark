@@ -137,10 +137,11 @@ class _DetailScreenState extends State<DetailScreen> {
   void _copyLink() {
     final type = (_data?['type'] as String? ?? 'ANIME').toLowerCase();
     final url = 'https://anilist.co/$type/${widget.animeId}';
+    final lang = context.read<SettingsProvider>().language;
     Clipboard.setData(ClipboardData(text: url));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Link copied to clipboard'),
+        content: Text(tr('detail_link_copied', lang)),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -171,8 +172,9 @@ class _DetailScreenState extends State<DetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    final settings = context.watch<SettingsProvider>();
+    final lang = settings.language;
     if (_data == null) {
-      final lang = context.read<SettingsProvider>().language;
       return Scaffold(
         appBar: AppBar(),
         body: Center(
@@ -197,7 +199,6 @@ class _DetailScreenState extends State<DetailScreen> {
       );
     }
 
-    final settings = context.read<SettingsProvider>();
     final d = _data!;
 
     final title = settings.resolveTitle(d['title'] as Map<String, dynamic>?);
@@ -212,7 +213,7 @@ class _DetailScreenState extends State<DetailScreen> {
     final chapters = d['chapters'] as int?;
     final volumes = d['volumes'] as int?;
     final progressTotal = isManga ? chapters : episodes;
-    final progressUnit = isManga ? 'CH' : 'EP';
+    final progressUnit = tr(isManga ? 'detail_unit_ch' : 'detail_unit_ep', lang).toUpperCase();
     final duration = d['duration'] as int?;
     final format = d['format'] as String?;
     final genres = (d['genres'] as List? ?? []).cast<String>();
@@ -254,14 +255,14 @@ class _DetailScreenState extends State<DetailScreen> {
 
     final startDate = d['startDate'];
     final endDate = d['endDate'];
-    final startStr = _dateStr(startDate);
-    final endStr = _dateStr(endDate);
+    final startStr = _dateStr(startDate, lang);
+    final endStr = _dateStr(endDate, lang);
     final airingRange = [startStr, endStr].where((s) => s.isNotEmpty).join(' - ');
 
     final season = d['season'] as String?;
     final seasonYear = d['seasonYear'] as int?;
     final seasonStr = season != null && seasonYear != null
-        ? '${_seasonLabel(season)} $seasonYear' : null;
+        ? _seasonYear(season, seasonYear, lang) : null;
 
     final totalDuration = (episodes != null && duration != null) ? episodes * duration : null;
     final watched = listProgress;
@@ -334,7 +335,10 @@ class _DetailScreenState extends State<DetailScreen> {
                                 if (nextAiring != null) ...[
                                   const SizedBox(height: 8),
                                   Text(
-                                    'Episode ${nextAiring['episode']} airs in ${_airingCountdown(nextAiring['airingAt'] as int)}',
+                                    trf('detail_episode_airs_in', lang, {
+                                      'n': '${nextAiring['episode']}',
+                                      'time': _airingCountdown(nextAiring['airingAt'] as int, lang),
+                                    }),
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(color: Colors.grey, fontSize: 13),
                                   ),
@@ -347,18 +351,18 @@ class _DetailScreenState extends State<DetailScreen> {
                           IntrinsicHeight(
                             child: Row(
                               children: [
-                                _statCell('AVERAGE SCORE',
+                                _statCell(tr('detail_average_score', lang),
                                     score != null ? '$score%' : '—',
                                     score != null && score >= 70 ? Colors.green : Colors.grey),
                                 if (highestRated != null) ...[
                                   _vDivider(),
-                                  _statCell('HIGHEST RATED', '#${highestRated['rank']}', null,
-                                      sub: _rankingSub(highestRated)),
+                                  _statCell(tr('detail_highest_rated', lang), '#${highestRated['rank']}', null,
+                                      sub: _rankingSub(highestRated, lang)),
                                 ],
                                 if (mostPopular != null) ...[
                                   _vDivider(),
-                                  _statCell('MOST POPULAR', '#${mostPopular['rank']}', null,
-                                      sub: _rankingSub(mostPopular)),
+                                  _statCell(tr('detail_most_popular', lang), '#${mostPopular['rank']}', null,
+                                      sub: _rankingSub(mostPopular, lang)),
                                 ],
                               ],
                             ),
@@ -420,9 +424,9 @@ class _DetailScreenState extends State<DetailScreen> {
                     children: [
                       _actionBtn(
                         context,
-                        inList ? _statusLabel(listStatus) : 'ADD TO LIST',
+                        inList ? _statusLabel(listStatus, lang) : tr('add_to_list', lang).toUpperCase(),
                         icon: inList ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
-                        sublabel: 'STATUS',
+                        sublabel: tr('status', lang).toUpperCase(),
                         onTap: () => _showEditModal(context, listStatus, listProgress, listScore),
                       ),
                       const SizedBox(width: 8),
@@ -432,15 +436,15 @@ class _DetailScreenState extends State<DetailScreen> {
                             ? '$listProgress / $progressTotal $progressUnit'
                             : '$listProgress $progressUnit',
                         icon: Icons.play_circle_outline_rounded,
-                        sublabel: 'PROGRESS',
+                        sublabel: tr('progress', lang).toUpperCase(),
                         onTap: () => _showEditModal(context, listStatus, listProgress, listScore),
                       ),
                       const SizedBox(width: 8),
                       _actionBtn(
                         context,
-                        listScore == 0 ? 'NOT SCORED' : listScore.toStringAsFixed(1),
+                        listScore == 0 ? tr('detail_not_scored', lang) : listScore.toStringAsFixed(1),
                         icon: listScore == 0 ? Icons.star_outline_rounded : Icons.star_rounded,
-                        sublabel: 'SCORE',
+                        sublabel: tr('detail_score', lang),
                         onTap: () => _showEditModal(context, listStatus, listProgress, listScore),
                       ),
                     ],
@@ -460,21 +464,21 @@ class _DetailScreenState extends State<DetailScreen> {
                 _sectionPad(Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _sectionTitle('SERIES INFO'),
+                    _sectionTitle(tr('detail_series_info', lang)),
                     const SizedBox(height: 12),
                     _infoGrid([
-                      if (format != null) _InfoItem('TYPE', _formatLabel(format)),
-                      if (airingRange.isNotEmpty) _InfoItem(isManga ? 'PUBLISHED' : 'AIRING', airingRange),
-                      if (episodes != null) _InfoItem('EPISODES', '$episodes'),
-                      if (chapters != null) _InfoItem('CHAPTERS', '$chapters'),
-                      if (volumes != null) _InfoItem('VOLUMES', '$volumes'),
-                      if (duration != null) _InfoItem('RUNTIME', '${_durationStr(duration, settings.language)} per episode'),
-                      if (totalDuration != null) _InfoItem('ESTIMATED TOTAL DURATION', _durationStr(totalDuration, settings.language)),
-                      if (remaining != null && remaining > 0) _InfoItem('TIME REMAINING TO FINISH', _durationStr(remaining, settings.language)),
-                      if (seasonStr != null) _InfoItem('SEASON', seasonStr),
-                      if (popularity != null) _InfoItem('POPULARITY', 'On ${_fmt(popularity)} user\'s lists'),
-                      if (favourites != null) _InfoItem('FAVORITES', _fmt(favourites)),
-                      if (trending != null) _InfoItem('TRENDING', '$trending recent user list updates'),
+                      if (format != null) _InfoItem(tr('detail_type', lang), _formatLabel(format, lang)),
+                      if (airingRange.isNotEmpty) _InfoItem(tr(isManga ? 'detail_published' : 'detail_airing', lang), airingRange),
+                      if (episodes != null) _InfoItem(tr('detail_episodes', lang), '$episodes'),
+                      if (chapters != null) _InfoItem(tr('detail_chapters', lang), '$chapters'),
+                      if (volumes != null) _InfoItem(tr('detail_volumes', lang), '$volumes'),
+                      if (duration != null) _InfoItem(tr('detail_runtime', lang), trf('detail_per_episode', lang, {'time': _durationStr(duration, lang)})),
+                      if (totalDuration != null) _InfoItem(tr('detail_total_duration', lang), _durationStr(totalDuration, lang)),
+                      if (remaining != null && remaining > 0) _InfoItem(tr('detail_time_remaining', lang), _durationStr(remaining, lang)),
+                      if (seasonStr != null) _InfoItem(tr('detail_season', lang), seasonStr),
+                      if (popularity != null) _InfoItem(tr('popularity', lang).toUpperCase(), trf('detail_on_user_lists', lang, {'n': _fmt(popularity)})),
+                      if (favourites != null) _InfoItem(tr('detail_favorites', lang), _fmt(favourites)),
+                      if (trending != null) _InfoItem(tr('trending_sort', lang).toUpperCase(), trf('detail_trending_updates', lang, {'n': trending})),
                     ]),
                   ],
                 )),
@@ -483,14 +487,14 @@ class _DetailScreenState extends State<DetailScreen> {
                 _sectionPad(Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _sectionTitle('TITLES'),
+                    _sectionTitle(tr('detail_titles', lang)),
                     const SizedBox(height: 10),
-                    if (d['title']?['romaji'] != null) _titleRow('ROMAJI', d['title']['romaji'] as String),
-                    if (d['title']?['english'] != null) _titleRow('ENGLISH', d['title']['english'] as String),
-                    if (d['title']?['native'] != null) _titleRow('NATIVE', d['title']['native'] as String),
+                    if (d['title']?['romaji'] != null) _titleRow(tr('detail_title_romaji', lang), d['title']['romaji'] as String),
+                    if (d['title']?['english'] != null) _titleRow(tr('detail_title_english', lang), d['title']['english'] as String),
+                    if (d['title']?['native'] != null) _titleRow(tr('detail_title_native', lang), d['title']['native'] as String),
                     if (synonyms.isNotEmpty) ...[
                       const SizedBox(height: 4),
-                      _titleRow('OTHER NAMES', synonyms.join('\n')),
+                      _titleRow(tr('detail_other_names', lang), synonyms.join('\n')),
                     ],
                   ],
                 )),
@@ -507,7 +511,7 @@ class _DetailScreenState extends State<DetailScreen> {
                   _sectionPad(Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _sectionTitle('GENRES'),
+                      _sectionTitle(tr('detail_genres', lang)),
                       const SizedBox(height: 10),
                       Wrap(
                         spacing: 6,
@@ -524,7 +528,7 @@ class _DetailScreenState extends State<DetailScreen> {
                   _sectionPad(Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _sectionTitle('PRODUCERS'),
+                      _sectionTitle(tr('detail_producers', lang)),
                       const SizedBox(height: 10),
                       Wrap(
                         spacing: 6,
@@ -538,7 +542,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
                 // ── Relations ──
                 if (relations.isNotEmpty) ...[
-                  _sectionPad(_sectionTitle('RELATIONS')),
+                  _sectionPad(_sectionTitle(tr('detail_relations', lang))),
                   _RelationsSection(
                     relations: relations,
                     onTap: (id) => Navigator.push(context,
@@ -549,7 +553,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
                 // ── Characters ──
                 if (characters.isNotEmpty) ...[
-                  _sectionPad(_sectionTitle('CHARACTERS')),
+                  _sectionPad(_sectionTitle(tr('characters', lang).toUpperCase())),
                   _CharactersSection(
                     characters: characters,
                     onTap: (id, name, img) => Navigator.push(context,
@@ -561,7 +565,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
                 // ── Recommended ──
                 if (recommendations.isNotEmpty) ...[
-                  _sectionPad(_sectionTitle('RECOMMENDED')),
+                  _sectionPad(_sectionTitle(tr('detail_recommended', lang))),
                   _RecommendedSection(
                     recommendations: recommendations,
                     onTap: (id) => Navigator.push(context,
@@ -775,11 +779,15 @@ class _DetailScreenState extends State<DetailScreen> {
         child: Text(label, style: const TextStyle(fontSize: 11)),
       );
 
-  String _airingCountdown(int airingAt) {
+  String _airingCountdown(int airingAt, String lang) {
     final diff = DateTime.fromMillisecondsSinceEpoch(airingAt * 1000).difference(DateTime.now());
-    if (diff.inDays > 0) return '${diff.inDays}d ${diff.inHours % 24}h';
-    if (diff.inHours > 0) return '${diff.inHours}h ${diff.inMinutes % 60}m';
-    return '${diff.inMinutes}m';
+    if (diff.inDays > 0) {
+      return trf('detail_countdown_dh', lang, {'d': diff.inDays, 'h': diff.inHours % 24});
+    }
+    if (diff.inHours > 0) {
+      return trf('detail_countdown_hm', lang, {'h': diff.inHours, 'm': diff.inMinutes % 60});
+    }
+    return trf('detail_countdown_m', lang, {'m': diff.inMinutes});
   }
 
   String _durationStr(int minutes, String lang) {
@@ -799,50 +807,61 @@ class _DetailScreenState extends State<DetailScreen> {
     return '$n';
   }
 
-  String _dateStr(Map<String, dynamic>? d) {
+  String _dateStr(Map<String, dynamic>? d, String lang) {
     if (d == null) return '';
     final y = d['year']; final m = d['month']; final day = d['day'];
     if (y == null) return '';
     if (m == null) return '$y';
-    final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    final mStr = (m as int) >= 1 && m <= 12 ? months[m - 1] : '$m';
-    if (day == null) return '$mStr $y';
-    return '$day $mStr $y';
+    final mStr = (m as int) >= 1 && m <= 12 ? tr('detail_month_$m', lang) : '$m';
+    if (day == null) return trf('detail_date_month_year', lang, {'month': mStr, 'year': y});
+    return trf('detail_date_full', lang, {'day': day, 'month': mStr, 'year': y});
   }
 
-  String _formatLabel(String f) => switch (f) {
-    'TV' => 'TV', 'MOVIE' => 'Movie', 'OVA' => 'OVA',
-    'ONA' => 'ONA', 'SPECIAL' => 'Special', 'MUSIC' => 'Music',
-    'TV_SHORT' => 'TV Short', 'MANGA' => 'Manga', 'NOVEL' => 'Light Novel',
-    'ONE_SHOT' => 'One Shot', _ => f,
+  // TV, OVA and ONA read the same in every language, so they fall through.
+  String _formatLabel(String f, String lang) => switch (f) {
+    'MOVIE' => tr('movie', lang),
+    'SPECIAL' => tr('special', lang),
+    'MUSIC' => tr('detail_format_music', lang),
+    'TV_SHORT' => tr('detail_format_tv_short', lang),
+    'MANGA' => tr('source_manga', lang),
+    'NOVEL' => tr('source_light_novel', lang),
+    'ONE_SHOT' => tr('detail_format_one_shot', lang),
+    _ => f,
   };
 
-  String _statusLabel(String s) {
+  /// Translation key of a local list status, worded for reading on manga.
+  static String _statusKey(String status, {required bool manga}) => switch (status) {
+    'watching'      => manga ? 'reading' : 'watching',
+    'plan_to_watch' => manga ? 'plan_to_read' : 'plan_to_watch',
+    'rewatching'    => manga ? 'rereading' : 'rewatching',
+    _               => status, // completed, dropped, on_hold
+  };
+
+  String _statusLabel(String s, String lang) {
     final manga = (_data?['type'] as String?) == 'MANGA';
-    return switch (s) {
-      'watching'      => manga ? 'READING' : 'WATCHING',
-      'completed'     => 'COMPLETED',
-      'plan_to_watch' => manga ? 'PLAN TO READ' : 'PLAN TO WATCH',
-      'dropped'       => 'DROPPED',
-      'on_hold'       => 'ON HOLD',
-      'rewatching'    => manga ? 'REREADING' : 'REWATCHING',
-      _               => s.toUpperCase(),
-    };
+    return tr(_statusKey(s, manga: manga), lang).toUpperCase();
   }
 
-  String _seasonLabel(String s) => switch (s) {
-    'WINTER' => 'Winter', 'SPRING' => 'Spring',
-    'SUMMER' => 'Summer', 'FALL' => 'Fall', _ => s,
+  String _seasonLabel(String s, String lang) => switch (s) {
+    'WINTER' => tr('detail_season_winter', lang),
+    'SPRING' => tr('detail_season_spring', lang),
+    'SUMMER' => tr('detail_season_summer', lang),
+    'FALL' => tr('detail_season_fall', lang),
+    _ => s,
   };
 
-  String _rankingSub(Map<String, dynamic>? r) {
-    if (r == null) return 'All Time';
-    if (r['allTime'] == true) return 'All Time';
+  String _seasonYear(String season, Object year, String lang) =>
+      trf('detail_season_year', lang, {'season': _seasonLabel(season, lang), 'year': year});
+
+  String _rankingSub(Map<String, dynamic>? r, String lang) {
+    final allTime = tr('detail_all_time', lang);
+    if (r == null) return allTime;
+    if (r['allTime'] == true) return allTime;
     final season = r['season'] as String?;
     final year = r['year'];
-    if (season != null && year != null) return '${_seasonLabel(season)} $year';
+    if (season != null && year != null) return _seasonYear(season, year, lang);
     if (year != null) return '$year';
-    return 'All Time';
+    return allTime;
   }
 
   void _openCover(BuildContext context, String imageUrl) {
@@ -864,7 +883,8 @@ class _DetailScreenState extends State<DetailScreen> {
 
     final lang = context.read<SettingsProvider>().language;
     final entryId = _data!['mediaListEntry']?['id'] as int?;
-    final progressUnit = isManga ? 'ch' : 'ep';
+    final progressUnit = tr(isManga ? 'detail_unit_ch' : 'detail_unit_ep', lang);
+    String statusText(String status) => tr(_statusKey(status, manga: isManga), lang);
 
     String selectedStatus = initialStatus;
     int progress = initialProgress;
@@ -900,18 +920,18 @@ class _DetailScreenState extends State<DetailScreen> {
                   decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)))),
               Text(resolvedTitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
               const SizedBox(height: 16),
-              const Text('Status', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(tr('status', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
               const SizedBox(height: 8),
               Wrap(spacing: 8, runSpacing: 8, children: [
-                _statusChip(ctx, isManga ? 'Reading' : 'Watching', 'watching', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, 'Completed', 'completed', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, isManga ? 'Plan to Read' : 'Plan to Watch', 'plan_to_watch', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, 'On Hold', 'on_hold', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, 'Dropped', 'dropped', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, isManga ? 'Rereading' : 'Rewatching', 'rewatching', selectedStatus, (v) => setModal(() => selectedStatus = v)),
+                _statusChip(ctx, statusText('watching'), 'watching', selectedStatus, (v) => setModal(() => selectedStatus = v)),
+                _statusChip(ctx, statusText('completed'), 'completed', selectedStatus, (v) => setModal(() => selectedStatus = v)),
+                _statusChip(ctx, statusText('plan_to_watch'), 'plan_to_watch', selectedStatus, (v) => setModal(() => selectedStatus = v)),
+                _statusChip(ctx, statusText('on_hold'), 'on_hold', selectedStatus, (v) => setModal(() => selectedStatus = v)),
+                _statusChip(ctx, statusText('dropped'), 'dropped', selectedStatus, (v) => setModal(() => selectedStatus = v)),
+                _statusChip(ctx, statusText('rewatching'), 'rewatching', selectedStatus, (v) => setModal(() => selectedStatus = v)),
               ]),
               const SizedBox(height: 16),
-              const Text('Progress', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(tr('progress', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
               const SizedBox(height: 8),
               Row(children: [
                 _counterBtn(ctx, Icons.remove, () { if (progress > 0) setModal(() => progress--); }),
@@ -922,7 +942,7 @@ class _DetailScreenState extends State<DetailScreen> {
                 _counterBtn(ctx, Icons.add, () { if (totalEps == null || progress < totalEps) setModal(() => progress++); }),
               ]),
               const SizedBox(height: 16),
-              const Text('Score (0–10)', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(tr('score', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
               const SizedBox(height: 8),
               Row(children: [
                 _counterBtn(ctx, Icons.remove, () { if (score > 0) setModal(() => score = (score - 0.5).clamp(0, 10)); }),
@@ -934,7 +954,7 @@ class _DetailScreenState extends State<DetailScreen> {
               ]),
               if (_customListNames.isNotEmpty) ...[
                 const SizedBox(height: 16),
-                const Text('Custom Lists', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                Text(tr('detail_custom_lists', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
@@ -954,7 +974,7 @@ class _DetailScreenState extends State<DetailScreen> {
                 ),
               ],
               const SizedBox(height: 16),
-              const Text('Notes', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(tr('detail_notes', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
               const SizedBox(height: 8),
               TextField(
                 controller: notesController,
@@ -962,7 +982,7 @@ class _DetailScreenState extends State<DetailScreen> {
                 minLines: 1,
                 style: const TextStyle(fontSize: 13),
                 decoration: InputDecoration(
-                  hintText: 'Personal notes…',
+                  hintText: tr('detail_notes_hint', lang),
                   hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
                   filled: true,
                   fillColor: Theme.of(ctx).colorScheme.surfaceContainerHighest,
@@ -1015,12 +1035,12 @@ class _DetailScreenState extends State<DetailScreen> {
                     _load(force: true);
                     _refreshList();
                     if (sheetContext.mounted) Navigator.pop(sheetContext);
-                    messenger.showSnackBar(SnackBar(content: Text('$resolvedTitle saved!')));
+                    messenger.showSnackBar(SnackBar(content: Text(trf('detail_saved', lang, {'title': resolvedTitle}))));
                   },
                   child: saving
                       ? const SizedBox(width: 18, height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      : Text(tr('save', lang), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 )),
                 if (entryId != null) ...[
                   const SizedBox(width: 12),
@@ -1118,13 +1138,14 @@ class _SummarySectionState extends State<_SummarySection> {
   bool _expanded = false;
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('SUMMARY',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+          Text(tr('detail_summary', lang),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                   color: Colors.grey, letterSpacing: 0.5)),
           const SizedBox(height: 8),
           GestureDetector(
@@ -1141,7 +1162,7 @@ class _SummarySectionState extends State<_SummarySection> {
               onTap: () => setState(() => _expanded = true),
               child: Builder(builder: (ctx) => Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Text('Read more',
+                child: Text(tr('detail_read_more', lang),
                     style: TextStyle(color: Theme.of(ctx).colorScheme.primary, fontSize: 12)),
               )),
             ),
@@ -1189,6 +1210,7 @@ class _TagsSectionState extends State<_TagsSection> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     final spoilerCount = widget.tags.where((t) => t['isMediaSpoiler'] == true).length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -1197,19 +1219,23 @@ class _TagsSectionState extends State<_TagsSection> {
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text('TAGS',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+              Expanded(
+                child: Text(tr('detail_tags', lang),
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                         color: Colors.grey, letterSpacing: 0.5)),
               ),
               if (spoilerCount > 0)
                 _smallBtn(
-                  _showSpoilers ? 'Hide Spoiler Tag' : 'Show $spoilerCount Spoiler Tag',
+                  _showSpoilers
+                      ? tr('detail_hide_spoiler_tags', lang)
+                      : trf('detail_show_spoiler_tags', lang, {'n': spoilerCount}),
                   () => setState(() => _showSpoilers = !_showSpoilers),
                 ),
               const SizedBox(width: 8),
               _smallBtn(
-                _showAll ? 'Show Less' : 'Show All ${widget.tags.length} Tags',
+                _showAll
+                    ? tr('detail_show_less', lang)
+                    : trf('detail_show_all_tags', lang, {'n': widget.tags.length}),
                 () => setState(() => _showAll = !_showAll),
               ),
             ],
@@ -1235,15 +1261,23 @@ class _RelationsSection extends StatelessWidget {
   final void Function(int id) onTap;
   const _RelationsSection({required this.relations, required this.onTap});
 
-  String _relationLabel(String s) => switch (s) {
-    'PREQUEL' => 'Prequel', 'SEQUEL' => 'Sequel', 'SIDE_STORY' => 'Side Story',
-    'PARENT' => 'Parent', 'ALTERNATIVE' => 'Alternative', 'SUMMARY' => 'Summary',
-    'SPIN_OFF' => 'Spin Off', 'ADAPTATION' => 'Adaptation', 'SOURCE' => 'Source',
-    'CHARACTER' => 'Character', _ => s,
+  String _relationLabel(String s, String lang) => switch (s) {
+    'PREQUEL' => tr('detail_relation_prequel', lang),
+    'SEQUEL' => tr('detail_relation_sequel', lang),
+    'SIDE_STORY' => tr('detail_relation_side_story', lang),
+    'PARENT' => tr('detail_relation_parent', lang),
+    'ALTERNATIVE' => tr('detail_relation_alternative', lang),
+    'SUMMARY' => tr('detail_relation_summary', lang),
+    'SPIN_OFF' => tr('detail_relation_spin_off', lang),
+    'ADAPTATION' => tr('detail_relation_adaptation', lang),
+    'SOURCE' => tr('detail_relation_source', lang),
+    'CHARACTER' => tr('detail_relation_character', lang),
+    _ => s,
   };
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     return SizedBox(
       height: 200,
       child: ListView.builder(
@@ -1252,7 +1286,7 @@ class _RelationsSection extends StatelessWidget {
         itemCount: relations.length,
         itemBuilder: (_, i) {
           final node = relations[i]['node'] as Map<String, dynamic>? ?? {};
-          final relType = _relationLabel(relations[i]['relationType'] as String? ?? '');
+          final relType = _relationLabel(relations[i]['relationType'] as String? ?? '', lang);
           final relTitle = (node['title']?['english'] ?? node['title']?['romaji'] ?? '') as String;
           final relCover = node['coverImage']?['large'] as String?;
           final relId = node['id'] as int?;
@@ -1290,8 +1324,16 @@ class _CharactersSection extends StatelessWidget {
   final void Function(int id, String name, String? imageUrl) onTap;
   const _CharactersSection({required this.characters, required this.onTap});
 
+  String _roleLabel(String role, String lang) => switch (role) {
+    'MAIN' => tr('detail_role_main', lang),
+    'SUPPORTING' => tr('detail_role_supporting', lang),
+    'BACKGROUND' => tr('detail_role_background', lang),
+    _ => role.toLowerCase(),
+  };
+
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     return SizedBox(
       height: 180,
       child: ListView.builder(
@@ -1304,7 +1346,7 @@ class _CharactersSection extends StatelessWidget {
           final charId = node['id'] as int?;
           final name = node['name']?['full'] as String? ?? '';
           final img = node['image']?['medium'] as String?;
-          final role = (edge['role'] as String? ?? '').toLowerCase();
+          final role = _roleLabel(edge['role'] as String? ?? '', lang);
           return GestureDetector(
             onTap: charId != null ? () => onTap(charId, name, img) : null,
             child: Container(
@@ -1395,13 +1437,14 @@ class _TrailerSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('TRAILER',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+          Text(tr('detail_trailer', lang),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                   color: Colors.grey, letterSpacing: 0.5)),
           const SizedBox(height: 10),
           GestureDetector(
@@ -1440,10 +1483,11 @@ class _StreamingEpisodesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     final site = episodes.isNotEmpty ? episodes.first['site'] as String? : null;
     final title = site != null
-        ? 'EPISODES (AVAILABLE ON ${site.toUpperCase()})'
-        : 'EPISODES';
+        ? trf('detail_streaming_episodes_on', lang, {'site': site.toUpperCase()})
+        : tr('detail_streaming_episodes', lang);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1503,13 +1547,14 @@ class _ExternalLinksSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final lang = context.watch<SettingsProvider>().language;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('EXTERNAL AND STREAMING LINKS',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+          Text(tr('detail_external_links', lang),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                   color: Colors.grey, letterSpacing: 0.5)),
           const SizedBox(height: 10),
           Wrap(

@@ -5,11 +5,39 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
-import '../utils/translations.dart' show tr;
+import '../utils/translations.dart' show tr, trf;
 import 'detail_screen.dart';
 
 /// SharedPreferences key of the recent searches; cleared on logout.
 const recentSearchesPrefsKey = 'recent_searches';
+
+/// AniList genre names (sent to the API as is) and their display keys.
+const _genreKeys = {
+  'Action': 'search_genre_action',
+  'Adventure': 'search_genre_adventure',
+  'Comedy': 'search_genre_comedy',
+  'Drama': 'search_genre_drama',
+  'Ecchi': 'search_genre_ecchi',
+  'Fantasy': 'search_genre_fantasy',
+  'Horror': 'search_genre_horror',
+  'Mahou Shoujo': 'search_genre_mahou_shoujo',
+  'Mecha': 'search_genre_mecha',
+  'Music': 'search_genre_music',
+  'Mystery': 'search_genre_mystery',
+  'Psychological': 'search_genre_psychological',
+  'Romance': 'search_genre_romance',
+  'Sci-Fi': 'search_genre_sci_fi',
+  'Slice of Life': 'search_genre_slice_of_life',
+  'Sports': 'search_genre_sports',
+  'Supernatural': 'search_genre_supernatural',
+  'Thriller': 'search_genre_thriller',
+};
+
+/// Translated name of an AniList [genre]; unknown genres are shown as is.
+String _genreLabel(String genre, String lang) {
+  final key = _genreKeys[genre];
+  return key == null ? genre : tr(key, lang);
+}
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -42,13 +70,14 @@ class _SearchScreenState extends State<SearchScreen> {
   String get _cacheKey =>
       '${_controller.text.trim()}|$_contentType|${_selectedGenres.toList()..sort()}|$_sort';
 
-  static const _sortLabels = {
-    'POPULARITY_DESC': 'Popularity',
-    'SCORE_DESC': 'Score',
-    'TRENDING_DESC': 'Trending',
-    'FAVOURITES_DESC': 'Favorites',
-    'TITLE_ROMAJI': 'Title',
-    'START_DATE_DESC': 'Release Date',
+  /// AniList sort values and the keys of their labels.
+  static const _sortLabelKeys = {
+    'POPULARITY_DESC': 'popularity',
+    'SCORE_DESC': 'search_sort_score',
+    'TRENDING_DESC': 'trending_sort',
+    'FAVOURITES_DESC': 'search_sort_favorites',
+    'TITLE_ROMAJI': 'search_sort_title',
+    'START_DATE_DESC': 'search_sort_release_date',
   };
 
   @override
@@ -201,6 +230,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     final hasFilters = _selectedGenres.isNotEmpty;
     final accentColor = Theme.of(context).colorScheme.primary;
 
@@ -214,7 +244,7 @@ class _SearchScreenState extends State<SearchScreen> {
             focusNode: _focusNode,
             autofocus: true,
             decoration: InputDecoration(
-              hintText: 'Search...',
+              hintText: tr('search_hint', lang),
               border: InputBorder.none,
               contentPadding: EdgeInsets.zero,
               suffixIcon: _controller.text.isNotEmpty
@@ -250,7 +280,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   _hasError = false;
                 });
               },
-              child: const Text('Cancel'),
+              child: Text(tr('cancel', lang)),
             ),
         ],
       ),
@@ -266,8 +296,8 @@ class _SearchScreenState extends State<SearchScreen> {
                   onSelected: _onContentTypeChanged,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   itemBuilder: (_) => [
-                    PopupMenuItem(value: 'ANIME', child: Text('Anime')),
-                    PopupMenuItem(value: 'MANGA', child: Text('Manga')),
+                    PopupMenuItem(value: 'ANIME', child: Text(tr('nav_anime', lang))),
+                    PopupMenuItem(value: 'MANGA', child: Text(tr('nav_manga', lang))),
                   ],
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
@@ -279,7 +309,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          _contentType == 'ANIME' ? 'Anime' : 'Manga',
+                          tr(_contentType == 'ANIME' ? 'nav_anime' : 'nav_manga', lang),
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(width: 4),
@@ -296,19 +326,19 @@ class _SearchScreenState extends State<SearchScreen> {
                     color: hasFilters ? accentColor : Colors.grey,
                   ),
                   onPressed: _showFilters,
-                  tooltip: 'Filters',
+                  tooltip: tr('filters', lang),
                 ),
                 // Sort button
                 PopupMenuButton<String>(
                   onSelected: _onSortChanged,
-                  tooltip: 'Sort',
+                  tooltip: tr('search_sort', lang),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  itemBuilder: (_) => _sortLabels.entries.map((e) {
+                  itemBuilder: (_) => _sortLabelKeys.entries.map((e) {
                     return PopupMenuItem(
                       value: e.key,
                       child: Row(
                         children: [
-                          Expanded(child: Text(e.value)),
+                          Expanded(child: Text(tr(e.value, lang))),
                           if (e.key == _sort)
                             Icon(Icons.check, size: 16, color: Theme.of(context).colorScheme.primary),
                         ],
@@ -319,7 +349,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
-                        _sortLabels[_sort] ?? 'Sort',
+                        tr(_sortLabelKeys[_sort] ?? 'search_sort', lang),
                         style: const TextStyle(fontSize: 13),
                       ),
                       const Icon(Icons.keyboard_arrow_down, size: 16),
@@ -337,9 +367,9 @@ class _SearchScreenState extends State<SearchScreen> {
                 : _hasError
                     ? _buildError()
                     : !_searched
-                        ? _buildEmptyState()
+                        ? _buildEmptyState(lang)
                         : _results.isEmpty
-                            ? const Center(child: Text('No results found'))
+                            ? Center(child: Text(tr('no_results', lang)))
                             : ListView.builder(
                                 padding: const EdgeInsets.only(top: 8, bottom: 16),
                                 itemCount: _results.length,
@@ -372,16 +402,16 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(String lang) {
     if (_recentSearches.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.search, size: 64, color: Colors.grey),
-            SizedBox(height: 12),
-            Text('Search for anime or manga',
-                style: TextStyle(color: Colors.grey)),
+          children: [
+            const Icon(Icons.search, size: 64, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(tr('search_for', lang),
+                style: const TextStyle(color: Colors.grey)),
           ],
         ),
       );
@@ -393,7 +423,7 @@ class _SearchScreenState extends State<SearchScreen> {
       children: [
         Row(
           children: [
-            Text('Recent',
+            Text(tr('search_recent', lang),
                 style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -402,7 +432,7 @@ class _SearchScreenState extends State<SearchScreen> {
             const Spacer(),
             GestureDetector(
               onTap: _clearRecentSearches,
-              child: Text('Clear all',
+              child: Text(tr('search_clear_all', lang),
                   style: TextStyle(fontSize: 12, color: cs.primary)),
             ),
           ],
@@ -460,6 +490,7 @@ class _ResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.select<SettingsProvider, String>((s) => s.language);
     final id = data['id'] as int?;
     final title = data['title']?['english'] ?? data['title']?['romaji'] ?? '';
     final cover = data['coverImage']?['large'] as String?;
@@ -474,9 +505,9 @@ class _ResultCard extends StatelessWidget {
         .trim();
 
     final episodeLabel = episodes != null
-        ? '$episodes eps'
+        ? trf('search_eps', lang, {'n': episodes})
         : chapters != null
-            ? '$chapters ch'
+            ? trf('search_ch', lang, {'n': chapters})
             : null;
     final formatLabel = format?.replaceAll('_', ' ');
     final metaParts = [
@@ -601,7 +632,7 @@ class _ResultCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                g,
+                                _genreLabel(g, lang),
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 10,
@@ -638,12 +669,6 @@ class _FilterSheet extends StatefulWidget {
 class _FilterSheetState extends State<_FilterSheet> {
   late Set<String> _draft;
 
-  static const _genres = [
-    'Action', 'Adventure', 'Comedy', 'Drama', 'Ecchi', 'Fantasy',
-    'Horror', 'Mahou Shoujo', 'Mecha', 'Music', 'Mystery', 'Psychological',
-    'Romance', 'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller',
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -657,6 +682,7 @@ class _FilterSheetState extends State<_FilterSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.7,
@@ -670,12 +696,13 @@ class _FilterSheetState extends State<_FilterSheet> {
               children: [
                 TextButton(
                   onPressed: () => setState(() => _draft.clear()),
-                  child: const Text('Reset', style: TextStyle(color: Colors.grey)),
+                  child: Text(tr('search_reset', lang),
+                      style: const TextStyle(color: Colors.grey)),
                 ),
-                const Expanded(
+                Expanded(
                   child: Center(
-                    child: Text('Filters',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: Text(tr('filters', lang),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                 ),
                 IconButton(
@@ -691,9 +718,9 @@ class _FilterSheetState extends State<_FilterSheet> {
               controller: scrollCtrl,
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               children: [
-                const Text(
-                  'GENRE',
-                  style: TextStyle(
+                Text(
+                  tr('genre', lang).toUpperCase(),
+                  style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     color: Colors.grey,
@@ -704,7 +731,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: _genres.map((g) {
+                  children: _genreKeys.keys.map((g) {
                     final selected = _draft.contains(g);
                     return GestureDetector(
                       onTap: () => setState(() {
@@ -736,7 +763,7 @@ class _FilterSheetState extends State<_FilterSheet> {
                               const SizedBox(width: 4),
                             ],
                             Text(
-                              g,
+                              _genreLabel(g, lang),
                               style: TextStyle(
                                 fontSize: 13,
                                 color: selected ? const Color(0xFF2ECC71) : null,

@@ -4,7 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/settings_provider.dart';
 import '../services/auth_service.dart';
 import '../services/anilist_service.dart';
-import '../utils/translations.dart' show tr;
+import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../widgets/overlay_button.dart';
 import 'settings_screen.dart';
@@ -30,8 +30,9 @@ class _LoginPrompt extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final auth = context.read<AuthService>();
+    final lang = context.watch<SettingsProvider>().language;
     return Scaffold(
-      appBar: AppBar(title: const Text('Profile')),
+      appBar: AppBar(title: Text(tr('nav_profile', lang))),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -49,14 +50,14 @@ class _LoginPrompt extends StatelessWidget {
                     size: 50, color: Theme.of(ctx).colorScheme.primary)),
               ),
               const SizedBox(height: 24),
-              const Text('Connect your AniList',
-                  style: TextStyle(
+              Text(tr('connect_anilist', lang),
+                  style: const TextStyle(
                       fontSize: 22, fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
-              const Text(
-                'Login to sync your anime list and track your progress across devices.',
+              Text(
+                tr('login_description', lang),
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, height: 1.5),
+                style: const TextStyle(color: Colors.grey, height: 1.5),
               ),
               const SizedBox(height: 32),
               SizedBox(
@@ -69,7 +70,6 @@ class _LoginPrompt extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () async {
-                    final lang = context.read<SettingsProvider>().language;
                     try {
                       await auth.login();
                     } on Exception catch (e) {
@@ -82,13 +82,13 @@ class _LoginPrompt extends StatelessWidget {
                       }
                     }
                   },
-                  child: const Row(
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.login, color: Colors.white),
-                      SizedBox(width: 8),
-                      Text('Login with AniList',
-                          style: TextStyle(
+                      const Icon(Icons.login, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Text(tr('login_with_anilist', lang),
+                          style: const TextStyle(
                               color: Colors.white,
                               fontSize: 16,
                               fontWeight: FontWeight.bold)),
@@ -237,6 +237,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
+    final lang = context.watch<SettingsProvider>().language;
     final user = auth.user;
     if (user == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
@@ -246,7 +247,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final mangaStats =
         user['statistics']?['manga'] as Map<String, dynamic>?;
     final avatar = user['avatar']?['large'] as String?;
-    final name = user['name'] as String? ?? 'Unknown';
+    final name = user['name'] as String? ?? tr('feed_unknown', lang);
 
     final minutesWatched = (animeStats?['minutesWatched'] as num?)?.toInt() ?? 0;
     final daysWatched = (minutesWatched / 1440).toStringAsFixed(1);
@@ -266,7 +267,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             // ── Banner + Avatar Header + Stats bar (single sliver to avoid seam) ──
             SliverToBoxAdapter(
               child: _buildHeaderAndStats(
-                avatar, name, context,
+                avatar, name, context, lang,
                 totalAnime: totalAnime,
                 episodesWatched: episodesWatched,
                 daysWatched: daysWatched,
@@ -277,7 +278,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             ),
 
             // ── Follow pills ───────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildFollowPills(context)),
+            SliverToBoxAdapter(child: _buildFollowPills(context, lang)),
 
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
             SliverToBoxAdapter(
@@ -288,8 +289,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-                child: const Text('FAVORITE ANIME',
-                    style: TextStyle(
+                child: Text(tr('favorite_anime', lang),
+                    style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey,
@@ -298,10 +299,10 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             ),
             SliverToBoxAdapter(
               child: _favoriteAnime.isEmpty && _statsLoaded
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text('No favourites yet',
-                          style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(tr('no_favourites', lang),
+                          style: const TextStyle(color: Colors.grey, fontSize: 13)),
                     )
                   : SizedBox(
                       height: 170,
@@ -320,8 +321,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-                child: const Text('FAVORITE CHARACTERS',
-                    style: TextStyle(
+                child: Text(tr('favorite_characters', lang),
+                    style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey,
@@ -330,10 +331,10 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             ),
             SliverToBoxAdapter(
               child: _favoriteCharacters.isEmpty && _statsLoaded
-                  ? const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16),
-                      child: Text('No favourites yet',
-                          style: TextStyle(color: Colors.grey, fontSize: 13)),
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(tr('no_favourites', lang),
+                          style: const TextStyle(color: Colors.grey, fontSize: 13)),
                     )
                   : SizedBox(
                       height: 120,
@@ -349,16 +350,16 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             ),
 
             // ── Activity Graph ──────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildActivityGraph()),
+            SliverToBoxAdapter(child: _buildActivityGraph(lang)),
 
             // ── Top Genres ─────────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildTopGenres(animeStats, mangaStats)),
+            SliverToBoxAdapter(child: _buildTopGenres(animeStats, mangaStats, lang)),
 
             // ── Score Distribution ──────────────────────────────────────
-            SliverToBoxAdapter(child: _buildScoreDistribution(animeStats, mangaStats)),
+            SliverToBoxAdapter(child: _buildScoreDistribution(animeStats, mangaStats, lang)),
 
             // ── Release Years ───────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildReleaseYears(animeStats)),
+            SliverToBoxAdapter(child: _buildReleaseYears(animeStats, lang)),
 
 
             const SliverToBoxAdapter(child: SizedBox(height: 40)),
@@ -384,7 +385,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   Widget _buildHeaderAndStats(
     String? avatar,
     String name,
-    BuildContext context, {
+    BuildContext context,
+    String lang, {
     required int totalAnime,
     required int episodesWatched,
     required String daysWatched,
@@ -497,11 +499,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                       IntrinsicHeight(
                         child: Row(
                           children: [
-                            _statItem('$totalAnime', 'Anime'),
+                            _statItem('$totalAnime', tr('nav_anime', lang)),
                             _statDividerV(outline),
-                            _statItem('$episodesWatched', 'Episodes'),
+                            _statItem('$episodesWatched', tr('profile_episodes', lang)),
                             _statDividerV(outline),
-                            _statItem(daysWatched, 'Days Watched'),
+                            _statItem(daysWatched, tr('days_watched', lang)),
                           ],
                         ),
                       ),
@@ -509,11 +511,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                       IntrinsicHeight(
                         child: Row(
                           children: [
-                            _statItem('$totalManga', 'Manga'),
+                            _statItem('$totalManga', tr('nav_manga', lang)),
                             _statDividerV(outline),
-                            _statItem('$chaptersRead', 'Chapters'),
+                            _statItem('$chaptersRead', tr('profile_chapters', lang)),
                             _statDividerV(outline),
-                            _statItem('$volumesRead', 'Volumes Read'),
+                            _statItem('$volumesRead', tr('profile_volumes_read', lang)),
                           ],
                         ),
                       ),
@@ -649,8 +651,10 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  Widget _buildFollowPills(BuildContext context) {
+  Widget _buildFollowPills(BuildContext context, String lang) {
     final cs = Theme.of(context).colorScheme;
+    final followersLabel = tr('followers', lang);
+    final followingLabel = tr('following', lang);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
       child: Row(
@@ -658,17 +662,17 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           _followPill(
             context, cs,
             count: _followersCount,
-            label: 'Followers',
+            label: followersLabel,
             icon: Icons.group_outlined,
-            onTap: () => _showFollowSheet(context, 'Followers'),
+            onTap: () => _showFollowSheet(context, followersLabel),
           ),
           const SizedBox(width: 10),
           _followPill(
             context, cs,
             count: _followingCount,
-            label: 'Following',
+            label: followingLabel,
             icon: Icons.person_outlined,
-            onTap: () => _showFollowSheet(context, 'Following', preloaded: _following),
+            onTap: () => _showFollowSheet(context, followingLabel, preloaded: _following),
           ),
         ],
       ),
@@ -715,7 +719,22 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   Widget _statDividerV(Color color) => VerticalDivider(
         width: 1, thickness: 1, color: color);
 
-  Widget _buildActivityGraph() {
+  /// A heatmap day as text, e.g. "Jan 5, 2025" in English.
+  static String _heatmapDate(DateTime day, String lang) =>
+      trf('profile_date', lang, {
+        'month': tr(_monthKeys[day.month - 1], lang),
+        'day': day.day,
+        'year': day.year,
+      });
+
+  static const _monthKeys = [
+    'profile_month_jan', 'profile_month_feb', 'profile_month_mar',
+    'profile_month_apr', 'profile_month_may', 'profile_month_jun',
+    'profile_month_jul', 'profile_month_aug', 'profile_month_sep',
+    'profile_month_oct', 'profile_month_nov', 'profile_month_dec',
+  ];
+
+  Widget _buildActivityGraph(String lang) {
     // Build a 52-week heatmap (oldest left → newest right)
     final today = DateTime.now();
     // Start from Monday of the week 52 weeks ago
@@ -750,8 +769,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('ACTIVITY',
-              style: TextStyle(
+          Text(tr('profile_activity', lang),
+              style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: Colors.grey,
@@ -776,11 +795,15 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                         final key =
                             '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
                         final count = _activityDays[key] ?? 0;
-                        final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                        final label = '${months[day.month - 1]} ${day.day}, ${day.year}';
+                        final date = _heatmapDate(day, lang);
                         setLocal(() => tooltip = count == 0
-                            ? 'No activity on $label'
-                            : '$count activit${count == 1 ? 'y' : 'ies'} on $label');
+                            ? trf('profile_no_activity_on', lang, {'date': date})
+                            : trf(
+                                count == 1
+                                    ? 'profile_activity_on_one'
+                                    : 'profile_activity_on_many',
+                                lang,
+                                {'n': count, 'date': date}));
                       },
                       child: SizedBox(
                         width: totalWeeks * step,
@@ -814,7 +837,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           Builder(builder: (ctx) => Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              const Text('Less', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              Text(tr('profile_less', lang),
+                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
               const SizedBox(width: 4),
               ...List.generate(5, (i) {
                 final accent = Theme.of(ctx).colorScheme.primary;
@@ -836,7 +860,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                 );
               }),
               const SizedBox(width: 4),
-              const Text('More', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              Text(tr('profile_more', lang),
+                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
             ],
           )),
         ],
@@ -844,24 +869,26 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  Widget _buildTopGenres(
-      Map<String, dynamic>? animeStats, Map<String, dynamic>? mangaStats) {
+  Widget _buildTopGenres(Map<String, dynamic>? animeStats,
+      Map<String, dynamic>? mangaStats, String lang) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _genreSection(
-            label: 'ANIME GENRES',
+            label: tr('profile_anime_genres', lang),
             stats: animeStats,
-            unit: 'anime',
+            countKey: 'profile_n_anime',
+            lang: lang,
             expanded: _animeGenresExpanded,
             onToggle: () => setState(() => _animeGenresExpanded = !_animeGenresExpanded),
           ),
           _genreSection(
-            label: 'MANGA GENRES',
+            label: tr('profile_manga_genres', lang),
             stats: mangaStats,
-            unit: 'manga',
+            countKey: 'profile_n_manga',
+            lang: lang,
             expanded: _mangaGenresExpanded,
             onToggle: () => setState(() => _mangaGenresExpanded = !_mangaGenresExpanded),
           ),
@@ -870,10 +897,12 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
+  /// [countKey] is the translation of "{n} titles" for this media type.
   Widget _genreSection({
     required String label,
     required Map<String, dynamic>? stats,
-    required String unit,
+    required String countKey,
+    required String lang,
     required bool expanded,
     required VoidCallback onToggle,
   }) {
@@ -936,7 +965,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                               style: const TextStyle(
                                   fontSize: 13, fontWeight: FontWeight.w500)),
                           Text(
-                            '$count $unit${score > 0 ? '  ·  ${score.toStringAsFixed(1)} ★' : ''}',
+                            '${trf(countKey, lang, {'n': count})}${score > 0 ? '  ·  ${score.toStringAsFixed(1)} ★' : ''}',
                             style: const TextStyle(
                                 fontSize: 11, color: Colors.grey),
                           ),
@@ -967,8 +996,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  Widget _buildScoreDistribution(
-      Map<String, dynamic>? animeStats, Map<String, dynamic>? mangaStats) {
+  Widget _buildScoreDistribution(Map<String, dynamic>? animeStats,
+      Map<String, dynamic>? mangaStats, String lang) {
     final animeRaw = animeStats?['scores'] as List<dynamic>?;
     final mangaRaw = mangaStats?['scores'] as List<dynamic>?;
     if ((animeRaw == null || animeRaw.isEmpty) &&
@@ -980,7 +1009,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       if (raw == null || raw.isEmpty) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Text('No data', style: TextStyle(fontSize: 12, color: Colors.grey.withValues(alpha: 0.6))),
+          child: Text(tr('profile_no_data', lang), style: TextStyle(fontSize: 12, color: Colors.grey.withValues(alpha: 0.6))),
         );
       }
       final scores = raw
@@ -1037,8 +1066,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 children: [
-                  const Text('SCORE DISTRIBUTION',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
+                  Text(tr('profile_score_distribution', lang),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
                   const Spacer(),
                   Icon(_scoreDistributionExpanded ? Icons.expand_less : Icons.expand_more, color: Colors.grey, size: 18),
                 ],
@@ -1047,11 +1076,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           ),
           if (_scoreDistributionExpanded) ...[
             const SizedBox(height: 4),
-            const Text('Anime', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            Text(tr('nav_anime', lang), style: const TextStyle(fontSize: 12, color: Colors.grey)),
             const SizedBox(height: 8),
             SizedBox(height: 80, child: scoreBar(animeRaw)),
             const SizedBox(height: 16),
-            const Text('Manga', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            Text(tr('nav_manga', lang), style: const TextStyle(fontSize: 12, color: Colors.grey)),
             const SizedBox(height: 8),
             SizedBox(height: 80, child: scoreBar(mangaRaw)),
             const SizedBox(height: 8),
@@ -1062,7 +1091,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  Widget _buildReleaseYears(Map<String, dynamic>? animeStats) {
+  Widget _buildReleaseYears(Map<String, dynamic>? animeStats, String lang) {
     final raw = animeStats?['releaseYears'] as List<dynamic>?;
     if (raw == null || raw.isEmpty) return const SizedBox.shrink();
 
@@ -1093,8 +1122,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 children: [
-                  const Text('TITLES BY ERA',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
+                  Text(tr('profile_titles_by_era', lang),
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
                   const Spacer(),
                   Icon(_releaseYearsExpanded ? Icons.expand_less : Icons.expand_more, color: Colors.grey, size: 18),
                 ],
@@ -1249,6 +1278,7 @@ class _FollowSheetState extends State<_FollowSheet> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final lang = context.watch<SettingsProvider>().language;
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
       minChildSize: 0.4,
@@ -1279,7 +1309,7 @@ class _FollowSheetState extends State<_FollowSheet> {
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : (_users == null || _users!.isEmpty)
-                      ? Center(child: Text('Nobody here yet',
+                      ? Center(child: Text(tr('profile_nobody_here', lang),
                           style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))))
                       : ListView.builder(
                           controller: scrollController,

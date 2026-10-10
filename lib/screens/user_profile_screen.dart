@@ -7,7 +7,7 @@ import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
-import '../utils/translations.dart' show tr;
+import '../utils/translations.dart' show tr, trf;
 import '../widgets/overlay_button.dart';
 import 'detail_screen.dart';
 import 'character_screen.dart';
@@ -163,12 +163,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthService>();
+    final lang = context.watch<SettingsProvider>().language;
     final isOwnProfile = auth.isLoggedIn && auth.user?['id'] == widget.userId;
 
     return Scaffold(
       body: Stack(
         children: [
-          _loading ? _buildShimmer() : _buildContent(),
+          _loading ? _buildShimmer() : _buildContent(lang),
           Positioned(
             top: MediaQuery.of(context).padding.top + 6,
             left: 12,
@@ -181,14 +182,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             Positioned(
               top: MediaQuery.of(context).padding.top + 6,
               right: 12,
-              child: _followButton(context),
+              child: _followButton(context, lang),
             ),
         ],
       ),
     );
   }
 
-  Widget _followButton(BuildContext context) {
+  Widget _followButton(BuildContext context, String lang) {
     if (_isFollowing) {
       return PopupMenuButton<String>(
         padding: EdgeInsets.zero,
@@ -200,33 +201,36 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           if (val == 'block' || val == 'report') _openAniListProfile();
         },
         itemBuilder: (_) => [
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'unfollow',
             child: Row(children: [
-              Icon(Icons.person_remove_outlined, size: 16, color: Colors.red),
-              SizedBox(width: 10),
-              Text('Unfollow', style: TextStyle(color: Colors.red, fontSize: 13)),
+              const Icon(Icons.person_remove_outlined, size: 16, color: Colors.red),
+              const SizedBox(width: 10),
+              Text(tr('uprof_unfollow', lang),
+                  style: const TextStyle(color: Colors.red, fontSize: 13)),
             ]),
           ),
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'block',
             child: Row(children: [
-              Icon(Icons.block_outlined, size: 16, color: Colors.grey),
-              SizedBox(width: 10),
-              Text('Block', style: TextStyle(fontSize: 13)),
+              const Icon(Icons.block_outlined, size: 16, color: Colors.grey),
+              const SizedBox(width: 10),
+              Text(tr('uprof_block', lang), style: const TextStyle(fontSize: 13)),
             ]),
           ),
-          const PopupMenuItem(
+          PopupMenuItem(
             value: 'report',
             child: Row(children: [
-              Icon(Icons.flag_outlined, size: 16, color: Colors.grey),
-              SizedBox(width: 10),
-              Text('Report', style: TextStyle(fontSize: 13)),
+              const Icon(Icons.flag_outlined, size: 16, color: Colors.grey),
+              const SizedBox(width: 10),
+              Text(tr('uprof_report', lang), style: const TextStyle(fontSize: 13)),
             ]),
           ),
         ],
         child: _pillBtn(
-          label: _togglingFollow ? 'Following…' : 'Following',
+          label: _togglingFollow
+              ? '${tr('uprof_following_button', lang)}…'
+              : tr('uprof_following_button', lang),
           icon: Icons.check,
           filled: true,
           trailing: const Icon(Icons.keyboard_arrow_down_rounded,
@@ -238,7 +242,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return GestureDetector(
       onTap: _toggleFollow,
       child: _pillBtn(
-        label: _togglingFollow ? '…' : 'Follow',
+        label: _togglingFollow ? '…' : tr('uprof_follow', lang),
         icon: Icons.person_add_outlined,
         filled: false,
       ),
@@ -296,7 +300,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(String lang) {
     final p = _profile;
     if (p == null) return _LoadErrorView(onRetry: _retry);
 
@@ -426,9 +430,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                                 color: Theme.of(context).colorScheme.primary,
                                 borderRadius: BorderRadius.circular(20),
                               ),
-                              child: const Text(
-                                'Follows You',
-                                style: TextStyle(
+                              child: Text(
+                                tr('uprof_follows_you', lang),
+                                style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 11,
                                     fontWeight: FontWeight.w600),
@@ -453,23 +457,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       children: [
                         IntrinsicHeight(
                           child: Row(children: [
-                            _tappableStat('$totalAnime', 'Anime', totalAnime > 0
+                            _tappableStat('$totalAnime', tr('nav_anime', lang), totalAnime > 0
                                 ? () => _showListSheet(context, 'ANIME') : null),
                             _vDiv(outline),
-                            _stat('$episodesWatched', 'Episodes'),
+                            _stat('$episodesWatched', tr('profile_episodes', lang)),
                             _vDiv(outline),
-                            _stat(daysWatched, 'Days Watched'),
+                            _stat(daysWatched, tr('days_watched', lang)),
                           ]),
                         ),
                         Divider(height: 1, color: outline),
                         IntrinsicHeight(
                           child: Row(children: [
-                            _tappableStat('$totalManga', 'Manga', totalManga > 0
+                            _tappableStat('$totalManga', tr('nav_manga', lang), totalManga > 0
                                 ? () => _showListSheet(context, 'MANGA') : null),
                             _vDiv(outline),
-                            _stat('$chaptersRead', 'Chapters'),
+                            _stat('$chaptersRead', tr('profile_chapters', lang)),
                             _vDiv(outline),
-                            _stat('$volumesRead', 'Volumes Read'),
+                            _stat('$volumesRead', tr('profile_volumes_read', lang)),
                           ]),
                         ),
                       ],
@@ -483,7 +487,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
         // ── Bio ────────────────────────────────────────────────────────
         if (about.isNotEmpty)
-          SliverToBoxAdapter(child: _buildBio(about)),
+          SliverToBoxAdapter(child: _buildBio(about, lang)),
 
         // ── Top genres ─────────────────────────────────────────────────
         if (topGenres.isNotEmpty)
@@ -494,8 +498,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
-              child: const Text('FAVOURITE ANIME',
-                  style: TextStyle(
+              child: Text(tr('favorite_anime', lang),
+                  style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: Colors.grey,
@@ -520,8 +524,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-              child: const Text('FAVOURITE MANGA',
-                  style: TextStyle(
+              child: Text(tr('uprof_favorite_manga', lang),
+                  style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: Colors.grey,
@@ -546,8 +550,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-              child: const Text('FAVOURITE CHARACTERS',
-                  style: TextStyle(
+              child: Text(tr('favorite_characters', lang),
+                  style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: Colors.grey,
@@ -572,14 +576,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
-              child: const Text('RECENT ACTIVITY',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+              child: Text(tr('uprof_recent_activity', lang),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
                       color: Colors.grey, letterSpacing: 0.5)),
             ),
           ),
           SliverList(
             delegate: SliverChildBuilderDelegate(
-              (_, i) => _recentActivityRow(_recentActivity[i]),
+              (_, i) => _recentActivityRow(_recentActivity[i], lang),
               childCount: _recentActivity.length,
             ),
           ),
@@ -590,7 +594,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildBio(String about) {
+  Widget _buildBio(String about, String lang) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
@@ -605,8 +609,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('ABOUT',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+            Text(tr('uprof_about', lang),
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
                     color: Colors.grey, letterSpacing: 0.5)),
             const SizedBox(height: 8),
             AnimatedCrossFade(
@@ -626,7 +630,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               GestureDetector(
                 onTap: () => setState(() => _bioExpanded = !_bioExpanded),
                 child: Text(
-                  _bioExpanded ? 'Show less' : 'Show more',
+                  tr(_bioExpanded ? 'uprof_show_less' : 'uprof_show_more', lang),
                   style: TextStyle(fontSize: 12, color: cs.primary,
                       fontWeight: FontWeight.w600),
                 ),
@@ -660,16 +664,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _recentActivityRow(dynamic activity) {
+  Widget _recentActivityRow(dynamic activity, String lang) {
     final type = activity['type'] as String?;
     final createdAt = activity['createdAt'] as int? ?? 0;
     final diff = DateTime.now()
         .difference(DateTime.fromMillisecondsSinceEpoch(createdAt * 1000));
     final timeStr = diff.inMinutes < 60
-        ? '${diff.inMinutes}m ago'
+        ? trf('feed_minutes_ago', lang, {'n': diff.inMinutes})
         : diff.inHours < 24
-            ? '${diff.inHours}h ago'
-            : '${diff.inDays}d ago';
+            ? trf('feed_hours_ago', lang, {'n': diff.inHours})
+            : trf('feed_days_ago', lang, {'n': diff.inDays});
 
     if (type == 'TEXT') {
       final text = activity['text'] as String? ?? '';
@@ -962,13 +966,16 @@ class _UserListSheetState extends State<_UserListSheet>
   bool _hasError = false;
 
   static const _statuses = ['CURRENT', 'COMPLETED', 'DROPPED', 'PAUSED', 'PLANNING'];
-  static const _labels = {
-    'CURRENT': 'Watching',
-    'COMPLETED': 'Completed',
-    'DROPPED': 'Dropped',
-    'PAUSED': 'Paused',
-    'PLANNING': 'Planning',
-  };
+
+  /// Translation key of each status tab, worded like the user's own lists.
+  static String _labelKey(String status, {required bool isAnime}) =>
+      switch (status) {
+        'CURRENT' => isAnime ? 'watching' : 'reading',
+        'COMPLETED' => 'completed',
+        'DROPPED' => 'dropped',
+        'PAUSED' => 'on_hold',
+        _ => isAnime ? 'plan_to_watch' : 'plan_to_read',
+      };
 
   @override
   void initState() {
@@ -1001,6 +1008,7 @@ class _UserListSheetState extends State<_UserListSheet>
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final lang = context.watch<SettingsProvider>().language;
     final isAnime = widget.type == 'ANIME';
 
     if (_loading || _lists == null) {
@@ -1040,7 +1048,7 @@ class _UserListSheetState extends State<_UserListSheet>
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
               child: Text(
-                isAnime ? 'Anime List' : 'Manga List',
+                tr(isAnime ? 'uprof_anime_list' : 'uprof_manga_list', lang),
                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
               ),
             ),
@@ -1058,11 +1066,7 @@ class _UserListSheetState extends State<_UserListSheet>
               padding: const EdgeInsets.symmetric(horizontal: 8),
               tabs: _statuses.map((s) {
                 final count = _lists?[s]?.length ?? 0;
-                final label = isAnime && s == 'CURRENT'
-                    ? 'Watching'
-                    : !isAnime && s == 'CURRENT'
-                        ? 'Reading'
-                        : _labels[s]!;
+                final label = tr(_labelKey(s, isAnime: isAnime), lang);
                 return Tab(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1098,7 +1102,7 @@ class _UserListSheetState extends State<_UserListSheet>
                         final entries = _lists?[s] ?? [];
                         if (entries.isEmpty) {
                           return Center(
-                            child: Text('Nothing here',
+                            child: Text(tr('nothing_here', lang),
                                 style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))),
                           );
                         }
@@ -1165,6 +1169,8 @@ class _EntryTile extends StatelessWidget {
         ? (media['episodes'] as num?)?.toInt()
         : (media['chapters'] as num?)?.toInt();
     final cs = Theme.of(context).colorScheme;
+    final lang = context.watch<SettingsProvider>().language;
+    final unit = tr(isAnime ? 'uprof_ep_short' : 'uprof_ch_short', lang);
     final progressFraction = (total != null && total > 0) ? (progress / total).clamp(0.0, 1.0) : null;
 
     return GestureDetector(
@@ -1214,8 +1220,8 @@ class _EntryTile extends StatelessWidget {
                     children: [
                       Text(
                         total != null
-                            ? '$progress / $total ${isAnime ? 'ep' : 'ch'}'
-                            : '$progress ${isAnime ? 'ep' : 'ch'}',
+                            ? '$progress / $total $unit'
+                            : '$progress $unit',
                         style: TextStyle(fontSize: 11,
                             color: cs.onSurface.withValues(alpha: 0.5)),
                       ),

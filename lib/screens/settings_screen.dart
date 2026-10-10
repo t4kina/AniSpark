@@ -9,6 +9,49 @@ import '../utils/refresh_notifier.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../services/notification_service.dart';
 
+// The pickers below store these maps' keys and only show their labels.
+
+/// Each language in its own name, so it can be found whatever is selected.
+const _languageNames = {
+  'English': 'English',
+  'Spanish': 'Español',
+  'Japanese': '日本語',
+  'French': 'Français',
+  'German': 'Deutsch',
+  'Portuguese': 'Português',
+  'Italian': 'Italiano',
+  'Korean': '한국어',
+};
+
+const _appearanceKeys = {
+  'Dark': 'settings_appearance_dark',
+  'Light': 'settings_appearance_light',
+  'System': 'settings_appearance_system',
+};
+
+const _titleLanguageKeys = {
+  'English': 'settings_title_english',
+  'Romaji': 'settings_title_romaji',
+  'Native': 'settings_title_native',
+};
+
+const _accentColorKeys = {
+  'Blue': 'settings_color_blue',
+  'Purple': 'settings_color_purple',
+  'Green': 'settings_color_green',
+  'Pink': 'settings_color_pink',
+  'Teal': 'settings_color_teal',
+  'Orange': 'settings_color_orange',
+};
+
+/// The translated label of a stored [value], or [value] itself if unknown.
+String _labelOf(Map<String, String> keys, String value, String lang) {
+  final key = keys[value];
+  return key == null ? value : tr(key, lang);
+}
+
+const _appVersion = '1.0.0';
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
@@ -36,12 +79,13 @@ class SettingsScreen extends StatelessWidget {
           _tile(
             icon: Icons.language,
             label: tr('language', lang),
-            trailing: Text(lang,
+            trailing: Text(_languageNames[lang] ?? lang,
                 style: const TextStyle(color: Colors.grey, fontSize: 13)),
             onTap: () => _showPicker(
               context: context,
               title: tr('language', lang),
-              options: const ['English', 'Spanish', 'Japanese', 'French', 'German', 'Portuguese', 'Italian', 'Korean'],
+              options: _languageNames.keys.toList(),
+              labelOf: (v) => _languageNames[v] ?? v,
               current: lang,
               onSelected: (v) => context.read<SettingsProvider>().setLanguage(v),
             ),
@@ -49,12 +93,13 @@ class SettingsScreen extends StatelessWidget {
           _tile(
             icon: Icons.palette_outlined,
             label: tr('appearance', lang),
-            trailing: Text(settings.appearance,
+            trailing: Text(_labelOf(_appearanceKeys, settings.appearance, lang),
                 style: const TextStyle(color: Colors.grey, fontSize: 13)),
             onTap: () => _showPicker(
               context: context,
               title: tr('appearance', lang),
-              options: const ['Dark', 'Light'],
+              options: _appearanceKeys.keys.toList(),
+              labelOf: (v) => _labelOf(_appearanceKeys, v, lang),
               current: settings.appearance,
               onSelected: (v) => context.read<SettingsProvider>().setAppearance(v),
             ),
@@ -74,7 +119,7 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Text(settings.accentColorName,
+                Text(_labelOf(_accentColorKeys, settings.accentColorName, lang),
                     style: const TextStyle(color: Colors.grey, fontSize: 13)),
               ],
             ),
@@ -83,12 +128,13 @@ class SettingsScreen extends StatelessWidget {
           _tile(
             icon: Icons.title,
             label: tr('title_language', lang),
-            trailing: Text(settings.titleLanguage,
+            trailing: Text(_labelOf(_titleLanguageKeys, settings.titleLanguage, lang),
                 style: const TextStyle(color: Colors.grey, fontSize: 13)),
             onTap: () => _showPicker(
               context: context,
               title: tr('title_language', lang),
-              options: const ['English', 'Romaji', 'Native'],
+              options: _titleLanguageKeys.keys.toList(),
+              labelOf: (v) => _labelOf(_titleLanguageKeys, v, lang),
               current: settings.titleLanguage,
               onSelected: (v) => context.read<SettingsProvider>().setTitleLanguage(v),
             ),
@@ -111,8 +157,8 @@ class SettingsScreen extends StatelessWidget {
                 final granted = await NotificationService().requestPermission();
                 if (!granted && context.mounted) {
                   await sp.setPushNotifications(false);
-                  messenger.showSnackBar(const SnackBar(
-                    content: Text('Enable notifications in System Settings'),
+                  messenger.showSnackBar(SnackBar(
+                    content: Text(tr('settings_enable_notifications', lang)),
                   ));
                 }
               } else {
@@ -132,8 +178,8 @@ class SettingsScreen extends StatelessWidget {
                 final granted = await NotificationService().requestPermission();
                 if (!granted && context.mounted) {
                   await sp.setNewEpisodeAlerts(false);
-                  messenger.showSnackBar(const SnackBar(
-                    content: Text('Enable notifications in System Settings'),
+                  messenger.showSnackBar(SnackBar(
+                    content: Text(tr('settings_enable_notifications', lang)),
                   ));
                 } else if (context.mounted) {
                   listRefreshNotifier.value++;
@@ -206,7 +252,7 @@ class SettingsScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 24),
-          const Center(child: Text('AniSpark v1.0.0', style: TextStyle(color: Colors.grey, fontSize: 12))),
+          const Center(child: Text('AniSpark v$_appVersion', style: TextStyle(color: Colors.grey, fontSize: 12))),
           const SizedBox(height: 32),
         ],
       ),
@@ -258,6 +304,7 @@ class SettingsScreen extends StatelessWidget {
     required BuildContext context,
     required String title,
     required List<String> options,
+    required String Function(String option) labelOf,
     required String current,
     required ValueChanged<String> onSelected,
   }) {
@@ -289,7 +336,7 @@ class SettingsScreen extends StatelessWidget {
                       color: current == opt ? Theme.of(ctx).colorScheme.primary : Colors.grey,
                       size: 20,
                     ),
-                    title: Text(opt,
+                    title: Text(labelOf(opt),
                         style: TextStyle(
                             color: current == opt ? Theme.of(ctx).colorScheme.primary : null,
                             fontSize: 14)),
@@ -365,7 +412,7 @@ class SettingsScreen extends StatelessWidget {
                               : null,
                         ),
                         const SizedBox(height: 6),
-                        Text(e.key,
+                        Text(_labelOf(_accentColorKeys, e.key, lang),
                             style: const TextStyle(
                                 fontSize: 11, color: Colors.grey)),
                       ],
@@ -402,7 +449,8 @@ class SettingsScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Version 1.0.0', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            Text(trf('settings_version', lang, {'v': _appVersion}),
+                style: const TextStyle(color: Colors.grey, fontSize: 13)),
             const SizedBox(height: 12),
             Text(tr('about_description', lang),
                 style: const TextStyle(color: Colors.grey, height: 1.5, fontSize: 13)),
@@ -424,9 +472,9 @@ class SettingsScreen extends StatelessWidget {
     await DefaultCacheManager().emptyCache();
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Image cache cleared'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(tr('settings_cache_cleared', lang)),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -438,18 +486,18 @@ class SettingsScreen extends StatelessWidget {
 
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Row(
           children: [
-            SizedBox(
+            const SizedBox(
               width: 16, height: 16,
               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
             ),
-            SizedBox(width: 12),
-            Text('Syncing with AniList…'),
+            const SizedBox(width: 12),
+            Text(tr('settings_syncing', lang)),
           ],
         ),
-        duration: Duration(seconds: 30),
+        duration: const Duration(seconds: 30),
       ),
     );
 
@@ -460,9 +508,9 @@ class SettingsScreen extends StatelessWidget {
 
     messenger.hideCurrentSnackBar();
     messenger.showSnackBar(
-      const SnackBar(
-        content: Text('Synced successfully'),
-        duration: Duration(seconds: 2),
+      SnackBar(
+        content: Text(tr('settings_synced', lang)),
+        duration: const Duration(seconds: 2),
       ),
     );
   }

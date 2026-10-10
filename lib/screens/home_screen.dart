@@ -6,7 +6,7 @@ import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../providers/settings_provider.dart';
-import '../utils/translations.dart' show tr;
+import '../utils/translations.dart' show tr, trf;
 import '../widgets/anime_card.dart';
 import 'detail_screen.dart';
 import 'search_screen.dart';
@@ -95,8 +95,11 @@ class _HomeScreenState extends State<HomeScreen> {
       _loading = !_hasAnySection;
     });
     final cache = context.read<ApiCache>();
-    final season = _currentSeasonLabel.replaceAll(' ', '-');
-    final nextSeason = _nextSeasonLabel.replaceAll(' ', '-');
+    // Cache keys use the untranslated season, e.g. `WINTER-2026`.
+    final (seasonName, seasonYear) = _currentSeason;
+    final (nextSeasonName, nextSeasonYear) = _nextSeason;
+    final season = '$seasonName-$seasonYear';
+    final nextSeason = '$nextSeasonName-$nextSeasonYear';
 
     Future<void> section(
       String key,
@@ -153,7 +156,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  String get _currentSeasonLabel {
+  /// AniList season (`WINTER`…`FALL`) and year airing now.
+  (String, int) get _currentSeason {
     final month = DateTime.now().month;
     final year = DateTime.now().year;
     String season;
@@ -161,25 +165,43 @@ class _HomeScreenState extends State<HomeScreen> {
     else if (month >= 4 && month <= 6) { season = 'SPRING'; }
     else if (month >= 7 && month <= 9) { season = 'SUMMER'; }
     else { season = 'FALL'; }
-    return '$season $year';
+    return (season, year);
   }
 
-  String get _nextSeasonLabel {
+  (String, int) get _nextSeason {
     final month = DateTime.now().month;
     final year = DateTime.now().year;
-    if (month >= 10) return 'WINTER ${year + 1}';
-    if (month >= 7) return 'FALL $year';
-    if (month >= 4) return 'SUMMER $year';
-    return 'SPRING $year';
+    if (month >= 10) return ('WINTER', year + 1);
+    if (month >= 7) return ('FALL', year);
+    if (month >= 4) return ('SUMMER', year);
+    return ('SPRING', year);
+  }
+
+  static const _seasonKeys = {
+    'WINTER': 'home_season_winter',
+    'SPRING': 'home_season_spring',
+    'SUMMER': 'home_season_summer',
+    'FALL': 'home_season_fall',
+  };
+
+  /// Section header [key] filled with the translated [season], e.g.
+  /// `CURRENT SEASON - WINTER 2026`.
+  String _seasonHeader(String key, (String, int) season, String lang) {
+    final (name, year) = season;
+    return trf(key, lang, {
+      'season': tr(_seasonKeys[name] ?? name, lang),
+      'year': year,
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Discover',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+        title: Text(
+          tr('nav_discover', lang),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
       ),
       body: Column(
@@ -193,10 +215,10 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: AbsorbPointer(
                 child: TextField(
-                  decoration: const InputDecoration(
-                    hintText: 'Search',
+                  decoration: InputDecoration(
+                    hintText: tr('search', lang),
                     prefixIcon:
-                        Icon(Icons.search, size: 20, color: Colors.grey),
+                        const Icon(Icons.search, size: 20, color: Colors.grey),
                   ),
                 ),
               ),
@@ -216,40 +238,48 @@ class _HomeScreenState extends State<HomeScreen> {
                         children: [
                           if (_weeklySchedule.isNotEmpty) ...[
                             const SizedBox(height: 12),
-                            _sectionHeader('THIS WEEK'),
+                            _sectionHeader(tr('home_this_week', lang), lang),
                             const SizedBox(height: 10),
-                            _buildWeeklySchedule(),
+                            _buildWeeklySchedule(lang),
                             const SizedBox(height: 8),
                             const Divider(indent: 16, endIndent: 16),
                           ],
                           const SizedBox(height: 12),
-                          _sectionHeader('CURRENTLY TRENDING ANIME', items: _trending),
+                          _sectionHeader(tr('trending', lang), lang, items: _trending),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_trending),
                           const SizedBox(height: 20),
-                          _sectionHeader('CURRENT SEASON - $_currentSeasonLabel', items: _seasonal),
+                          _sectionHeader(
+                              _seasonHeader('home_current_season', _currentSeason, lang),
+                              lang,
+                              items: _seasonal),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_seasonal),
                           const SizedBox(height: 20),
-                          _sectionHeader('UPCOMING SEASON - $_nextSeasonLabel', items: _popular),
+                          _sectionHeader(
+                              _seasonHeader('home_upcoming_season', _nextSeason, lang),
+                              lang,
+                              items: _popular),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_popular),
                           const SizedBox(height: 20),
-                          _sectionHeader('TOP AIRING', items: _topAiring),
+                          _sectionHeader(tr('top_airing', lang), lang, items: _topAiring),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_topAiring),
                           const SizedBox(height: 28),
                           const Divider(indent: 16, endIndent: 16),
                           const SizedBox(height: 16),
-                          _sectionHeader('TRENDING MANGA', items: _trendingManga),
+                          _sectionHeader(tr('home_trending_manga', lang), lang,
+                              items: _trendingManga),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_trendingManga),
                           const SizedBox(height: 20),
-                          _sectionHeader('TOP MANGA ALL TIME', items: _topManga),
+                          _sectionHeader(tr('home_top_manga', lang), lang, items: _topManga),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_topManga),
                           const SizedBox(height: 20),
-                          _sectionHeader('POPULAR MANHWA', items: _manhwa),
+                          _sectionHeader(tr('home_popular_manhwa', lang), lang,
+                              items: _manhwa),
                           const SizedBox(height: 10),
                           _buildHorizontalRow(_manhwa),
                           const SizedBox(height: 24),
@@ -263,7 +293,8 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _sectionHeader(String title, {List<dynamic>? items}) => Padding(
+  Widget _sectionHeader(String title, String lang, {List<dynamic>? items}) =>
+      Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
@@ -287,7 +318,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 child: Builder(builder: (ctx) => Text(
-                  'See all',
+                  tr('home_see_all', lang),
                   style: TextStyle(
                     fontSize: 12,
                     color: Theme.of(ctx).colorScheme.primary,
@@ -315,9 +346,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
 
-  Widget _buildWeeklySchedule() {
+  static const _weekdayKeys = [
+    'home_day_mon', 'home_day_tue', 'home_day_wed', 'home_day_thu',
+    'home_day_fri', 'home_day_sat', 'home_day_sun',
+  ];
+
+  Widget _buildWeeklySchedule(String lang) {
     final settings = context.read<SettingsProvider>();
-    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
     return SizedBox(
       height: 130,
@@ -334,7 +369,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final airingAt = (item['airingAt'] as num?)?.toInt() ?? 0;
           final episode = (item['episode'] as num?)?.toInt() ?? 0;
           final dt = DateTime.fromMillisecondsSinceEpoch(airingAt * 1000);
-          final dayLabel = days[dt.weekday - 1];
+          final dayLabel = tr(_weekdayKeys[dt.weekday - 1], lang);
           final timeLabel = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
 
           return GestureDetector(
@@ -384,7 +419,8 @@ class _HomeScreenState extends State<HomeScreen> {
                           Text(title, maxLines: 2, overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                           const SizedBox(height: 4),
-                          Text('Episode $episode', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                          Text(trf('list_episode_n', lang, {'n': episode}),
+                              style: const TextStyle(fontSize: 11, color: Colors.grey)),
                         ],
                       ),
                     ),

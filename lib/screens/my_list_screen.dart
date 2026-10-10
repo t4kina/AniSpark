@@ -9,7 +9,7 @@ import '../services/auth_service.dart';
 import '../screens/detail_screen.dart';
 import '../main.dart';
 import '../providers/settings_provider.dart';
-import '../utils/translations.dart' show tr;
+import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
 import '../services/notification_service.dart';
@@ -50,11 +50,28 @@ class _ListTabScreenState extends State<_ListTabScreen> {
   _SortMode _sortMode = _SortMode.lastUpdated;
   Set<String> _activeGenres = {};
 
-  static const _genres = [
-    'Action', 'Adventure', 'Comedy', 'Drama', 'Ecchi', 'Fantasy', 'Horror',
-    'Mahou Shoujo', 'Mecha', 'Music', 'Mystery', 'Psychological', 'Romance',
-    'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller',
-  ];
+  /// AniList genre names (matched against the entries as is) and their
+  /// display keys.
+  static const _genreKeys = {
+    'Action': 'search_genre_action',
+    'Adventure': 'search_genre_adventure',
+    'Comedy': 'search_genre_comedy',
+    'Drama': 'search_genre_drama',
+    'Ecchi': 'search_genre_ecchi',
+    'Fantasy': 'search_genre_fantasy',
+    'Horror': 'search_genre_horror',
+    'Mahou Shoujo': 'search_genre_mahou_shoujo',
+    'Mecha': 'search_genre_mecha',
+    'Music': 'search_genre_music',
+    'Mystery': 'search_genre_mystery',
+    'Psychological': 'search_genre_psychological',
+    'Romance': 'search_genre_romance',
+    'Sci-Fi': 'search_genre_sci_fi',
+    'Slice of Life': 'search_genre_slice_of_life',
+    'Sports': 'search_genre_sports',
+    'Supernatural': 'search_genre_supernatural',
+    'Thriller': 'search_genre_thriller',
+  };
 
   @override
   void dispose() {
@@ -64,6 +81,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
 
   void _showGenreFilter(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final lang = context.read<SettingsProvider>().language;
     showModalBottomSheet(
       context: context,
       backgroundColor: cs.surface,
@@ -79,7 +97,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
             children: [
               Row(
                 children: [
-                  Text('Filter by Genre',
+                  Text(tr('list_filter_by_genre', lang),
                       style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -91,7 +109,8 @@ class _ListTabScreenState extends State<_ListTabScreen> {
                         setState(() => _activeGenres = {});
                         setSheet(() {});
                       },
-                      child: const Text('Clear', style: TextStyle(fontSize: 13)),
+                      child: Text(tr('clear', lang),
+                          style: const TextStyle(fontSize: 13)),
                     ),
                 ],
               ),
@@ -99,7 +118,8 @@ class _ListTabScreenState extends State<_ListTabScreen> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _genres.map((g) {
+                children: _genreKeys.entries.map((genre) {
+                  final g = genre.key;
                   final selected = _activeGenres.contains(g);
                   return GestureDetector(
                     onTap: () {
@@ -123,7 +143,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
                         ),
                       ),
                       child: Text(
-                        g,
+                        tr(genre.value, lang),
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
@@ -412,9 +432,9 @@ class _MediaListState extends State<_MediaList>
       return;
     }
     final title = settings.resolveTitle(media['title'] as Map<String, dynamic>?);
-    final unit = widget.type == 'ANIME' ? tr('episode', lang) : tr('chapter', lang);
+    final unitKey = widget.type == 'ANIME' ? 'list_episode_n' : 'list_chapter_n';
     _showSnack(
-      '$title · $unit $newProgress',
+      '$title · ${trf(unitKey, lang, {'n': newProgress})}',
       action: SnackBarAction(
         label: tr('undo', lang),
         onPressed: () => _undoProgress(mediaId, progress),
@@ -521,21 +541,21 @@ class _MediaListState extends State<_MediaList>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    final lang = context.select<SettingsProvider, String>((s) => s.language);
     final isLoggedIn = context.select<AuthService, bool>((auth) => auth.isLoggedIn);
     final (lists, loading, error) = context.select<MediaListStore, (MediaLists?, bool, Object?)>(
         (store) => (store.listsOf(widget.type), store.isLoading(widget.type), store.errorOf(widget.type)));
 
     if (!isLoggedIn) {
-      return const _ListMessage(
+      return _ListMessage(
         icon: Icons.list_alt_outlined,
-        message: 'Connect your AniList from the Profile tab',
+        message: tr('list_connect_prompt', lang),
       );
     }
     if (lists == null) {
       if (loading || error == null) {
         return const Center(child: CircularProgressIndicator());
       }
-      final lang = context.read<SettingsProvider>().language;
       return _ListMessage(
         icon: Icons.wifi_off_rounded,
         message: tr('load_error', lang),
@@ -562,7 +582,7 @@ class _MediaListState extends State<_MediaList>
               ),
               const SizedBox(height: 16),
               Text(
-                isAnime ? 'Your anime list is empty' : 'Your manga list is empty',
+                tr(isAnime ? 'list_empty_anime' : 'list_empty_manga', lang),
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -570,9 +590,7 @@ class _MediaListState extends State<_MediaList>
               ),
               const SizedBox(height: 8),
               Text(
-                isAnime
-                    ? 'Start tracking anime you\'re watching or plan to watch'
-                    : 'Start tracking manga you\'re reading or plan to read',
+                tr(isAnime ? 'list_empty_anime_hint' : 'list_empty_manga_hint', lang),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 13,
@@ -595,7 +613,7 @@ class _MediaListState extends State<_MediaList>
                           color: Colors.white, size: 18),
                       const SizedBox(width: 8),
                       Text(
-                        isAnime ? 'Discover Anime' : 'Discover Manga',
+                        tr(isAnime ? 'list_discover_anime' : 'list_discover_manga', lang),
                         style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
@@ -611,7 +629,6 @@ class _MediaListState extends State<_MediaList>
       );
     }
 
-    final lang = context.read<SettingsProvider>().language;
     final labels =
         widget.type == 'ANIME' ? _animeStatusLabels(lang) : _mangaStatusLabels(lang);
 
@@ -660,8 +677,8 @@ class _MediaListState extends State<_MediaList>
             const SizedBox(height: 12),
             Text(
               widget.searchQuery.isNotEmpty
-                  ? 'No results for "${widget.searchQuery}"'
-                  : 'No entries match the selected genres',
+                  ? trf('list_no_results_for', lang, {'query': widget.searchQuery})
+                  : tr('list_no_genre_match', lang),
               style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
                   fontSize: 13)),
@@ -800,13 +817,15 @@ class _SwipeableRowState extends State<_SwipeableRow> {
     if (next != _progress) setState(() => _progress = next);
   }
 
-  String? _timeUntilAiring(int airingAt) {
+  String? _timeUntilAiring(int airingAt, String lang) {
     final remaining = airingAt - DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (remaining <= 0) return null; // already aired — hide the row
     final days = remaining ~/ 86400;
-    if (days > 0) return '$days day${days == 1 ? '' : 's'}';
+    if (days > 0) {
+      return trf(days == 1 ? 'list_airs_day' : 'list_airs_days', lang, {'n': days});
+    }
     final hours = remaining ~/ 3600;
-    return '$hours hour${hours == 1 ? '' : 's'}';
+    return trf(hours == 1 ? 'list_airs_hour' : 'list_airs_hours', lang, {'n': hours});
   }
 
   @override
@@ -987,7 +1006,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                       final airingAtRaw = nextAiring['airingAt'];
                       if (nextEp == null || airingAtRaw == null) return const SizedBox.shrink();
                       final airingAt = (airingAtRaw as num).toInt();
-                      final timeStr = _timeUntilAiring(airingAt);
+                      final timeStr = _timeUntilAiring(airingAt, lang);
                       if (timeStr == null) return const SizedBox.shrink();
                       final behindBy = (nextEp - 1) - progress;
                       final color = behindBy >= 1
@@ -1005,7 +1024,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
-                                'Episode $nextEp airs in $timeStr',
+                                trf('list_airs_in', lang, {'n': nextEp, 'time': timeStr}),
                                 style: TextStyle(fontSize: 12, color: color),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -1114,7 +1133,8 @@ class _CompletionDialogState extends State<_CompletionDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final unitLabel = widget.type == 'ANIME' ? 'series' : 'manga';
+    final lang = context.watch<SettingsProvider>().language;
+    final isAnime = widget.type == 'ANIME';
 
     // Back is blocked while saving so the list can't be swiped mid-request.
     return PopScope(
@@ -1188,7 +1208,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
 
                 // Congrats subtitle
                 Text(
-                  'Congrats! You\'ve just finished',
+                  tr('list_congrats_finished', lang),
                   style: TextStyle(
                     fontSize: 15,
                     color: Colors.white.withValues(alpha: 0.6),
@@ -1231,7 +1251,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
 
                 // Rating question
                 Text(
-                  'What\'s your final rating for this $unitLabel?',
+                  tr(isAnime ? 'list_final_rating_series' : 'list_final_rating_manga', lang),
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.white.withValues(alpha: 0.55),
@@ -1250,7 +1270,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                       border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
                     ),
                     child: Text(
-                      _score > 0 ? _score.toStringAsFixed(1) : 'Not Scored',
+                      _score > 0 ? _score.toStringAsFixed(1) : tr('list_not_scored', lang),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
@@ -1269,7 +1289,8 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                       const Icon(Icons.star_rounded, size: 13, color: Color(0xFFFFC107)),
                       const SizedBox(width: 4),
                       Text(
-                        'AVERAGE RATING  ${(widget.averageScore! / 10).toStringAsFixed(1)}',
+                        trf('list_average_rating', lang,
+                            {'score': (widget.averageScore! / 10).toStringAsFixed(1)}),
                         style: TextStyle(
                           fontSize: 11,
                           letterSpacing: 0.5,
@@ -1308,7 +1329,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                                 ),
                               )
                             : Text(
-                                'Complete ${widget.type == 'ANIME' ? 'Series' : 'Manga'}',
+                                tr(isAnime ? 'list_complete_series' : 'list_complete_manga', lang),
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
@@ -1385,6 +1406,7 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final lang = context.watch<SettingsProvider>().language;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -1402,7 +1424,7 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
             ),
           ),
           Text(
-            'Score',
+            tr('list_score', lang),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -1485,9 +1507,9 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18)),
               ),
-              child: const Text(
-                'Update',
-                style: TextStyle(
+              child: Text(
+                tr('list_update', lang),
+                style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: Colors.white),

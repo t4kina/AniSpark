@@ -6,7 +6,7 @@ import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../providers/settings_provider.dart';
 import '../utils/refresh_notifier.dart';
-import '../utils/translations.dart' show tr;
+import '../utils/translations.dart' show tr, trf;
 import 'detail_screen.dart';
 import 'user_profile_screen.dart';
 
@@ -127,26 +127,31 @@ class _FeedScreenState extends State<FeedScreen>
     }
   }
 
-  String _timeAgo(int timestamp) {
+  String _timeAgo(int timestamp, String lang) {
     final diff = DateTime.now()
         .difference(DateTime.fromMillisecondsSinceEpoch(timestamp * 1000));
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
+    if (diff.inMinutes < 60) {
+      return trf('feed_minutes_ago', lang, {'n': diff.inMinutes});
+    }
+    if (diff.inHours < 24) {
+      return trf('feed_hours_ago', lang, {'n': diff.inHours});
+    }
+    return trf('feed_days_ago', lang, {'n': diff.inDays});
   }
 
-  String get _feedLabel {
+  String _feedLabel(String lang) {
     switch (_feedType) {
       case _FeedType.following:
-        return 'Following Feed';
+        return tr('following_feed', lang);
       case _FeedType.global:
-        return 'Global Feed';
+        return tr('global_feed', lang);
       case _FeedType.personal:
-        return 'Your Feed';
+        return tr('your_feed', lang);
     }
   }
 
   void _showFeedPicker() {
+    final lang = context.read<SettingsProvider>().language;
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -168,14 +173,14 @@ class _FeedScreenState extends State<FeedScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text('Choose an activity feed:',
-                    style: TextStyle(color: Colors.grey, fontSize: 13)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(tr('choose_feed', lang),
+                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
               ),
-              _feedOption('Your Feed', Icons.person, _FeedType.personal),
-              _feedOption('Following Feed', Icons.group, _FeedType.following),
-              _feedOption('Global Feed', Icons.public, _FeedType.global),
+              _feedOption(tr('your_feed', lang), Icons.person, _FeedType.personal),
+              _feedOption(tr('following_feed', lang), Icons.group, _FeedType.following),
+              _feedOption(tr('global_feed', lang), Icons.public, _FeedType.global),
               const SizedBox(height: 8),
             ],
           ),
@@ -213,15 +218,15 @@ class _FeedScreenState extends State<FeedScreen>
 
     if (!auth.isLoggedIn) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Feed')),
-        body: const Center(
+        appBar: AppBar(title: Text(tr('nav_feed', lang))),
+        body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.group_outlined, size: 52, color: Colors.grey),
-              SizedBox(height: 12),
-              Text('Connect your AniList from the Profile tab',
-                  style: TextStyle(color: Colors.grey)),
+              const Icon(Icons.group_outlined, size: 52, color: Colors.grey),
+              const SizedBox(height: 12),
+              Text(tr('feed_connect_from_profile', lang),
+                  style: const TextStyle(color: Colors.grey)),
             ],
           ),
         ),
@@ -236,7 +241,7 @@ class _FeedScreenState extends State<FeedScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                _feedLabel,
+                _feedLabel(lang),
                 style: const TextStyle(
                     fontWeight: FontWeight.bold, fontSize: 18),
               ),
@@ -267,9 +272,9 @@ class _FeedScreenState extends State<FeedScreen>
                   ),
                 )
               : _activities.isEmpty
-                  ? const Center(
-                      child: Text('No activity yet',
-                          style: TextStyle(color: Colors.grey)))
+                  ? Center(
+                      child: Text(tr('no_activity', lang),
+                          style: const TextStyle(color: Colors.grey)))
                   : NotificationListener<ScrollNotification>(
                       onNotification: _onScrollNotification,
                       child: RefreshIndicator(
@@ -286,7 +291,8 @@ class _FeedScreenState extends State<FeedScreen>
                             }
                             return _ActivityCard(
                               activity: _activities[i],
-                              timeAgo: _timeAgo,
+                              timeAgo: (ts) => _timeAgo(ts, lang),
+                              lang: lang,
                             );
                           },
                         ),
@@ -299,12 +305,17 @@ class _FeedScreenState extends State<FeedScreen>
 class _ActivityCard extends StatelessWidget {
   final dynamic activity;
   final String Function(int) timeAgo;
+  final String lang;
 
-  const _ActivityCard({required this.activity, required this.timeAgo});
+  const _ActivityCard({
+    required this.activity,
+    required this.timeAgo,
+    required this.lang,
+  });
 
   void _openUserProfile(BuildContext context, Map? user) {
     final id = user?['id'] as int?;
-    final name = user?['name'] as String? ?? 'Unknown';
+    final name = user?['name'] as String? ?? tr('feed_unknown', lang);
     final avatar = user?['avatar']?['large'] as String?;
     if (id == null) return;
     Navigator.push(
@@ -320,7 +331,7 @@ class _ActivityCard extends StatelessWidget {
     final type = activity['type'] as String?;
     final user = activity['user'] as Map?;
     final avatar = user?['avatar']?['large'] as String?;
-    final username = user?['name'] as String? ?? 'Unknown';
+    final username = user?['name'] as String? ?? tr('feed_unknown', lang);
     final createdAt = activity['createdAt'] as int? ?? 0;
 
     if (type == 'TEXT') {
@@ -349,8 +360,11 @@ class _ActivityCard extends StatelessWidget {
     final coverImage = media?['coverImage']?['large'] as String?;
     final title = (media?['title']?['english'] ??
         media?['title']?['romaji'] ??
-        'Unknown') as String;
-    final actionText = progress != null ? '$status $progress of' : status;
+        tr('feed_unknown', lang)) as String;
+    final actionText = progress != null
+        ? trf('feed_status_progress_of', lang,
+            {'status': status, 'progress': progress})
+        : status;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
