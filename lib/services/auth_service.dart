@@ -204,6 +204,7 @@ class AuthService extends ChangeNotifier {
       query {
         Viewer {
           id name avatar { large } bannerImage
+          mediaListOptions { scoreFormat }
           statistics {
             anime {
               count episodesWatched meanScore minutesWatched
