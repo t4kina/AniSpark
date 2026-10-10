@@ -5,21 +5,31 @@ import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
+import '../services/people_api.dart';
 import '../utils/refresh_notifier.dart';
-import '../utils/translations.dart' show tr, trf;
+import '../utils/review_text.dart';
+import '../utils/translations.dart' show tr;
 import '../widgets/overlay_button.dart';
-import 'detail_screen.dart';
+import '../widgets/people/expandable_text.dart';
+import '../widgets/people/info_pill.dart';
+import '../widgets/people/people_labels.dart';
+import '../widgets/people/people_routes.dart';
+import '../widgets/people/person_card.dart';
 
 class CharacterScreen extends StatefulWidget {
   final int characterId;
   final String? name;
   final String? imageUrl;
 
+  /// Replaces the AniList API, for tests.
+  final PeopleApi? api;
+
   const CharacterScreen({
     super.key,
     required this.characterId,
     this.name,
     this.imageUrl,
+    this.api,
   });
 
   @override
@@ -28,18 +38,21 @@ class CharacterScreen extends StatefulWidget {
 
 class _CharacterScreenState extends State<CharacterScreen> {
   final _service = AniListService();
-  Map<String, dynamic>? _data;
+  late final PeopleApi _api = widget.api ?? PeopleApi();
+  CharacterDetail? _data;
   bool _loading = true;
   // ToggleFavourite flips whatever AniList has, so the button waits for a
   // fresh copy instead of trusting a possibly stale cached isFavourite.
   bool _isFresh = false;
-  bool _descExpanded = false;
 
   @override
   void initState() {
     super.initState();
     _load();
   }
+
+  static CharacterDetail _decode(Object? json) =>
+      CharacterDetail.fromJson(json) ?? (throw const FormatException('Not a cached character'));
 
   Future<void> _load({bool force = false}) async {
     final auth = context.read<AuthService>();
@@ -52,10 +65,10 @@ class _CharacterScreenState extends State<CharacterScreen> {
         : 'anon:character:$id';
     final cache = context.read<ApiCache>();
     try {
-      await cache.load<Map<String, dynamic>?>(
+      await cache.load<CharacterDetail>(
         key: key,
-        fetch: () => _service.getCharacterDetail(id, token),
-        decode: (json) => (json as Map).cast<String, dynamic>(),
+        fetch: () => _api.getCharacter(id, token: token),
+        decode: _decode,
         onData: (data, {required isFresh}) {
           if (!mounted) return;
           setState(() {
@@ -65,7 +78,6 @@ class _CharacterScreenState extends State<CharacterScreen> {
           });
         },
         force: force,
-        isValid: (data) => data != null,
       );
     } on Exception catch (e) {
       debugPrint('[CharacterScreen] Loading character $id failed: $e');
@@ -85,7 +97,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
     if (!auth.isLoggedIn || token == null) return;
     final lang = context.read<SettingsProvider>().language;
     final messenger = ScaffoldMessenger.of(context);
-    final wasFav = _data?['isFavourite'] == true;
+    final wasFav = _data?.isFavourite == true;
     var ok = false;
     try {
       ok = await _service.toggleCharacterFavourite(
@@ -100,7 +112,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
     }
     final current = _data;
     if (current != null) {
-      setState(() => _data = {...current, 'isFavourite': !wasFav});
+      setState(() => _data = current.copyWith(isFavourite: !wasFav));
     }
     _load(force: true);
     profileRefreshNotifier.value++;
@@ -108,7 +120,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isFav = _data?['isFavourite'] == true;
+    final isFav = _data?.isFavourite == true;
     final lang = context.watch<SettingsProvider>().language;
     return Scaffold(
       body: Stack(
@@ -164,18 +176,21 @@ class _CharacterScreenState extends State<CharacterScreen> {
     final d = _data;
     if (d == null) return _buildError();
 
-    final lang = context.watch<SettingsProvider>().language;
-    final image = d['image']?['large'] as String? ?? widget.imageUrl;
-    final name = d['name']?['full'] as String? ?? widget.name ?? '';
-    final nativeName = d['name']?['native'] as String?;
-    final description = (d['description'] as String? ?? '').trim();
-    final rawGender = d['gender'] as String?;
-    final gender = rawGender != null ? _genderLabel(rawGender, lang) : null;
-    final age = d['age'] as String?;
-    final bloodType = d['bloodType'] as String?;
-    final dob = d['dateOfBirth'] as Map<String, dynamic>?;
-    final dobStr = _dobStr(dob, lang);
-    final media = (d['media']?['nodes'] as List<dynamic>?) ?? [];
+    final settings = context.watch<SettingsProvider>();
+    final lang = settings.language;
+    final image = d.imageUrl ?? widget.imageUrl;
+    final name = d.name.isNotEmpty ? d.name : widget.name ?? '';
+    final nativeName = d.nativeName;
+    final description = cleanReviewText(d.description, spoilerPlaceholder: tr('review_spoiler', lang));
+    final rawGender = d.gender;
+    final gender = rawGender != null ? genderLabel(rawGender, lang) : null;
+    final age = d.age;
+    final bloodType = d.bloodType;
+    // Characters' birth years are often fictional, so only the day is shown.
+    final dobStr = fuzzyDateLabel(d.dateOfBirth, lang, withYear: false);
+    final media = d.media;
+    // Japanese first, then whoever dubs in the viewer's language.
+    final voiceActors = sortVoiceActors(d.voiceActors, preferredLanguage: lang);
 
     final surface = Theme.of(context).colorScheme.surface;
     final topPadding = MediaQuery.of(context).padding.top;
@@ -275,10 +290,10 @@ class _CharacterScreenState extends State<CharacterScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  if (gender != null) _infoPill(Icons.person_outline_rounded, gender),
-                  if (age != null) _infoPill(Icons.cake_outlined, age),
-                  if (bloodType != null) _infoPill(Icons.water_drop_outlined, bloodType),
-                  if (dobStr != null) _infoPill(Icons.calendar_today_outlined, dobStr),
+                  if (gender != null) InfoPill(icon: Icons.person_outline_rounded, label: gender),
+                  if (age != null) InfoPill(icon: Icons.cake_outlined, label: age),
+                  if (bloodType != null) InfoPill(icon: Icons.water_drop_outlined, label: bloodType),
+                  if (dobStr != null) InfoPill(icon: Icons.calendar_today_outlined, label: dobStr),
                 ],
               ),
             ),
@@ -294,48 +309,45 @@ class _CharacterScreenState extends State<CharacterScreen> {
                 children: [
                   _sectionLabel(tr('char_about', lang)),
                   const SizedBox(height: 8),
-                  AnimatedCrossFade(
-                    duration: const Duration(milliseconds: 200),
-                    crossFadeState: _descExpanded
-                        ? CrossFadeState.showSecond
-                        : CrossFadeState.showFirst,
-                    firstChild: Text(
-                      description,
-                      maxLines: 4,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 13.5,
-                          height: 1.55,
-                          color: cs.onSurface.withValues(alpha: 0.8)),
-                    ),
-                    secondChild: Text(
-                      description,
-                      style: TextStyle(
-                          fontSize: 13.5,
-                          height: 1.55,
-                          color: cs.onSurface.withValues(alpha: 0.8)),
-                    ),
+                  ExpandableText(
+                    text: description,
+                    expandLabel: tr('detail_read_more', lang),
+                    collapseLabel: tr('char_show_less', lang),
                   ),
-                  if (description.length > 200)
-                    GestureDetector(
-                      onTap: () => setState(() => _descExpanded = !_descExpanded),
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 6),
-                        child: Text(
-                          _descExpanded
-                              ? tr('char_show_less', lang)
-                              : tr('detail_read_more', lang),
-                          style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                              color: Theme.of(context).colorScheme.primary),
-                        ),
-                      ),
-                    ),
                 ],
               ),
             ),
           ),
+
+        // ── Voice actors ─────────────────────────────────────────────────
+        if (voiceActors.isNotEmpty) ...[
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 6),
+              child: _sectionLabel(tr('staff_voice_actors', lang).toUpperCase()),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: PersonCard.rowHeight(),
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                itemCount: voiceActors.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 4),
+                itemBuilder: (_, i) {
+                  final actor = voiceActors[i];
+                  return PersonCard(
+                    name: actor.name,
+                    imageUrl: actor.imageUrl,
+                    subtitle: voiceLanguageLabel(actor.language, lang),
+                    onTap: () => openStaff(context, actor),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
 
         // ── Appears in ───────────────────────────────────────────────────
         if (media.isNotEmpty) ...[
@@ -352,7 +364,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: media.length,
-                itemBuilder: (_, i) => _mediaCard(media[i]),
+                itemBuilder: (_, i) => _mediaCard(media[i], settings.resolveTitle(media[i].title)),
               ),
             ),
           ),
@@ -384,104 +396,62 @@ class _CharacterScreenState extends State<CharacterScreen> {
     );
   }
 
-  Widget _infoPill(IconData icon, String label) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: cs.onSurface.withValues(alpha: 0.55)),
-          const SizedBox(width: 5),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 12,
-                  color: cs.onSurface.withValues(alpha: 0.8),
-                  fontWeight: FontWeight.w500)),
-        ],
-      ),
-    );
-  }
-
-  Widget _sectionLabel(String text) => Text(
-        text,
-        style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-            letterSpacing: 0.7),
+  Widget _sectionLabel(String text) => Semantics(
+        header: true,
+        child: Text(
+          text,
+          style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+              letterSpacing: 0.7),
+        ),
       );
 
-  Widget _mediaCard(dynamic item) {
-    final m = item as Map<String, dynamic>;
-    final id = m['id'] as int?;
-    final image = m['coverImage']?['medium'] as String?;
-    final title = (m['title']?['english'] ?? m['title']?['romaji'] ?? '') as String;
-    final isAnime = m['type'] == 'ANIME';
+  /// [title] is in the viewer's title language.
+  Widget _mediaCard(MediaRef media, String title) {
+    final image = media.coverUrl;
     final cs = Theme.of(context).colorScheme;
 
     return Padding(
       padding: const EdgeInsets.only(right: 10),
-      child: GestureDetector(
-        onTap: id != null && isAnime
-            ? () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)))
-            : null,
-        child: SizedBox(
-          width: 100,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        width: 100,
-                        height: 130,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 200,
-                      )
-                    : Container(
-                        width: 100, height: 130,
-                        color: cs.surfaceContainerHighest),
+      child: MergeSemantics(
+        child: Semantics(
+          button: true,
+          child: GestureDetector(
+            onTap: () => openMedia(context, media),
+            child: SizedBox(
+              width: 100,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: image != null
+                        ? CachedNetworkImage(
+                            imageUrl: image,
+                            width: 100,
+                            height: 130,
+                            fit: BoxFit.cover,
+                            memCacheWidth: 200,
+                            placeholder: (_, _) => Container(color: cs.surfaceContainerHighest),
+                            errorWidget: (_, _, _) => Container(color: cs.surfaceContainerHighest),
+                          )
+                        : Container(
+                            width: 100, height: 130,
+                            color: cs.surfaceContainerHighest),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 10.5)),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 10.5)),
-            ],
+            ),
           ),
         ),
       ),
     );
-  }
-
-  /// AniList's gender is free text; the common values are translated and
-  /// anything else is shown as written.
-  String _genderLabel(String gender, String lang) =>
-      switch (gender.toLowerCase()) {
-        'male' => tr('char_gender_male', lang),
-        'female' => tr('char_gender_female', lang),
-        'non-binary' => tr('char_gender_non_binary', lang),
-        _ => gender,
-      };
-
-  String? _dobStr(Map<String, dynamic>? dob, String lang) {
-    if (dob == null) return null;
-    final month = dob['month'] as int?;
-    final day = dob['day'] as int?;
-    if (month == null && day == null) return null;
-    final m = month == null
-        ? ''
-        : (month >= 1 && month <= 12 ? tr('detail_month_$month', lang) : '$month');
-    if (day == null) return m;
-    // Trimmed so a birthday without a month doesn't keep the separator.
-    return trf('char_birthday_date', lang, {'month': m, 'day': day}).trim();
   }
 }

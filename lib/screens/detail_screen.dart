@@ -14,6 +14,8 @@ import '../widgets/overlay_button.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/detail/following_section.dart';
 import '../widgets/detail/reviews_section.dart';
+import '../widgets/detail/staff_section.dart';
+import '../widgets/detail/studio_links.dart';
 import '../widgets/entry_editor/entry_draft.dart' show FuzzyDate, entryStatusKey;
 import '../widgets/entry_editor/entry_editor_api.dart' show loadCustomListNames;
 import '../widgets/entry_editor/entry_editor_fields.dart' show formatFuzzyDate;
@@ -328,9 +330,11 @@ class _DetailScreenState extends State<DetailScreen> {
                                     style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                                 if (animationStudios.isNotEmpty) ...[
                                   const SizedBox(height: 6),
-                                  Text(animationStudios.first,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                                  StudioLinks(
+                                    studios: studios,
+                                    isAnimationStudio: true,
+                                    alignment: WrapAlignment.center,
+                                  ),
                                 ],
                                 if (nextAiring != null) ...[
                                   const SizedBox(height: 8),
@@ -532,11 +536,7 @@ class _DetailScreenState extends State<DetailScreen> {
                     children: [
                       _sectionTitle(tr('detail_producers', lang)),
                       const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: producers.map((p) => _chip(context, p)).toList(),
-                      ),
+                      StudioLinks(studios: studios, isAnimationStudio: false),
                     ],
                   )),
                   const Divider(height: 1),
@@ -564,6 +564,9 @@ class _DetailScreenState extends State<DetailScreen> {
                   ),
                   const Divider(height: 1),
                 ],
+
+                // ── Staff ── (brings its own title and divider; hides when empty)
+                StaffSection(edges: (d['staff']?['edges'] as List?) ?? const []),
 
                 // ── Recommended ──
                 if (recommendations.isNotEmpty) ...[

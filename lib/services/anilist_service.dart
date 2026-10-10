@@ -267,7 +267,7 @@ class AniListService {
           episodes chapters volumes averageScore popularity favourites trending
           genres status type format source duration synonyms
           description(asHtml: false)
-          studios { nodes { name isAnimationStudio } }
+          studios { nodes { id name isAnimationStudio } }
           startDate { year month day }
           endDate { year month day }
           season seasonYear
@@ -766,34 +766,6 @@ class AniListService {
       if (done) break;
     }
     return result;
-  }
-
-  Future<Map<String, dynamic>?> getCharacterDetail(int id, [String? token]) async {
-    const query = '''
-      query(\$id: Int!) {
-        Character(id: \$id) {
-          id
-          isFavourite
-          name { full native alternative }
-          image { large }
-          description(asHtml: false)
-          gender
-          age
-          bloodType
-          dateOfBirth { year month day }
-          media(perPage: 10, sort: POPULARITY_DESC) {
-            nodes {
-              id type
-              title { romaji english }
-              coverImage { medium }
-            }
-          }
-        }
-      }
-    ''';
-    final response = await _post(jsonEncode({'query': query, 'variables': {'id': id}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return null; }
-    return jsonDecode(response.body)['data']['Character'] as Map<String, dynamic>?;
   }
 
   Future<bool> toggleCharacterFavourite({
