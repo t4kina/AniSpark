@@ -444,6 +444,16 @@ const _en = {
   'season_next': 'Next season',
   'season_pick_year': 'Choose year',
   'season_format_all': 'All',
+  'review_section_title': 'REVIEWS',
+  'review_all_title': 'Reviews',
+  'review_title': 'Review',
+  'review_by': 'Review by {name}',
+  'review_upvotes': '{n} likes',
+  'review_liked_by': '{liked} of {total} users liked this review',
+  'review_spoiler': '[Spoiler]',
+  'following_show_all': 'Show all ({n})',
+  'following_on_episode': 'On episode {n}',
+  'following_on_chapter': 'On chapter {n}',
 };
 
 // ─── Spanish ─────────────────────────────────────────────────────────────────
@@ -843,6 +853,16 @@ const _es = {
   'season_next': 'Temporada siguiente',
   'season_pick_year': 'Elegir año',
   'season_format_all': 'Todos',
+  'review_section_title': 'RESEÑAS',
+  'review_all_title': 'Reseñas',
+  'review_title': 'Reseña',
+  'review_by': 'Reseña de {name}',
+  'review_upvotes': '{n} me gusta',
+  'review_liked_by': 'A {liked} de {total} usuarios les gustó esta reseña',
+  'review_spoiler': '[Spoiler]',
+  'following_show_all': 'Mostrar todo ({n})',
+  'following_on_episode': 'En el episodio {n}',
+  'following_on_chapter': 'En el capítulo {n}',
 };
 
 // ─── Japanese ────────────────────────────────────────────────────────────────
@@ -1242,6 +1262,16 @@ const _ja = {
   'season_next': '次のシーズン',
   'season_pick_year': '年を選択',
   'season_format_all': 'すべて',
+  'review_section_title': 'レビュー',
+  'review_all_title': 'レビュー',
+  'review_title': 'レビュー',
+  'review_by': '{name}さんのレビュー',
+  'review_upvotes': '高評価 {n}件',
+  'review_liked_by': '{total}人中{liked}人がこのレビューを高評価しました',
+  'review_spoiler': '[ネタバレ]',
+  'following_show_all': 'すべて表示 ({n})',
+  'following_on_episode': '第{n}話まで視聴',
+  'following_on_chapter': '第{n}話まで読了',
 };
 
 // ─── French ──────────────────────────────────────────────────────────────────
@@ -1641,6 +1671,16 @@ const _fr = {
   'season_next': 'Saison suivante',
   'season_pick_year': 'Choisir l\'année',
   'season_format_all': 'Tous',
+  'review_section_title': 'CRITIQUES',
+  'review_all_title': 'Critiques',
+  'review_title': 'Critique',
+  'review_by': 'Critique de {name}',
+  'review_upvotes': '{n} j\'aime',
+  'review_liked_by': '{liked} utilisateurs sur {total} ont aimé cette critique',
+  'review_spoiler': '[Spoiler]',
+  'following_show_all': 'Tout afficher ({n})',
+  'following_on_episode': 'À l\'épisode {n}',
+  'following_on_chapter': 'Au chapitre {n}',
 };
 
 // ─── German ──────────────────────────────────────────────────────────────────
@@ -2040,6 +2080,16 @@ const _de = {
   'season_next': 'Nächste Saison',
   'season_pick_year': 'Jahr auswählen',
   'season_format_all': 'Alle',
+  'review_section_title': 'REZENSIONEN',
+  'review_all_title': 'Rezensionen',
+  'review_title': 'Rezension',
+  'review_by': 'Rezension von {name}',
+  'review_upvotes': '{n} Likes',
+  'review_liked_by': '{liked} von {total} Nutzern gefiel diese Rezension',
+  'review_spoiler': '[Spoiler]',
+  'following_show_all': 'Alle anzeigen ({n})',
+  'following_on_episode': 'Bei Folge {n}',
+  'following_on_chapter': 'Bei Kapitel {n}',
 };
 
 // ─── Portuguese ──────────────────────────────────────────────────────────────
@@ -2439,6 +2489,16 @@ const _pt = {
   'season_next': 'Próxima temporada',
   'season_pick_year': 'Escolher ano',
   'season_format_all': 'Todos',
+  'review_section_title': 'RESENHAS',
+  'review_all_title': 'Resenhas',
+  'review_title': 'Resenha',
+  'review_by': 'Resenha de {name}',
+  'review_upvotes': '{n} curtidas',
+  'review_liked_by': '{liked} de {total} usuários curtiram esta resenha',
+  'review_spoiler': '[Spoiler]',
+  'following_show_all': 'Mostrar tudo ({n})',
+  'following_on_episode': 'No episódio {n}',
+  'following_on_chapter': 'No capítulo {n}',
 };
 
 // ─── Italian ─────────────────────────────────────────────────────────────────
@@ -2838,6 +2898,16 @@ const _it = {
   'season_next': 'Stagione successiva',
   'season_pick_year': 'Scegli l\'anno',
   'season_format_all': 'Tutti',
+  'review_section_title': 'RECENSIONI',
+  'review_all_title': 'Recensioni',
+  'review_title': 'Recensione',
+  'review_by': 'Recensione di {name}',
+  'review_upvotes': '{n} mi piace',
+  'review_liked_by': 'A {liked} utenti su {total} è piaciuta questa recensione',
+  'review_spoiler': '[Spoiler]',
+  'following_show_all': 'Mostra tutti ({n})',
+  'following_on_episode': 'All\'episodio {n}',
+  'following_on_chapter': 'Al capitolo {n}',
 };
 
 // ─── Korean ──────────────────────────────────────────────────────────────────
@@ -3237,4 +3307,14 @@ const _ko = {
   'season_next': '다음 시즌',
   'season_pick_year': '연도 선택',
   'season_format_all': '전체',
+  'review_section_title': '리뷰',
+  'review_all_title': '리뷰',
+  'review_title': '리뷰',
+  'review_by': '{name}님의 리뷰',
+  'review_upvotes': '좋아요 {n}개',
+  'review_liked_by': '{total}명 중 {liked}명이 이 리뷰를 좋아했습니다',
+  'review_spoiler': '[스포일러]',
+  'following_show_all': '모두 보기 ({n})',
+  'following_on_episode': '{n}화까지 시청',
+  'following_on_chapter': '{n}화까지 읽음',
 };

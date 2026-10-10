@@ -14,6 +14,8 @@ import '../utils/media_color.dart';
 import '../utils/score_utils.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/detail/following_section.dart';
+import '../widgets/detail/reviews_section.dart';
 import '../utils/translations.dart';
 import '../providers/settings_provider.dart';
 import 'character_screen.dart';
@@ -602,6 +604,9 @@ class _DetailScreenState extends State<DetailScreen> {
                   const Divider(height: 1),
                 ],
 
+                // ── Following ── (hides itself when logged out or empty)
+                FollowingSection(mediaId: widget.animeId, isManga: isManga),
+
                 // ── Trailer ──
                 if (trailer != null && trailer['site'] == 'youtube') ...[
                   _TrailerSection(
@@ -619,6 +624,9 @@ class _DetailScreenState extends State<DetailScreen> {
                   ),
                   const Divider(height: 1),
                 ],
+
+                // ── Reviews ── (hides itself when there are none)
+                ReviewsSection(mediaId: widget.animeId),
 
                 // ── External links ──
                 if (externalLinks.isNotEmpty)
