@@ -320,6 +320,58 @@ void main() {
 
       expect(log.single.authorization, isNull);
     });
+
+    test('throws a 404 for a private user instead of returning no lists', () async {
+      final service = serviceReturning({
+        'data': {'MediaListCollection': null},
+        'errors': [
+          {'message': 'Private User', 'status': 404},
+        ],
+      }, status: 404);
+
+      await expectLater(
+        service.getPublicUserList(1, 'ANIME'),
+        throwsA(isA<AniListRequestException>().having((e) => e.statusCode, 'statusCode', 404)),
+      );
+    });
+
+    test('throws on server errors so the sheet can offer a retry', () async {
+      final service = serviceReturning({'errors': []}, status: 500);
+
+      await expectLater(
+        service.getPublicUserList(1, 'ANIME'),
+        throwsA(isA<AniListRequestException>().having((e) => e.statusCode, 'statusCode', 500)),
+      );
+    });
+
+    test('skips malformed lists and entries instead of crashing', () async {
+      final service = serviceReturning({
+        'data': {
+          'MediaListCollection': {
+            'lists': [
+              'not a list',
+              {'status': null, 'isCustomList': false, 'entries': []},
+              {'status': 'COMPLETED', 'isCustomList': false, 'entries': null},
+              {
+                'status': 'CURRENT',
+                'isCustomList': false,
+                'entries': [
+                  {'progress': 1},
+                  'junk',
+                ],
+              },
+            ],
+          },
+        },
+      });
+
+      final result = await service.getPublicUserList(1, 'ANIME');
+
+      expect(result.keys, ['CURRENT']);
+      expect(result['CURRENT'], [
+        {'progress': 1},
+      ]);
+    });
   });
 
   group('getUserActivityDays', () {

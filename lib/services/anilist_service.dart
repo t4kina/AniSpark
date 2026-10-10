@@ -509,7 +509,8 @@ class AniListService {
     return (body['data']?['Page']?['following'] as List<dynamic>?) ?? [];
   }
 
-  /// Fetches a public user profile (no token required).
+  /// Fetches another user's lists by status, without a token. Throws
+  /// [AniListRequestException] on errors (404 for a private user).
   Future<Map<String, List<dynamic>>> getPublicUserList(
       int userId, String type) async {
     const query = '''
@@ -530,16 +531,17 @@ class AniListService {
         }
       }
     ''';
-    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId, 'type': type}}));
-    if (response.statusCode != 200) { _handle401(response.statusCode); return {}; }
-    final raw = jsonDecode(response.body)['data']['MediaListCollection'];
-    if (raw == null) return {};
-    final lists = raw['lists'] as List;
+    // Throws AniListRequestException: 404 when the user is private or gone.
+    final data = await request(query, {'userId': userId, 'type': type});
+    final collection = data['MediaListCollection'];
+    final lists = collection is Map ? collection['lists'] : null;
     final Map<String, List<dynamic>> result = {};
-    for (final list in lists) {
-      if (list['isCustomList'] == true) continue;
-      final status = list['status'] as String;
-      result[status] = (list['entries'] as List).cast<Map<String, dynamic>>();
+    for (final list in lists is List ? lists : const []) {
+      if (list is! Map || list['isCustomList'] == true) continue;
+      final status = list['status'];
+      final entries = list['entries'];
+      if (status is! String || entries is! List) continue;
+      result[status] = entries.whereType<Map<String, dynamic>>().toList();
     }
     return result;
   }

@@ -969,6 +969,7 @@ class _UserListSheetState extends State<_UserListSheet>
   Map<String, List<dynamic>>? _lists;
   bool _loading = true;
   bool _hasError = false;
+  bool _isPrivate = false;
 
   static const _statuses = ['CURRENT', 'COMPLETED', 'DROPPED', 'PAUSED', 'PLANNING'];
 
@@ -1000,8 +1001,12 @@ class _UserListSheetState extends State<_UserListSheet>
       final data = await widget.service.getPublicUserList(widget.userId, widget.type);
       if (mounted) setState(() { _lists = data; _loading = false; });
     } on Exception catch (e) {
-      debugPrint('[UserProfileScreen] Loading ${widget.type} list of ${widget.userId} failed: $e');
-      if (mounted) setState(() { _loading = false; _hasError = true; });
+      // AniList answers 404 for private (or deleted) users.
+      final isPrivate = e is AniListRequestException && e.statusCode == 404;
+      if (!isPrivate) {
+        debugPrint('[UserProfileScreen] Loading ${widget.type} list of ${widget.userId} failed: $e');
+      }
+      if (mounted) setState(() { _loading = false; _isPrivate = isPrivate; _hasError = !isPrivate; });
     }
   }
 
@@ -1099,6 +1104,18 @@ class _UserListSheetState extends State<_UserListSheet>
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
+                  : _isPrivate
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.lock_outline, size: 40, color: cs.onSurface.withValues(alpha: 0.4)),
+                          const SizedBox(height: 8),
+                          Text(tr('affinity_private', lang),
+                              style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6))),
+                        ],
+                      ),
+                    )
                   : _hasError
                   ? _LoadErrorView(onRetry: _retry)
                   : TabBarView(
