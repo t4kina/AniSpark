@@ -119,40 +119,10 @@ class AniListService {
     return (season, year);
   }
 
-  /// Returns airing episodes for this week that are on the user's CURRENT list.
-  Future<List<dynamic>> getWeeklySchedule(String token) async {
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final weekEnd = now + 7 * 86400;
-    const query = '''
-      query(\$from: Int!, \$to: Int!) {
-        Page(perPage: 50) {
-          airingSchedules(airingAt_greater: \$from, airingAt_lesser: \$to, sort: TIME) {
-            airingAt episode
-            media {
-              id title { romaji english native }
-              coverImage { large }
-              mediaListEntry { status }
-            }
-          }
-        }
-      }
-    ''';
-    final response = await _post(
-      jsonEncode({'query': query, 'variables': {'from': now, 'to': weekEnd}}),
-      token,
-    );
-    if (response.statusCode != 200) return [];
-    final schedules = jsonDecode(response.body)['data']?['Page']?['airingSchedules'] as List<dynamic>? ?? [];
-    return schedules.where((s) {
-      final entry = s['media']?['mediaListEntry'];
-      return entry != null && entry['status'] == 'CURRENT';
-    }).toList();
-  }
-
   Future<List<dynamic>> getTrending() => _query('''
     query {
       Page(page: 1, perPage: 20) {
-        media(sort: TRENDING_DESC, type: ANIME) {
+        media(sort: TRENDING_DESC, type: ANIME, isAdult: false) {
           id title { romaji english native }
           coverImage { large } episodes averageScore genres
         }
@@ -165,7 +135,7 @@ class AniListService {
     return _query('''
       query(\$season: MediaSeason, \$seasonYear: Int) {
         Page(page: 1, perPage: 20) {
-          media(season: \$season, seasonYear: \$seasonYear, type: ANIME, sort: POPULARITY_DESC) {
+          media(season: \$season, seasonYear: \$seasonYear, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
             id title { romaji english native }
             coverImage { large } episodes averageScore genres
           }
@@ -189,7 +159,7 @@ class AniListService {
     return _query('''
       query(\$season: MediaSeason, \$seasonYear: Int) {
         Page(page: 1, perPage: 20) {
-          media(season: \$season, seasonYear: \$seasonYear, type: ANIME, sort: POPULARITY_DESC) {
+          media(season: \$season, seasonYear: \$seasonYear, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
             id title { romaji english native }
             coverImage { large } episodes averageScore genres
           }
@@ -201,7 +171,7 @@ class AniListService {
   Future<List<dynamic>> getTopAiring() => _query('''
     query {
       Page(page: 1, perPage: 20) {
-        media(status: RELEASING, sort: POPULARITY_DESC, type: ANIME) {
+        media(status: RELEASING, sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
           id title { romaji english native }
           coverImage { large } episodes averageScore genres
         }
@@ -212,7 +182,7 @@ class AniListService {
   Future<List<dynamic>> getTrendingManga() => _query('''
     query {
       Page(page: 1, perPage: 20) {
-        media(sort: TRENDING_DESC, type: MANGA, format_not: NOVEL) {
+        media(sort: TRENDING_DESC, type: MANGA, format_not: NOVEL, isAdult: false) {
           id title { romaji english native }
           coverImage { large } chapters averageScore genres
         }
@@ -223,7 +193,7 @@ class AniListService {
   Future<List<dynamic>> getTopManga() => _query('''
     query {
       Page(page: 1, perPage: 20) {
-        media(sort: SCORE_DESC, type: MANGA, format_not: NOVEL) {
+        media(sort: SCORE_DESC, type: MANGA, format_not: NOVEL, isAdult: false) {
           id title { romaji english native }
           coverImage { large } chapters averageScore genres
         }
@@ -234,7 +204,7 @@ class AniListService {
   Future<List<dynamic>> getManhwa() => _query('''
     query {
       Page(page: 1, perPage: 20) {
-        media(sort: POPULARITY_DESC, type: MANGA, countryOfOrigin: "KR") {
+        media(sort: POPULARITY_DESC, type: MANGA, countryOfOrigin: "KR", isAdult: false) {
           id title { romaji english native }
           coverImage { large } chapters averageScore genres
         }

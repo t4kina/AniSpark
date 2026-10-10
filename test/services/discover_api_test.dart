@@ -132,6 +132,45 @@ void main() {
     });
   });
 
+  group('watchingThisWeek', () {
+    final now = DateTime.utc(2026, 10, 10);
+    final nowSeconds = now.millisecondsSinceEpoch ~/ 1000;
+
+    Map<String, dynamic> withStatus(int id, String? status) {
+      final schedule = _schedule(id);
+      return {
+        ...schedule,
+        'media': {
+          ...schedule['media'] as Map<String, dynamic>,
+          'mediaListEntry': status == null ? null : {'status': status},
+        },
+      };
+    }
+
+    test('asks for the next seven days with list statuses', () async {
+      final api = apiReturning(_schedulePage([]));
+
+      await api.watchingThisWeek('t', now: now);
+
+      expect(log.single.variables['from'], nowSeconds - 1);
+      expect(log.single.variables['to'], nowSeconds + 7 * 86400);
+      expect(log.single.variables['withListStatus'], isTrue);
+      expect(log.single.authorization, 'Bearer t');
+    });
+
+    test('keeps only titles the user is watching, across every page', () async {
+      final api = apiAnswering((request) => jsonResponse(switch (request.variables['page']) {
+            1 => _schedulePage([withStatus(1, 'CURRENT'), withStatus(2, 'COMPLETED')], hasNextPage: true),
+            _ => _schedulePage([withStatus(3, null), withStatus(4, 'CURRENT')]),
+          }));
+
+      final week = await api.watchingThisWeek('t', now: now);
+
+      expect(log, hasLength(2));
+      expect([for (final s in week) s['id']], [1, 4]);
+    });
+  });
+
   group('seasonMedia', () {
     Map<String, dynamic> seasonPage(List<Object?> media, {Object? pageInfo}) => {
           'data': {

@@ -100,6 +100,17 @@ class DiscoverApi {
     return List.unmodifiable(episodes);
   }
 
+  /// The episodes airing in the next seven days (from [now]) of titles on the
+  /// user's CURRENT list. Throws like [airingSchedule].
+  Future<List<Map<String, dynamic>>> watchingThisWeek(String token, {DateTime? now}) async {
+    final from = now ?? DateTime.now();
+    final week = await airingSchedule(from: from, to: from.add(const Duration(days: 7)), token: token);
+    return List.unmodifiable(week.where((schedule) {
+      final entry = (schedule['media'] as Map)['mediaListEntry'];
+      return entry is Map && entry['status'] == 'CURRENT';
+    }));
+  }
+
   /// Page [page] of the anime airing in [season] of [year] (`WINTER`…`FALL`),
   /// ordered by [sort] (an AniList `MediaSort`, ties broken by id so pages
   /// don't overlap) and limited to [formats] (`MediaFormat`s; empty = all).

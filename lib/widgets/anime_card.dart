@@ -3,7 +3,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../screens/detail_screen.dart';
-import '../utils/translations.dart' show tr;
 
 class AnimeCard extends StatelessWidget {
   final dynamic animeData; // from API
@@ -17,11 +16,10 @@ class AnimeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lang = context.select<SettingsProvider, String>((s) => s.language);
     final id = animeData['id'] as int?;
-    final title = animeData['title']['english'] ??
-        animeData['title']['romaji'] ??
-        tr('home_unknown_title', lang);
+    final title = context.select<SettingsProvider, String>(
+      (s) => s.resolveTitle(animeData['title'] as Map<String, dynamic>?),
+    );
     final image = animeData['coverImage']?['large'];
     final score = animeData['averageScore'];
 

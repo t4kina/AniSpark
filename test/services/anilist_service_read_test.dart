@@ -319,55 +319,6 @@ void main() {
     });
   });
 
-  group('getWeeklySchedule', () {
-    test(
-        "keeps only schedules whose media.mediaListEntry.status is 'CURRENT'",
-        () async {
-      final service = serviceReturning({
-        'data': {
-          'Page': {
-            'airingSchedules': [
-              {
-                'airingAt': 1,
-                'episode': 1,
-                'media': {
-                  'id': 1,
-                  'mediaListEntry': {'status': 'CURRENT'},
-                },
-              },
-              {
-                'airingAt': 2,
-                'episode': 2,
-                'media': {
-                  'id': 2,
-                  'mediaListEntry': {'status': 'COMPLETED'},
-                },
-              },
-              {
-                'airingAt': 3,
-                'episode': 3,
-                'media': {'id': 3, 'mediaListEntry': null},
-              },
-            ],
-          },
-        },
-      });
-
-      final result = await service.getWeeklySchedule(token);
-
-      expect(result, hasLength(1));
-      expect(result.single['media']['id'], 1);
-    });
-
-    test('returns an empty list on a non-200 response', () async {
-      final service = serviceReturning({}, status: 500);
-
-      final result = await service.getWeeklySchedule(token);
-
-      expect(result, isEmpty);
-    });
-  });
-
   group('getUserFollowCounts', () {
     test('parses followersPage and followingPage pageInfo totals', () async {
       final service = serviceReturning({

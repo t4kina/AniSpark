@@ -5,6 +5,7 @@ import 'package:shimmer/shimmer.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
+import '../services/discover_api.dart';
 import '../providers/settings_provider.dart';
 import '../utils/anime_season.dart';
 import '../utils/translations.dart' show tr, trf;
@@ -23,6 +24,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _service = AniListService();
+  final _discover = DiscoverApi();
   List<dynamic> _trending = [];
   List<dynamic> _seasonal = [];
   List<dynamic> _popular = [];
@@ -61,12 +63,12 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       if (userId == null) {
         // Account id not fetched yet, so there is no cache namespace for it.
-        show(await _service.getWeeklySchedule(token));
+        show(await _discover.watchingThisWeek(token));
         return;
       }
       await cache.load<List<dynamic>>(
         key: ApiCache.userKey(userId, 'schedule'),
-        fetch: () => _service.getWeeklySchedule(token),
+        fetch: () => _discover.watchingThisWeek(token),
         decode: (json) => _upcomingOnly(json as List<dynamic>),
         onData: (schedule, {required isFresh}) => show(schedule),
         maxAge: _scheduleMaxAge,
@@ -580,6 +582,7 @@ class _BrowseAllScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -600,7 +603,7 @@ class _BrowseAllScreen extends StatelessWidget {
           final item = items[i] as Map<String, dynamic>;
           final id = item['id'] as int?;
           final cover = item['coverImage']?['large'] as String?;
-          final title = (item['title']?['english'] ?? item['title']?['romaji'] ?? '') as String;
+          final title = settings.resolveTitle(item['title'] as Map<String, dynamic>?);
           final score = item['averageScore'] as int?;
           final cs = Theme.of(context).colorScheme;
 
