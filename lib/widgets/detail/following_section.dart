@@ -9,7 +9,7 @@ import '../../services/media_extras_api.dart';
 import '../../utils/score_utils.dart';
 import '../../utils/translations.dart';
 import 'section_title.dart';
-import 'user_avatar.dart';
+import '../user_avatar.dart';
 
 /// FOLLOWING on the media detail page: what the people the viewer follows
 /// are doing with this media. Only for logged-in viewers; hidden while

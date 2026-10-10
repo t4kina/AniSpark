@@ -5,7 +5,7 @@ import '../../providers/settings_provider.dart';
 import '../../services/media_extras_api.dart';
 import '../../utils/translations.dart';
 import '../skeletons.dart';
-import 'user_avatar.dart';
+import '../user_avatar.dart';
 
 const _avatarSize = 48.0;
 const _avatarRadius = 8.0;
