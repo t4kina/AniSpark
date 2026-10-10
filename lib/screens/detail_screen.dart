@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../providers/media_list_store.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../utils/refresh_notifier.dart';
+import '../utils/external_url.dart';
 import '../utils/score_utils.dart';
 import '../utils/translations.dart';
 import '../providers/settings_provider.dart';
@@ -854,10 +854,7 @@ class _DetailScreenState extends State<DetailScreen> {
     ));
   }
 
-  Future<void> _openUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+  Future<void> _openUrl(String url) => openExternalUrl(url);
 
   void _showEditModal(BuildContext context,
       String initialStatus, int initialProgress, double initialScore) {

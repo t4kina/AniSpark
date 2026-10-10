@@ -242,6 +242,14 @@ class NotificationService {
     await _plugin.cancelAll();
   }
 
+  /// Forgets everything tied to the signed-in account: scheduled episode
+  /// alerts and the last friend activity that was notified.
+  Future<void> resetForLogout() async {
+    if (_initialized) await cancelAll();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefLastActivityKey);
+  }
+
   Future<void> cancelForMedia(int mediaId) async {
     if (kIsWeb) return;
     await _plugin.cancel(mediaId % 100000);

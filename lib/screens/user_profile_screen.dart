@@ -2,7 +2,7 @@ import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../utils/external_url.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
@@ -157,10 +157,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  Future<void> _openAniListProfile() async {
-    final uri = Uri.parse('https://anilist.co/user/${widget.name}');
-    if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+  Future<void> _openAniListProfile() =>
+      openExternalUrl('https://anilist.co/user/${Uri.encodeComponent(widget.name)}');
 
   @override
   Widget build(BuildContext context) {

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/media_list_store.dart';
 import 'providers/settings_provider.dart';
 import 'services/anilist_service.dart';
@@ -9,7 +11,9 @@ import 'services/api_cache.dart';
 import 'services/auth_service.dart';
 import 'services/hive_cache_store.dart';
 import 'services/notification_service.dart';
+import 'services/secure_store.dart';
 import 'screens/home_screen.dart';
+import 'screens/search_screen.dart' show recentSearchesPrefsKey;
 import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/feed_screen.dart';
@@ -21,28 +25,41 @@ void main() async {
 
   await Hive.initFlutter();
   unawaited(_deleteLegacyListBox());
-  final apiCache = ApiCache(await HiveCacheStore.openOrFallback());
+  // AES key for the local boxes, kept in the platform keystore. Null when the
+  // keystore can't be used (and on web): storage then stays unencrypted
+  // exactly as before instead of failing.
+  final storageCipher = kIsWeb ? null : await loadStorageCipher(const DeviceSecureStore());
+  final apiCache = ApiCache(await HiveCacheStore.openOrFallback(cipher: storageCipher));
   unawaited(apiCache.prune(maxAge: const Duration(days: 14), maxEntries: 300));
 
   final authService = AuthService();
-  await authService.init();
+  await authService.init(cipher: storageCipher);
 
   await NotificationService().init();
 
-  final mediaListStore = MediaListStore(service: AniListService(), cache: apiCache);
-
-  authExpiredNotifier.addListener(() => authService.logout());
-  // Cached API data belongs to the signed-in account; drop it on logout.
-  authService.addListener(() {
-    if (authService.isLoggedIn) return;
-    unawaited(apiCache.clear());
-    if (mediaListStore.listsOf('ANIME') != null || mediaListStore.listsOf('MANGA') != null) {
-      mediaListStore.reset();
-    }
-  });
-
   final settingsProvider = SettingsProvider();
   await settingsProvider.load();
+
+  final mediaListStore = MediaListStore(service: AniListService(), cache: apiCache);
+  final messengerKey = GlobalKey<ScaffoldMessengerState>();
+
+  // A 401 means AniList no longer accepts the token (expired or revoked).
+  authExpiredNotifier.addListener(() async {
+    if (!authService.isLoggedIn) return;
+    await authService.logout();
+    messengerKey.currentState?.showSnackBar(
+      SnackBar(content: Text(tr('session_expired', settingsProvider.language))),
+    );
+  });
+  // Everything stored for the account goes away when its session ends.
+  var wasLoggedIn = authService.isLoggedIn;
+  authService.addListener(() {
+    final loggedIn = authService.isLoggedIn;
+    if (wasLoggedIn && !loggedIn) unawaited(_clearAccountData(apiCache, mediaListStore));
+    wasLoggedIn = loggedIn;
+  });
+  // Leftovers of a logout that was interrupted, e.g. by the app being killed.
+  if (!authService.isLoggedIn) unawaited(apiCache.clear());
 
   runApp(
     MultiProvider(
@@ -52,9 +69,23 @@ void main() async {
         ChangeNotifierProvider.value(value: mediaListStore),
         ChangeNotifierProvider.value(value: settingsProvider),
       ],
-      child: const MyAnimeApp(),
+      child: MyAnimeApp(scaffoldMessengerKey: messengerKey),
     ),
   );
+}
+
+/// Removes everything tied to the account that just logged out.
+Future<void> _clearAccountData(ApiCache cache, MediaListStore store) async {
+  store.reset();
+  try {
+    await cache.clear();
+    await NotificationService().resetForLogout();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(recentSearchesPrefsKey);
+  } on Object catch (e) {
+    // Best effort: the session itself is already gone.
+    debugPrint('[Logout] Clearing account data failed: $e');
+  }
 }
 
 /// Removes the old local-only list box. It only mirrored AniList entries and
@@ -69,12 +100,16 @@ Future<void> _deleteLegacyListBox() async {
 }
 
 class MyAnimeApp extends StatelessWidget {
-  const MyAnimeApp({super.key});
+  const MyAnimeApp({super.key, this.scaffoldMessengerKey});
+
+  /// Lets app-wide events (e.g. an expired session) show a SnackBar.
+  final GlobalKey<ScaffoldMessengerState>? scaffoldMessengerKey;
 
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
     return MaterialApp(
+      scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'AniSpark',
       debugShowCheckedModeBanner: false,
       themeMode: settings.themeMode,

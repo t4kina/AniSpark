@@ -25,9 +25,10 @@ workflows:
 
       - name: Build iOS (no code sign)
         script: |
+          # The implicit-grant login doesn't need the client secret, so it is
+          # no longer compiled into the app.
           flutter build ios --release --no-codesign \
-            --dart-define=ANILIST_CLIENT_ID=$ANILIST_CLIENT_ID \
-            --dart-define=ANILIST_CLIENT_SECRET=$ANILIST_CLIENT_SECRET
+            --dart-define=ANILIST_CLIENT_ID=$ANILIST_CLIENT_ID
 
       - name: Zip app bundle
         script: |

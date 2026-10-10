@@ -8,6 +8,9 @@ import '../services/anilist_service.dart';
 import '../utils/translations.dart' show tr;
 import 'detail_screen.dart';
 
+/// SharedPreferences key of the recent searches; cleared on logout.
+const recentSearchesPrefsKey = 'recent_searches';
+
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
 
@@ -28,7 +31,7 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _focused = false;
 
   List<String> _recentSearches = [];
-  static const _prefsKey = 'recent_searches';
+  static const _prefsKey = recentSearchesPrefsKey;
 
   String _contentType = 'ANIME';
   Set<String> _selectedGenres = {};

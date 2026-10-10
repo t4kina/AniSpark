@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../providers/settings_provider.dart';
 import '../services/auth_service.dart';
 import '../services/anilist_service.dart';
+import '../utils/translations.dart' show tr;
 import '../utils/refresh_notifier.dart';
 import '../widgets/overlay_button.dart';
 import 'settings_screen.dart';
@@ -67,12 +69,15 @@ class _LoginPrompt extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12)),
                   ),
                   onPressed: () async {
+                    final lang = context.read<SettingsProvider>().language;
                     try {
                       await auth.login();
-                    } catch (e) {
+                    } on Exception catch (e) {
+                      // Details go to the log only; they can include server responses.
+                      debugPrint('[ProfileScreen] Login failed: $e');
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Login failed: $e')),
+                          SnackBar(content: Text(tr('login_failed', lang))),
                         );
                       }
                     }

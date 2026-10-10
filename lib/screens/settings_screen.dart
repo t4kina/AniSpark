@@ -1,7 +1,7 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../utils/external_url.dart';
 import '../providers/settings_provider.dart' show SettingsProvider, accentColorOptions;
 import '../services/auth_service.dart';
 import '../utils/translations.dart';
@@ -178,7 +178,7 @@ class SettingsScreen extends StatelessWidget {
             label: tr('view_on_anilist', lang),
             onTap: () {
               if (username != null) {
-                _openUrl('https://anilist.co/user/$username');
+                _openUrl('https://anilist.co/user/${Uri.encodeComponent(username)}');
               }
             },
           ),
@@ -381,12 +381,7 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  static Future<void> _openUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-    }
-  }
+  static Future<void> _openUrl(String url) => openExternalUrl(url);
 
   static void _showAbout(BuildContext context, String lang) {
     showDialog(
