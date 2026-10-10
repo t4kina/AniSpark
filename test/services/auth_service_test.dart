@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:anispark/services/auth_service.dart';
+import 'package:anispark/services/auth_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:http/http.dart' as http;
 
+import '../helpers/fake_secure_store.dart';
 import '../helpers/mock_anilist.dart';
 
 const _cachedViewer = {'id': 7, 'name': 'cached'};
@@ -114,6 +116,51 @@ void main() {
     final box = await Hive.openBox('auth');
     expect(box.get('token'), isNull);
     expect(box.get('user'), isNull);
+  });
+
+  group('with the keystore', () {
+    late FakeSecureStore secure;
+    late HiveAesCipher cipher;
+
+    setUp(() {
+      secure = FakeSecureStore();
+      cipher = HiveAesCipher(Hive.generateSecureKey());
+    });
+
+    test('an existing session survives the move to the keystore', () async {
+      await seedBox({'token': 'test-token', 'user': jsonEncode(_cachedViewer)});
+
+      await http.runWithClient(() async {
+        final auth = AuthService(secureStore: secure);
+        await auth.init(cipher: cipher);
+
+        expect(auth.isLoggedIn, isTrue);
+        expect(auth.token, 'test-token');
+        expect(auth.user?['name'], 'cached');
+        await pumpEventQueue();
+      }, viewerClient);
+
+      expect(secure.values[AuthStorage.tokenKey], 'test-token');
+      expect(await Hive.boxExists(AuthStorage.legacyBoxName), isFalse);
+      expect(log.single.authorization, 'Bearer test-token');
+    });
+
+    test('logout removes the keystore token so the next launch is logged out', () async {
+      await seedBox({'token': 'test-token'});
+
+      await http.runWithClient(() async {
+        final auth = AuthService(secureStore: secure);
+        await auth.init(cipher: cipher);
+        await pumpEventQueue();
+        await auth.logout();
+      }, viewerClient);
+      await Hive.close();
+
+      final next = AuthService(secureStore: secure);
+      await next.init(cipher: cipher);
+      expect(next.isLoggedIn, isFalse);
+      expect(secure.values, isNot(contains(AuthStorage.tokenKey)));
+    });
   });
 
   test('a viewer response arriving after logout is discarded', () async {
