@@ -3,6 +3,17 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import '../utils/refresh_notifier.dart' show authExpiredNotifier, rateLimitActiveNotifier;
 
+/// An AniList request that failed with an HTTP error or returned no data.
+class AniListRequestException implements Exception {
+  const AniListRequestException(this.message, {required this.statusCode});
+
+  final String message;
+  final int statusCode;
+
+  @override
+  String toString() => 'AniListRequestException($statusCode): $message';
+}
+
 class AniListService {
   AniListService({http.Client? client}) : _client = client ?? _sharedClient;
 
@@ -44,6 +55,30 @@ class AniListService {
       if (_rateLimitCount == 0) rateLimitActiveNotifier.value = false;
     }
     return response;
+  }
+
+  /// Sends any GraphQL [query] and returns its `data` map. Throws
+  /// [AniListRequestException] for HTTP errors (a 401 also signals an
+  /// expired session) or a response without data; network errors and
+  /// timeouts propagate. Feature-specific query files build on this.
+  Future<Map<String, dynamic>> request(
+    String query,
+    Map<String, dynamic> variables, {
+    String? token,
+  }) async {
+    final response = await _post(jsonEncode({'query': query, 'variables': variables}), token);
+    if (response.statusCode != 200) {
+      _handle401(response.statusCode);
+      throw AniListRequestException('HTTP ${response.statusCode}', statusCode: response.statusCode);
+    }
+    final body = jsonDecode(response.body);
+    final data = body is Map ? body['data'] : null;
+    if (data is Map<String, dynamic>) return data;
+    final errors = body is Map ? body['errors'] : null;
+    final message = errors is List && errors.isNotEmpty && errors.first is Map
+        ? '${(errors.first as Map)['message']}'
+        : 'No data';
+    throw AniListRequestException(message, statusCode: response.statusCode);
   }
 
   /// Runs a mutation, turning network errors and malformed responses into
