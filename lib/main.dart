@@ -13,13 +13,14 @@ import 'services/auth_service.dart';
 import 'services/hive_cache_store.dart';
 import 'services/notification_service.dart';
 import 'services/secure_store.dart';
+import 'services/session_expiry.dart';
 import 'screens/home_screen.dart';
 import 'screens/search_screen.dart' show recentSearchesPrefsKey;
 import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/feed_screen.dart';
 import 'utils/translations.dart' show tr;
-import 'utils/refresh_notifier.dart' show authExpiredNotifier, rateLimitActiveNotifier;
+import 'utils/refresh_notifier.dart' show rateLimitActiveNotifier;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,10 +46,9 @@ void main() async {
   final mediaListStore = MediaListStore(service: AniListService(), cache: apiCache);
   final messengerKey = GlobalKey<ScaffoldMessengerState>();
 
-  // A 401 means AniList no longer accepts the token (expired or revoked).
-  authExpiredNotifier.addListener(() async {
-    if (!authService.isLoggedIn) return;
-    await authService.logout();
+  // A 401 means AniList no longer accepts the token (expired or revoked);
+  // only a rejection of the current session's token logs it out.
+  watchSessionExpiry(authService, onExpired: () {
     messengerKey.currentState?.showSnackBar(
       SnackBar(content: Text(tr('session_expired', settingsProvider.language))),
     );

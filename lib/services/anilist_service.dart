@@ -39,10 +39,6 @@ class AniListService {
         if (token != null) 'Authorization': 'Bearer $token',
       });
 
-  void _handle401(int statusCode) {
-    if (statusCode == 401) authExpiredNotifier.value++;
-  }
-
   static int _rateLimitCount = 0;
 
   // Sends a GraphQL request, retrying once after Retry-After seconds on 429.
@@ -66,6 +62,9 @@ class AniListService {
         if (_rateLimitCount == 0) rateLimitActiveNotifier.value = false;
       }
     }
+    // AniList no longer accepts this token (expired or revoked). Reported
+    // with the token so only the session still using it is logged out.
+    if (response.statusCode == 401 && token != null) authExpiredNotifier.report(token);
     return response;
   }
 
@@ -80,7 +79,6 @@ class AniListService {
   }) async {
     final response = await _post(jsonEncode({'query': query, 'variables': variables}), token);
     if (response.statusCode != 200) {
-      _handle401(response.statusCode);
       throw AniListRequestException('HTTP ${response.statusCode}', statusCode: response.statusCode);
     }
     final body = jsonDecode(response.body);
@@ -114,7 +112,6 @@ class AniListService {
       final data = jsonDecode(response.body);
       return data['data']?['Page']?['media'] ?? [];
     }
-    _handle401(response.statusCode);
     return [];
   }
 
@@ -330,7 +327,6 @@ class AniListService {
     if (response.statusCode == 200) {
       return jsonDecode(response.body)['data']?['Media'];
     }
-    _handle401(response.statusCode);
     return null;
   }
 
@@ -356,7 +352,6 @@ class AniListService {
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode != 200) {
-      _handle401(response.statusCode);
       throw Exception('HTTP ${response.statusCode}');
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -393,7 +388,6 @@ class AniListService {
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode != 200) {
-      _handle401(response.statusCode);
       throw Exception('HTTP ${response.statusCode}');
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -450,7 +444,6 @@ class AniListService {
       final body = jsonDecode(response.body);
       return {'user': body['data']?['User'] ?? {}};
     }
-    _handle401(response.statusCode);
     return {};
   }
 
@@ -483,7 +476,6 @@ class AniListService {
                 0,
       };
     }
-    _handle401(response.statusCode);
     return {'followers': 0, 'following': 0};
   }
 
@@ -499,7 +491,7 @@ class AniListService {
       }
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return []; }
+    if (response.statusCode != 200) return [];
     return (jsonDecode(response.body)['data']?['Page']?['followers'] as List<dynamic>?) ?? [];
   }
 
@@ -516,7 +508,7 @@ class AniListService {
       }
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return []; }
+    if (response.statusCode != 200) return [];
     final body = jsonDecode(response.body);
     return (body['data']?['Page']?['following'] as List<dynamic>?) ?? [];
   }
@@ -588,7 +580,7 @@ class AniListService {
       }
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return null; }
+    if (response.statusCode != 200) return null;
     return jsonDecode(response.body)['data']['User'] as Map<String, dynamic>?;
   }
 
@@ -626,7 +618,7 @@ class AniListService {
     ''';
     return _mutate<bool?>('ToggleFollow', null, () async {
       final response = await _post(jsonEncode({'query': mutation, 'variables': {'userId': userId}}), token);
-      if (response.statusCode != 200) { _handle401(response.statusCode); return null; }
+      if (response.statusCode != 200) return null;
       final isFollowing = jsonDecode(response.body)['data']?['ToggleFollow']?['isFollowing'];
       return isFollowing is bool ? isFollowing : null;
     });
@@ -708,7 +700,6 @@ class AniListService {
         final saved = jsonDecode(response.body)['data']?['SaveMediaListEntry'];
         return saved is Map<String, dynamic> ? saved : null;
       }
-      _handle401(response.statusCode);
       return null;
     });
   }
@@ -733,7 +724,6 @@ class AniListService {
         final data = jsonDecode(response.body);
         return data['data']?['DeleteMediaListEntry']?['deleted'] == true;
       }
-      _handle401(response.statusCode);
       return false;
     });
   }
@@ -761,7 +751,7 @@ class AniListService {
         jsonEncode({'query': query, 'variables': {'userId': userId, 'page': page}}),
         token,
       );
-      if (response.statusCode != 200) { _handle401(response.statusCode); break; }
+      if (response.statusCode != 200) break;
       final activities = jsonDecode(response.body)['data']['Page']
           ['activities'] as List<dynamic>;
       if (activities.isEmpty) break;
@@ -793,7 +783,7 @@ class AniListService {
     ''';
     return _mutate('ToggleFavourite', false, () async {
       final response = await _post(jsonEncode({'query': mutation, 'variables': {'characterId': characterId}}), token);
-      if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
+      if (response.statusCode != 200) return false;
       return jsonDecode(response.body)['data']?['ToggleFavourite'] != null;
     });
   }
@@ -815,7 +805,7 @@ class AniListService {
     ''';
     return _mutate('ToggleFavourite', false, () async {
       final response = await _post(jsonEncode({'query': mutation, 'variables': {'id': mediaId}}), token);
-      if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
+      if (response.statusCode != 200) return false;
       return jsonDecode(response.body)['data']?['ToggleFavourite'] != null;
     });
   }
