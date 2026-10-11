@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/media_list_store.dart';
 import 'providers/settings_provider.dart';
+import 'services/affinity_api.dart';
 import 'services/anilist_service.dart';
 import 'services/api_cache.dart';
 import 'services/auth_service.dart';
@@ -79,6 +80,7 @@ void main() async {
 /// best effort and independent, so one failure doesn't skip the others.
 Future<void> _clearAccountData(ApiCache cache, MediaListStore store) async {
   store.reset();
+  await _bestEffort('clearing the affinity memo', () async => AffinityApi.clearViewerMemo());
   await _bestEffort('clearing the API cache', cache.clear);
   await _bestEffort('resetting notifications', NotificationService().resetForLogout);
   await _bestEffort('clearing recent searches', () async {
