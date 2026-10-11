@@ -25,9 +25,13 @@ enum EntryEditorResult { saved, removed }
 ///
 /// [entry] is the viewer's AniList `MediaList` map when the caller has one;
 /// fields it lacks are looked up first (or, if that fails, shown as unknown
-/// and left as they are). Set [entryKnown] to false when the caller doesn't
-/// know whether the media is in the list (e.g. Discover): the editor looks
-/// it up and opens a media that isn't listed as a new Planning entry.
+/// and left as they are). Without an [entry] the editor looks the media up,
+/// since the caller's copy may be stale, and opens one that isn't listed as
+/// a new Planning entry; if the lookup fails it offers a retry, never an
+/// unconfirmed new entry. Set [entryKnown] to false when the caller doesn't
+/// know whether the media is in the list (e.g. Discover); without a token,
+/// when nothing can be looked up, that shows the retry instead of a new
+/// entry.
 ///
 /// Saving sends only the changed fields and updates the shared
 /// [MediaListStore]; [onChanged] then runs even if the sheet was closed
@@ -122,9 +126,13 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
   void initState() {
     super.initState();
     final entry = widget.entry;
-    if (entry != null || widget.entryKnown) _useEntry(entry);
+    final signedIn = context.read<AuthService>().token != null;
+    // Signed in, a new entry is only offered once AniList confirms the media
+    // isn't listed: the caller's copy may predate an add, and saving a new
+    // entry sends its status, which would overwrite the real one.
+    if (entry != null || (widget.entryKnown && !signedIn)) _useEntry(entry);
     final incomplete = _initial?.unknown.isNotEmpty ?? true;
-    if (incomplete && context.read<AuthService>().token != null) {
+    if (incomplete && signedIn) {
       _lookingUp = true;
       unawaited(_lookUp());
     } else {

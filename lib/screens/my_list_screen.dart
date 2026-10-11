@@ -1,5 +1,6 @@
 import 'dart:math' show pi;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -941,6 +942,13 @@ class _SwipeableRowState extends State<_SwipeableRow> {
       ),
       child: Container(
         color: Theme.of(context).scaffoldBackgroundColor,
+        // Screen readers can't discover a long press, so the editor is also
+        // offered as a named action.
+        child: Semantics(
+        onLongPressHint: tr('tooltip_edit_entry', lang),
+        customSemanticsActions: {
+          CustomSemanticsAction(label: tr('tooltip_edit_entry', lang)): widget.onEdit,
+        },
         child: InkWell(
         onTap: id != null
             ? () => Navigator.push(
@@ -1070,6 +1078,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
             ],
           ),
         ),
+      ),
       ),
       ),
     );

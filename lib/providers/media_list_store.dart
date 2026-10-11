@@ -34,6 +34,9 @@ class MediaListStore extends ChangeNotifier {
   final Map<String, Object> _errors = {};
   final Set<String> _loading = {};
   final Set<String> _reloadRequested = {};
+  // Media removed while a load of their type runs. That load's response may
+  // predate the removal, so these are left out of it.
+  final Map<String, Set<int>> _removedDuringLoad = {};
   final Set<int> _saving = {};
   final Map<String, Timer> _persistTimers = {};
   int? _userId;
@@ -65,6 +68,8 @@ class MediaListStore extends ChangeNotifier {
       return false;
     }
     final generation = _generation;
+    final removed = <int>{};
+    _removedDuringLoad[type] = removed;
     _loading.add(type);
     _errors.remove(type);
     notifyListeners();
@@ -81,7 +86,7 @@ class MediaListStore extends ChangeNotifier {
           // Cached data only fills an empty screen; it never replaces lists
           // that are already in memory (and possibly edited since).
           if (!isFresh && _lists[type] != null) return;
-          _lists[type] = lists;
+          _lists[type] = removed.isEmpty ? lists : _without(lists, removed);
           gotFresh = gotFresh || isFresh;
           notifyListeners();
         },
@@ -92,6 +97,10 @@ class MediaListStore extends ChangeNotifier {
     } finally {
       if (generation == _generation) {
         _loading.remove(type);
+        _removedDuringLoad.remove(type);
+        // The cache got the response as AniList sent it; store the lists
+        // without the removed entries over it.
+        if (removed.isNotEmpty) _persist(type);
         notifyListeners();
       }
     }
@@ -184,14 +193,13 @@ class MediaListStore extends ChangeNotifier {
     _persist(type);
   }
 
-  /// Removes an entry deleted elsewhere (e.g. from the detail screen).
+  /// Removes an entry deleted elsewhere (e.g. from the detail screen). A
+  /// load already running doesn't bring it back.
   void removeEntry(String type, int mediaId) {
+    _removedDuringLoad[type]?.add(mediaId);
     final lists = _lists[type];
     if (lists == null) return;
-    _lists[type] = {
-      for (final MapEntry(:key, :value) in lists.entries)
-        key: [for (final e in value) if (_mediaIdOf(e) != mediaId) e],
-    };
+    _lists[type] = _without(lists, {mediaId});
     notifyListeners();
     _persist(type);
   }
@@ -207,6 +215,7 @@ class MediaListStore extends ChangeNotifier {
     _errors.clear();
     _loading.clear();
     _reloadRequested.clear();
+    _removedDuringLoad.clear();
     _saving.clear();
     _userId = null;
     notifyListeners();
@@ -299,6 +308,11 @@ class MediaListStore extends ChangeNotifier {
   static MediaLists _decodeLists(Object? json) => {
         for (final MapEntry(:key, :value) in (json as Map).entries)
           key as String: [for (final e in value as List) e as Map<String, dynamic>],
+      };
+
+  static MediaLists _without(MediaLists lists, Set<int> mediaIds) => {
+        for (final MapEntry(:key, :value) in lists.entries)
+          key: [for (final e in value) if (!mediaIds.contains(_mediaIdOf(e))) e],
       };
 
   static int? _mediaIdOf(Map<String, dynamic> entry) =>

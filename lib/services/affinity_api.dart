@@ -1,7 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show visibleForTesting;
-
 import '../utils/affinity.dart';
 import 'anilist_service.dart';
 
@@ -70,7 +68,8 @@ class AffinityApi {
   // for one download, and is tied to the session that fetched it.
   static final Map<String, _ViewerList> _viewerLists = {};
 
-  @visibleForTesting
+  /// Forgets the viewer's lists, e.g. after an edit to them or a logout, so
+  /// the next comparison reads them again.
   static void clearViewerMemo() => _viewerLists.clear();
 
   /// The non-planning entries of [userId]'s [type] (`ANIME` or `MANGA`)

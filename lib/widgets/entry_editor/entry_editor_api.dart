@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../../providers/media_list_store.dart';
+import '../../services/affinity_api.dart';
 import '../../services/anilist_service.dart';
 import '../../services/api_cache.dart';
 import '../../services/notification_service.dart';
@@ -131,9 +132,10 @@ Future<void> loadCustomListNames({
 }
 
 /// Saves [changes] for [media] and keeps the shared lists in sync: My List
-/// shows the saved values at once, then the list of that type is reloaded,
-/// which also picks up new entries and custom list changes. Returns the
-/// saved entry, or null if AniList rejected the change.
+/// shows the saved values at once, then reloads the list of that type if it
+/// has it (or is loading it), which also picks up new entries and custom
+/// list changes. A type My List never loaded isn't downloaded: it loads when
+/// opened. Returns the saved entry, or null if AniList rejected the change.
 Future<Map<String, dynamic>?> saveEntryChanges({
   required AniListService service,
   required MediaListStore store,
@@ -158,8 +160,12 @@ Future<Map<String, dynamic>?> saveEntryChanges({
     completedAt: changes.completedAt,
   );
   if (saved == null) return null;
+  AffinityApi.clearViewerMemo();
   store.applySavedEntry(media.type, media.id, saved);
-  if (userId != null) {
+  // A load already running may have read the list before this save, so it
+  // is followed by a fresh one.
+  final listed = store.listsOf(media.type) != null || store.isLoading(media.type);
+  if (userId != null && listed) {
     unawaited(store.load(media.type, userId: userId, token: token, force: true));
   }
   return saved;
@@ -176,6 +182,7 @@ Future<bool> removeEntry({
 }) async {
   final ok = await service.deleteListEntry(entryId: entryId, token: token);
   if (!ok) return false;
+  AffinityApi.clearViewerMemo();
   unawaited(NotificationService().cancelForMedia(media.id).onError<Exception>(
         (e, _) => debugPrint('[EntryEditor] Cancelling reminders failed: $e'),
       ));

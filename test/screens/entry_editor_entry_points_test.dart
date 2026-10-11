@@ -6,8 +6,10 @@ import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/widgets/anime_card.dart';
 import 'package:anispark/widgets/entry_editor/entry_editor_fields.dart' show UnknownValue;
+import 'package:anispark/utils/translations.dart';
 import 'package:anispark/widgets/entry_editor/entry_editor_sheet.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -28,6 +30,13 @@ Widget _app(Widget child, {required AuthService auth, required MediaListStore st
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
       child: MaterialApp(home: child),
+    );
+
+/// The screen-reader node offering [action].
+FinderBase<SemanticsNode> _nodeWithAction(CustomSemanticsAction action) => find.semantics.byPredicate(
+      (node) =>
+          node.getSemanticsData().customSemanticsActionIds?.contains(CustomSemanticsAction.getIdentifier(action)) ??
+          false,
     );
 
 FakeAuthService _loggedIn() => FakeAuthService(fakeToken: 'token', fakeUser: {
@@ -108,12 +117,31 @@ void main() {
     expect(tester.widget<TextField>(find.byKey(const ValueKey('entry-editor-notes'))).controller!.text, 'So good');
   });
 
+  testWidgets('My List: screen readers can open the editor from a row', (tester) async {
+    final semantics = tester.ensureSemantics();
+    tester.view.physicalSize = const Size(800, 2000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(_app(const MangaListScreen(), auth: _loggedIn(), store: store, cache: cache));
+    await tester.pumpAndSettle();
+    final edit = CustomSemanticsAction(label: tr('tooltip_edit_entry', 'English'));
+
+    tester.semantics.customAction(_nodeWithAction(edit), edit);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(EntryEditorSheet), findsOneWidget);
+    expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('entry-editor-status-CURRENT'))).selected, isTrue);
+    semantics.dispose();
+  });
+
   group('Discover card long-press', () {
     const card = {
       'id': 30,
       'title': {'english': 'Vagabond'},
       'chapters': 327,
     };
+
+    final quickAdd = CustomSemanticsAction(label: tr('quick_add_action', 'English'));
 
     Widget cardApp(AuthService auth) => _app(
           const Scaffold(body: Center(child: SizedBox(width: 120, height: 222, child: AnimeCard(animeData: card)))),
@@ -129,6 +157,25 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(EntryEditorSheet), findsNothing);
+    });
+
+    testWidgets('logged out, screen readers are offered no quick add', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(cardApp(FakeAuthService()));
+
+      expect(_nodeWithAction(quickAdd), findsNothing);
+      semantics.dispose();
+    });
+
+    testWidgets('screen readers can quick add when logged in', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(cardApp(_loggedIn()));
+
+      tester.semantics.customAction(_nodeWithAction(quickAdd), quickAdd);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(EntryEditorSheet), findsOneWidget);
+      semantics.dispose();
     });
 
     testWidgets('opens the editor to look the media up when logged in', (tester) async {

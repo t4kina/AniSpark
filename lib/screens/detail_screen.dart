@@ -46,10 +46,13 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   // The response includes the viewer's list entry and favourite, so the
-  // cache key is per account.
-  String _cacheKey(int? userId) => userId != null
-      ? ApiCache.userKey(userId, 'media:${widget.animeId}')
-      : 'anon:media:${widget.animeId}';
+  // cache key is per account. Null when signed in before the account id is
+  // known: there is no cache namespace for it yet.
+  String? _cacheKey(String? token, int? userId) => switch ((token, userId)) {
+        (null, _) => 'anon:media:${widget.animeId}',
+        (_, final int id) => ApiCache.userKey(id, 'media:${widget.animeId}'),
+        _ => null,
+      };
 
   /// Shows the cached detail instantly (when this media was opened before)
   /// and refreshes it. [force] skips the cache, e.g. right after an edit.
@@ -58,23 +61,31 @@ class _DetailScreenState extends State<DetailScreen> {
     final cache = context.read<ApiCache>();
     final token = auth.isLoggedIn ? auth.token : null;
     final userId = auth.isLoggedIn ? (auth.user?['id'] as int?) : null;
+    final key = _cacheKey(token, userId);
+
+    void show(Map<String, dynamic>? data, {required bool isFresh}) {
+      if (!mounted || data == null) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+      if (userId != null && token != null) {
+        _preloadCustomListNames(userId, data['type'] as String? ?? 'ANIME', token);
+      }
+    }
+
     try {
+      if (key == null) {
+        show(await _service.getAnimeDetail(widget.animeId, token), isFresh: true);
+        return;
+      }
       await cache.load<Map<String, dynamic>?>(
-        key: _cacheKey(userId),
+        key: key,
         force: force,
         fetch: () => _service.getAnimeDetail(widget.animeId, token),
         decode: (json) => json as Map<String, dynamic>?,
         isValid: (data) => data != null,
-        onData: (data, {required isFresh}) {
-          if (!mounted || data == null) return;
-          setState(() {
-            _data = data;
-            _loading = false;
-          });
-          if (userId != null && token != null) {
-            _preloadCustomListNames(userId, data['type'] as String? ?? 'ANIME', token);
-          }
-        },
+        onData: show,
       );
     } on Exception catch (e) {
       debugPrint('[DetailScreen] Loading ${widget.animeId} failed: $e');
@@ -133,8 +144,8 @@ class _DetailScreenState extends State<DetailScreen> {
       if (ok) {
         profileRefreshNotifier.value++;
         // Keep the cached copy in sync so the next visit doesn't flash the old state.
-        final userId = auth.user?['id'] as int?;
-        unawaited(context.read<ApiCache>().write(_cacheKey(userId), _data));
+        final key = _cacheKey(auth.token, auth.user?['id'] as int?);
+        if (key != null) unawaited(context.read<ApiCache>().write(key, _data));
       }
     }
   }

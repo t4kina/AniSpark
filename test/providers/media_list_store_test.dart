@@ -295,6 +295,86 @@ void main() {
     expect(lists['custom:Favs'], isEmpty);
   });
 
+  group('removeEntry during a load', () {
+    // What AniList holds; each list request answers with the snapshot taken
+    // when it arrived, once [gate] opens.
+    late List<int> served;
+    late Completer<void> gate;
+    late MediaListStore store;
+
+    setUp(() {
+      served = [1, 2];
+      gate = Completer<void>()..complete();
+      store = MediaListStore(
+        service: AniListService(
+          client: MockClient((request) async {
+            final snapshot = [...served];
+            await gate.future;
+            return jsonResponse(_collection([
+              _list('CURRENT', [for (final id in snapshot) _entry(id)]),
+            ]));
+          }),
+        ),
+        cache: cache,
+        persistDelay: Duration.zero,
+      );
+    });
+
+    tearDown(() => store.dispose());
+
+    Future<List<Object?>> cachedIds() async {
+      final cached = await cache.read(ApiCache.userKey(_userId, 'list:ANIME'));
+      final current = (cached!.value as Map)['CURRENT'] as List;
+      return [for (final e in current) (e as Map)['mediaId']];
+    }
+
+    test('a refresh that started before the removal does not bring the entry back', () async {
+      await store.load('ANIME', userId: _userId, token: _token);
+      gate = Completer<void>();
+      final refresh = store.load('ANIME', userId: _userId, token: _token, force: true);
+      await pumpEventQueue();
+
+      // Deleted on AniList after the refresh read its snapshot.
+      served = [2];
+      store.removeEntry('ANIME', 1);
+      gate.complete();
+      await refresh;
+      await pumpEventQueue();
+
+      expect(store.listsOf('ANIME')!['CURRENT']!.map((e) => e['mediaId']), [2]);
+      expect(await cachedIds(), [2], reason: 'the stale snapshot is not what stays cached');
+    });
+
+    test('the first load does not bring back an entry removed while it ran', () async {
+      gate = Completer<void>();
+      final load = store.load('ANIME', userId: _userId, token: _token);
+      await pumpEventQueue();
+
+      served = [2];
+      store.removeEntry('ANIME', 1);
+      gate.complete();
+      await load;
+      await pumpEventQueue();
+
+      expect(store.listsOf('ANIME')!['CURRENT']!.map((e) => e['mediaId']), [2]);
+      expect(await cachedIds(), [2]);
+    });
+
+    test('a load that starts after the removal shows the entry if AniList has it again', () async {
+      gate = Completer<void>();
+      final load = store.load('ANIME', userId: _userId, token: _token);
+      await pumpEventQueue();
+      store.removeEntry('ANIME', 1);
+      gate.complete();
+      await load;
+
+      // Added back, e.g. from another device.
+      await store.load('ANIME', userId: _userId, token: _token, force: true);
+
+      expect(store.listsOf('ANIME')!['CURRENT']!.map((e) => e['mediaId']), [1, 2]);
+    });
+  });
+
   test('reset forgets everything', () async {
     final store = buildStore();
     await store.load('ANIME', userId: _userId, token: _token);

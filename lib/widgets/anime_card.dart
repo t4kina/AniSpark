@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../screens/detail_screen.dart';
 import '../services/auth_service.dart';
+import '../utils/translations.dart' show tr;
 import 'entry_editor/entry_editor_sheet.dart';
 
 class AnimeCard extends StatelessWidget {
@@ -37,8 +39,11 @@ class AnimeCard extends StatelessWidget {
     );
     final image = animeData['coverImage']?['large'];
     final score = animeData['averageScore'];
+    final lang = context.select<SettingsProvider, String>((s) => s.language);
+    final loggedIn = context.select<AuthService, bool>((a) => a.isLoggedIn);
+    final canQuickAdd = id != null && loggedIn;
 
-    return GestureDetector(
+    final card = GestureDetector(
       onTap: id == null
           ? null
           : () => Navigator.push(
@@ -92,6 +97,15 @@ class AnimeCard extends StatelessWidget {
             ),
         ],
       ),
+    );
+    // Screen readers can't discover a long press, so quick add is also
+    // offered as a named action.
+    final quickAdd = tr('quick_add_action', lang);
+    return Semantics(
+      onLongPressHint: canQuickAdd ? quickAdd : null,
+      customSemanticsActions:
+          canQuickAdd ? {CustomSemanticsAction(label: quickAdd): () => _quickAdd(context)} : null,
+      child: card,
     );
   }
 }

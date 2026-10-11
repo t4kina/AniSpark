@@ -24,12 +24,16 @@ class CharacterScreen extends StatefulWidget {
   /// Replaces the AniList API, for tests.
   final PeopleApi? api;
 
+  /// Replaces the AniList client that toggles the favourite, for tests.
+  final AniListService? service;
+
   const CharacterScreen({
     super.key,
     required this.characterId,
     this.name,
     this.imageUrl,
     this.api,
+    this.service,
   });
 
   @override
@@ -37,13 +41,15 @@ class CharacterScreen extends StatefulWidget {
 }
 
 class _CharacterScreenState extends State<CharacterScreen> {
-  final _service = AniListService();
+  late final AniListService _service = widget.service ?? AniListService();
   late final PeopleApi _api = widget.api ?? PeopleApi();
   CharacterDetail? _data;
   bool _loading = true;
   // ToggleFavourite flips whatever AniList has, so the button waits for a
   // fresh copy instead of trusting a possibly stale cached isFavourite.
   bool _isFresh = false;
+  // A second toggle sent before the first returns would flip it back.
+  bool _togglingFav = false;
 
   @override
   void initState() {
@@ -60,23 +66,32 @@ class _CharacterScreenState extends State<CharacterScreen> {
     final viewerId = auth.user?['id'] as int?;
     final id = widget.characterId;
     // The response carries the viewer's own isFavourite.
-    final key = viewerId != null
-        ? ApiCache.userKey(viewerId, 'character:$id')
-        : 'anon:character:$id';
+    final key = switch ((token, viewerId)) {
+      (null, _) => 'anon:character:$id',
+      (_, final int viewer) => ApiCache.userKey(viewer, 'character:$id'),
+      _ => null, // Account id not fetched yet: no cache namespace for it.
+    };
     final cache = context.read<ApiCache>();
+
+    void show(CharacterDetail data, {required bool isFresh}) {
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _isFresh = isFresh;
+        _loading = false;
+      });
+    }
+
     try {
+      if (key == null) {
+        show(await _api.getCharacter(id, token: token), isFresh: true);
+        return;
+      }
       await cache.load<CharacterDetail>(
         key: key,
         fetch: () => _api.getCharacter(id, token: token),
         decode: _decode,
-        onData: (data, {required isFresh}) {
-          if (!mounted) return;
-          setState(() {
-            _data = data;
-            _isFresh = isFresh;
-            _loading = false;
-          });
-        },
+        onData: show,
         force: force,
       );
     } on Exception catch (e) {
@@ -92,12 +107,14 @@ class _CharacterScreenState extends State<CharacterScreen> {
   }
 
   Future<void> _toggleFavourite() async {
+    if (_togglingFav) return;
     final auth = context.read<AuthService>();
     final token = auth.token;
     if (!auth.isLoggedIn || token == null) return;
     final lang = context.read<SettingsProvider>().language;
     final messenger = ScaffoldMessenger.of(context);
     final wasFav = _data?.isFavourite == true;
+    setState(() => _togglingFav = true);
     var ok = false;
     try {
       ok = await _service.toggleCharacterFavourite(
@@ -106,6 +123,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
       debugPrint('[CharacterScreen] Toggling favourite failed: $e');
     }
     if (!mounted) return;
+    setState(() => _togglingFav = false);
     if (!ok) {
       messenger.showSnackBar(SnackBar(content: Text(tr('save_failed', lang))));
       return;
@@ -143,7 +161,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
                   icon: isFav ? Icons.favorite : Icons.favorite_border,
                   color: isFav ? Colors.red : Colors.white,
                   tooltip: tr('tooltip_favourite', lang),
-                  onPressed: _isFresh ? _toggleFavourite : null,
+                  onPressed: _isFresh && !_togglingFav ? _toggleFavourite : null,
                 ),
               ],
             ),
