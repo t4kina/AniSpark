@@ -77,7 +77,7 @@ class InboxNotification {
   final InboxKind kind;
 
   int get id => json['id'] as int;
-  int get createdAt => json['createdAt'] as int? ?? 0;
+  int get createdAt => _int(json['createdAt']) ?? 0;
 
   /// `{id, name, avatar: {large}}` for user-driven notifications.
   Map<String, dynamic>? get user => _map(json['user']);
@@ -85,14 +85,17 @@ class InboxNotification {
   /// `{id, type, title, coverImage}` for media notifications.
   Map<String, dynamic>? get media => _map(json['media']);
 
-  int? get userId => user?['id'] as int?;
-  int? get mediaId => media?['id'] as int?;
-  int? get activityId => json['activityId'] as int?;
-  int? get episode => json['episode'] as int?;
+  int? get userId => _int(user?['id']);
+  int? get mediaId => _int(media?['id']);
+  int? get activityId => _int(json['activityId']);
+  int? get episode => _int(json['episode']);
   String? get reason => _nonEmpty(json['reason']);
   String? get deletedMediaTitle => _nonEmpty(json['deletedMediaTitle']);
   List<String> get deletedMediaTitles =>
-      (json['deletedMediaTitles'] as List?)?.whereType<String>().toList() ?? const [];
+      switch (json['deletedMediaTitles']) {
+        final List<Object?> titles => titles.whereType<String>().toList(),
+        _ => const [],
+      };
 
   /// Parses one entry of `Page.notifications`, or returns null for kinds the
   /// inbox doesn't handle (forum threads, submissions) and for entries
@@ -130,7 +133,7 @@ class NotificationsPage {
   static NotificationsPage parse(Object? notifications, {required bool hasNextPage, required int page}) =>
       NotificationsPage(
         items: [
-          for (final entry in (notifications as List?) ?? const [])
+          for (final entry in _list(notifications))
             ?InboxNotification.tryParse(entry),
         ],
         hasNextPage: hasNextPage,
@@ -144,8 +147,8 @@ class NotificationsPage {
       };
 
   static NotificationsPage fromJson(Object? json) {
-    final map = json as Map;
-    return parse(map['items'], hasNextPage: map['hasNextPage'] == true, page: map['page'] as int);
+    if (json is! Map) throw const FormatException('Cached inbox is not an object');
+    return parse(json['items'], hasNextPage: json['hasNextPage'] == true, page: _int(json['page']) ?? 1);
   }
 }
 
@@ -173,14 +176,15 @@ class ActivityThread {
       };
 
   static ActivityThread fromJson(Object? json) {
-    final map = json as Map;
+    if (json is! Map) throw const FormatException('Cached thread is not an object');
+    final map = json;
     final activity = _map(map['activity']);
     if (activity == null) throw const FormatException('Cached thread without activity');
     return ActivityThread(
       activity: activity,
       replies: _entries(map['replies']),
       hasNextPage: map['hasNextPage'] == true,
-      page: map['page'] as int,
+      page: _int(map['page']) ?? 1,
     );
   }
 }
@@ -189,7 +193,7 @@ class ActivityThread {
 /// optimistic UI before AniList confirms.
 Map<String, dynamic> withLikeToggled(Map<String, dynamic> item) {
   final liked = item['isLiked'] == true;
-  final count = item['likeCount'] as int? ?? 0;
+  final count = _int(item['likeCount']) ?? 0;
   return {...item, 'isLiked': !liked, 'likeCount': liked ? (count > 0 ? count - 1 : 0) : count + 1};
 }
 
@@ -199,13 +203,19 @@ Map<String, dynamic> withLikeState(Map<String, dynamic> item, LikeState state) =
 
 /// The current like state of [item].
 LikeState likeStateOf(Map<String, dynamic> item) =>
-    (isLiked: item['isLiked'] == true, likeCount: item['likeCount'] as int? ?? 0);
+    (isLiked: item['isLiked'] == true, likeCount: _int(item['likeCount']) ?? 0);
 
 /// [value] as a JSON object, or null if it isn't one.
 Map<String, dynamic>? asJsonMap(Object? value) =>
     value is Map<String, dynamic> ? value : (value is Map ? value.cast<String, dynamic>() : null);
 
 Map<String, dynamic>? _map(Object? value) => asJsonMap(value);
+
+/// [value] if it is an int, else null.
+int? _int(Object? value) => value is int ? value : null;
+
+/// [value] if it is a list, else an empty one.
+List<Object?> _list(Object? value) => value is List ? value.cast<Object?>() : const [];
 
 String? _nonEmpty(Object? value) => value is String && value.trim().isNotEmpty ? value : null;
 
@@ -218,7 +228,7 @@ Map<String, dynamic>? _withId(Object? value) {
 
 /// The maps in [list] that carry an id.
 List<Map<String, dynamic>> _entries(Object? list) => [
-      for (final entry in (list as List?) ?? const []) ?_withId(entry),
+      for (final entry in _list(list)) ?_withId(entry),
     ];
 
 // ─── GraphQL ────────────────────────────────────────────────────────────────
@@ -360,7 +370,7 @@ query(\$isFollowing: Boolean, \$page: Int, \$perPage: Int${byUser ? ', \$userId:
     final data = await _service.request(_unreadCountQuery, const {}, token: token);
     final viewer = _map(data['Viewer']);
     if (viewer == null) throw const FormatException('Response without Viewer');
-    return viewer['unreadNotificationCount'] as int? ?? 0;
+    return _int(viewer['unreadNotificationCount']) ?? 0;
   }
 
   /// One page of notifications, newest first. [resetCount] marks them all

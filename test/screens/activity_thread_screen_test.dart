@@ -26,6 +26,28 @@ class _LoggedInAuth extends AuthService {
   bool get isLoggedIn => true;
 }
 
+/// Starts logged in as user 1; [logOut] drops the session like a 401 would.
+class _SessionAuth extends AuthService {
+  _SessionAuth({this.userId = 1});
+
+  final int? userId;
+  bool _out = false;
+
+  @override
+  String? get token => _out ? null : 'test-token';
+
+  @override
+  Map<String, dynamic>? get user => _out || userId == null ? null : {'id': userId, 'name': 'me'};
+
+  @override
+  bool get isLoggedIn => !_out;
+
+  void logOut() {
+    _out = true;
+    notifyListeners();
+  }
+}
+
 // No avatar or cover URLs, so no image is fetched during the tests.
 Map<String, dynamic> _user(int id) => {'id': id, 'name': 'user$id', 'avatar': null};
 
@@ -65,16 +87,19 @@ Map<String, dynamic> _threadResponse({List<Map<String, dynamic>>? replies}) => {
 void main() {
   late List<RecordedRequest> log;
   late ApiCache cache;
+  late MemoryCacheStore store;
 
   setUp(() {
     log = [];
-    cache = ApiCache(MemoryCacheStore());
+    store = MemoryCacheStore();
+    cache = ApiCache(store);
   });
 
   Future<void> pumpThread(
     WidgetTester tester,
     FutureOr<http.Response> Function(RecordedRequest request) handler, {
     ValueChanged<Map<String, dynamic>>? onActivityChanged,
+    AuthService? auth,
   }) async {
     // Like mockAniList, but answers may be held back to observe the
     // optimistic state.
@@ -87,7 +112,7 @@ void main() {
     await tester.pumpWidget(MultiProvider(
       providers: [
         Provider.value(value: cache),
-        ChangeNotifierProvider<AuthService>(create: (_) => _LoggedInAuth()),
+        ChangeNotifierProvider<AuthService>(create: (_) => auth ?? _LoggedInAuth()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
       child: MaterialApp(
@@ -264,5 +289,80 @@ void main() {
 
     expect(find.textContaining('Cached post'), findsOneWidget);
     expect(find.text("Couldn't load the content"), findsOneWidget, reason: 'inline refresh error');
+  });
+
+  Iterable<String> cachedThreadKeys() => store.keys.where((key) => key.contains('thread:'));
+
+  testWidgets('does not cache a thread when the viewer is unknown despite a token', (tester) async {
+    await pumpThread(tester, (_) => jsonResponse(_threadResponse()), auth: _SessionAuth(userId: null));
+
+    expect(find.textContaining('Hello world'), findsOneWidget);
+    expect(cachedThreadKeys(), isEmpty, reason: 'viewer-specific data must not land under a shared key');
+  });
+
+  testWidgets('does not write the thread to the cache when a like finishes after logout', (tester) async {
+    final auth = _SessionAuth();
+    final likeResponse = Completer<http.Response>();
+    await pumpThread(tester, (request) {
+      if (isMutation(request, 'ToggleLikeV2')) return likeResponse.future;
+      return jsonResponse(_threadResponse());
+    }, auth: auth);
+    await store.clear();
+
+    await tester.tap(find.text('4'));
+    await tester.pump();
+    auth.logOut();
+    await tester.pump();
+    likeResponse.complete(jsonResponse({
+      'data': {
+        'ToggleLikeV2': {'id': 100, 'isLiked': true, 'likeCount': 5},
+      },
+    }));
+    await tester.pump();
+    await tester.pump();
+
+    expect(cachedThreadKeys(), isEmpty);
+  });
+
+  testWidgets('stops loading more replies after a failure and retries only on tap', (tester) async {
+    var page2Attempts = 0;
+    Map<String, dynamic> manyReplies() {
+      final response = _threadResponse(replies: [
+        for (var i = 1; i <= 14; i++)
+          {
+            'id': i,
+            'text': 'reply $i',
+            'createdAt': _minutesAgo(i),
+            'isLiked': false,
+            'likeCount': 0,
+            'user': _user(3),
+          },
+      ]);
+      ((response['data'] as Map)['Page'] as Map)['pageInfo'] = {'hasNextPage': true};
+      return response;
+    }
+
+    await pumpThread(tester, (request) {
+      if (request.variables['page'] == 2) {
+        page2Attempts++;
+        return jsonResponse({'errors': []}, status: 500);
+      }
+      return jsonResponse(manyReplies());
+    });
+
+    await tester.drag(find.byType(ListView), const Offset(0, -5000));
+    await tester.pump();
+    await tester.pump();
+    expect(page2Attempts, 1);
+
+    await tester.drag(find.byType(ListView), const Offset(0, -60));
+    await tester.drag(find.byType(ListView), const Offset(0, -60));
+    await tester.pump();
+    expect(page2Attempts, 1, reason: 'no automatic retry while failed');
+
+    await tester.tap(find.byKey(const Key('load-more-retry')));
+    await tester.pump();
+    await tester.pump();
+    expect(page2Attempts, 2);
   });
 }

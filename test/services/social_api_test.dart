@@ -402,4 +402,102 @@ void main() {
       expect(likeStateOf({'id': 2}), (isLiked: false, likeCount: 0));
     });
   });
+
+  group('malformed responses', () {
+    test('a notifications field that is not a list yields an empty page', () async {
+      final api = apiReturning({
+        'data': {
+          'Page': {
+            'pageInfo': {'hasNextPage': false},
+            'notifications': {'oops': true},
+          },
+        },
+      });
+
+      final result = await api.fetchNotifications(token);
+
+      expect(result.items, isEmpty);
+    });
+
+    test('notifications with wrongly typed ids or links are skipped, not thrown on', () async {
+      final api = apiReturning(page('notifications', [
+        {'id': 1, 'type': 'FOLLOWING', 'createdAt': 'soon', 'user': {'id': 'five', 'name': 'x'}},
+        {'id': 2, 'type': 'AIRING', 'episode': 'three', 'media': {'id': '7'}},
+        {'id': 3, 'type': 'ACTIVITY_LIKE', 'activityId': '9', 'user': user(2)},
+        {'id': 4, 'type': 'FOLLOWING', 'createdAt': 'soon', 'user': user(3), 'user_extra': 1},
+        'not even a map',
+      ]));
+
+      final result = await api.fetchNotifications(token);
+
+      expect(result.items.map((n) => n.id), [4]);
+      expect(result.items.single.createdAt, 0);
+    });
+
+    test('a deletedMediaTitles list with non-strings keeps only the strings', () async {
+      final api = apiReturning(page('notifications', [
+        {'id': 1, 'type': 'MEDIA_MERGE', 'deletedMediaTitles': ['A', 3, null], 'media': media(1)},
+        {'id': 2, 'type': 'MEDIA_MERGE', 'deletedMediaTitles': 'A', 'media': media(2)},
+      ]));
+
+      final result = await api.fetchNotifications(token);
+
+      expect(result.items[0].deletedMediaTitles, ['A']);
+      expect(result.items[1].deletedMediaTitles, isEmpty);
+    });
+
+    test('a feed whose activities field is not a list yields no activities', () async {
+      final api = apiReturning({
+        'data': {
+          'Page': {
+            'pageInfo': {'hasNextPage': false},
+            'activities': 'nope',
+          },
+        },
+      });
+
+      final result = await api.fetchFeed(token);
+
+      expect(result.activities, isEmpty);
+    });
+
+    test('a thread whose replies field is not a list has no replies', () async {
+      final api = apiReturning({
+        'data': {
+          'Activity': {'id': 9, 'type': 'TEXT'},
+          'Page': {
+            'pageInfo': {'hasNextPage': false},
+            'activityReplies': 5,
+          },
+        },
+      });
+
+      final thread = await api.fetchThread(9);
+
+      expect(thread.replies, isEmpty);
+    });
+
+    test('a wrongly typed unread count reads as zero', () async {
+      final api = apiReturning({
+        'data': {
+          'Viewer': {'id': 1, 'unreadNotificationCount': 'many'},
+        },
+      });
+
+      expect(await api.fetchUnreadCount(token), 0);
+    });
+
+    test('cached pages with wrong types fail with a FormatException', () {
+      expect(() => NotificationsPage.fromJson('nope'), throwsFormatException);
+      expect(() => ActivityThread.fromJson(['x']), throwsFormatException);
+      final page = NotificationsPage.fromJson({'items': 'x', 'hasNextPage': true, 'page': 'two'});
+      expect(page.items, isEmpty);
+      expect(page.page, 1);
+    });
+
+    test('like helpers tolerate a wrongly typed like count', () {
+      expect(likeStateOf({'isLiked': true, 'likeCount': '3'}), (isLiked: true, likeCount: 0));
+      expect(withLikeToggled({'isLiked': false, 'likeCount': 'x'})['likeCount'], 1);
+    });
+  });
 }

@@ -7,9 +7,11 @@ import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/social_api.dart';
 import '../providers/settings_provider.dart';
+import '../utils/activity_status.dart';
 import '../utils/activity_text.dart' show relativeTime;
 import '../utils/refresh_notifier.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
 import '../widgets/social/social_widgets.dart';
 import 'activity_thread_screen.dart';
@@ -18,7 +20,9 @@ import 'notifications_screen.dart';
 enum _FeedType { following, global, personal }
 
 class FeedScreen extends StatefulWidget {
-  const FeedScreen({super.key});
+  const FeedScreen({super.key, this.api});
+
+  final SocialApi? api;
 
   @override
   State<FeedScreen> createState() => _FeedScreenState();
@@ -26,12 +30,14 @@ class FeedScreen extends StatefulWidget {
 
 class _FeedScreenState extends State<FeedScreen>
     with AutomaticKeepAliveClientMixin {
-  final _social = SocialApi();
+  late final SocialApi _social = widget.api ?? SocialApi();
   List<Map<String, dynamic>> _activities = [];
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = false;
   bool _hasError = false;
+  // The last page request failed: paging waits for a tap on the footer.
+  bool _moreFailed = false;
   int _page = 1;
   int _unreadCount = 0;
   // Bumped on every reload so a slow response for a previous feed type or
@@ -64,7 +70,7 @@ class _FeedScreenState extends State<FeedScreen>
   }
 
   bool _onScrollNotification(ScrollNotification notification) {
-    if (_loadingMore || !_hasMore) return false;
+    if (_loadingMore || !_hasMore || _moreFailed) return false;
     if (notification.metrics.pixels >=
         notification.metrics.maxScrollExtent - 200) {
       _loadMore();
@@ -110,6 +116,7 @@ class _FeedScreenState extends State<FeedScreen>
     setState(() {
       _loading = true;
       _loadingMore = false;
+      _moreFailed = false;
       _hasError = false;
       _page = 1;
     });
@@ -140,14 +147,17 @@ class _FeedScreenState extends State<FeedScreen>
     }
   }
 
-  Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore) return;
+  Future<void> _loadMore({bool retry = false}) async {
+    if (_loadingMore || !_hasMore || (_moreFailed && !retry)) return;
     final auth = context.read<AuthService>();
     final token = auth.token;
     if (!auth.isLoggedIn || token == null) return;
     final generation = _loadGeneration;
     final nextPage = _page + 1;
-    setState(() => _loadingMore = true);
+    setState(() {
+      _loadingMore = true;
+      _moreFailed = false;
+    });
     try {
       final result = await _fetchPage(token, auth, nextPage);
       if (!mounted || generation != _loadGeneration) return;
@@ -165,7 +175,10 @@ class _FeedScreenState extends State<FeedScreen>
     } on Exception catch (e) {
       debugPrint('[FeedScreen] Loading feed page $nextPage failed: $e');
       if (mounted && generation == _loadGeneration) {
-        setState(() => _loadingMore = false);
+        setState(() {
+          _loadingMore = false;
+          _moreFailed = true;
+        });
       }
     }
   }
@@ -444,9 +457,11 @@ class _FeedScreenState extends State<FeedScreen>
                           itemCount: _activities.length + (_hasMore ? 1 : 0),
                           itemBuilder: (_, i) {
                             if (i == _activities.length) {
-                              return const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 20),
-                                child: Center(child: CircularProgressIndicator()),
+                              return LoadMoreFooter(
+                                key: _moreFailed ? const Key('load-more-retry') : null,
+                                hasMore: true,
+                                failed: _moreFailed,
+                                onRetry: () => _loadMore(retry: true),
                               );
                             }
                             final activity = _activities[i];
@@ -520,17 +535,14 @@ class _ActivityCard extends StatelessWidget {
   Widget _buildListActivity(BuildContext context, Map<String, dynamic>? user, String username, int createdAt) {
     final media = asJsonMap(activity['media']);
     final mediaId = media?['id'] as int?;
-    final status = activity['status'] as String? ?? '';
+    final status = activity['status'] as String?;
     final progress = activity['progress'];
     final coverImage = asJsonMap(media?['coverImage'])?['large'] as String?;
     final titleMap = asJsonMap(media?['title']);
     final title = titleMap == null
         ? tr('feed_unknown', lang)
         : context.read<SettingsProvider>().resolveTitle(titleMap);
-    final actionText = progress != null
-        ? trf('feed_status_progress_of', lang,
-            {'status': status, 'progress': progress})
-        : status;
+    final actionText = activityStatusText(status, progress, lang);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -545,7 +557,7 @@ class _ActivityCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
+                TappableUserName(
                   onTap: () => openUserProfile(context, user),
                   child: RichText(
                     text: TextSpan(
@@ -610,7 +622,7 @@ class _ActivityCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
+                TappableUserName(
                   onTap: () => openUserProfile(context, user),
                   child: Text(username,
                       style: TextStyle(

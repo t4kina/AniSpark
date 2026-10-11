@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:anispark/providers/settings_provider.dart';
 import 'package:anispark/widgets/social/social_widgets.dart' show ProfileAvatar;
 import 'package:anispark/screens/notifications_screen.dart';
@@ -8,10 +10,11 @@ import 'package:anispark/services/social_api.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:provider/provider.dart';
 
 import '../helpers/memory_cache_store.dart';
-import '../helpers/mock_anilist.dart';
+import '../helpers/mock_anilist.dart' show RecordedRequest, jsonResponse;
 
 class _LoggedInAuth extends AuthService {
   @override
@@ -55,8 +58,13 @@ void main() {
     cache = ApiCache(MemoryCacheStore());
   });
 
-  Future<void> pumpInbox(WidgetTester tester, http.Response Function(RecordedRequest request) handler) async {
-    final api = SocialApi(service: AniListService(client: mockAniList(log, handler)));
+  Future<void> pumpInbox(WidgetTester tester, FutureOr<http.Response> Function(RecordedRequest request) handler) async {
+    final client = MockClient((request) async {
+      final recorded = RecordedRequest(request);
+      log.add(recorded);
+      return handler(recorded);
+    });
+    final api = SocialApi(service: AniListService(client: client));
     await tester.pumpWidget(MultiProvider(
       providers: [
         Provider.value(value: cache),
@@ -135,5 +143,99 @@ void main() {
     expect(find.text('6m ago'), findsOneWidget);
     expect(find.text('Retry'), findsNothing);
     expect(find.text("Couldn't load the content"), findsOneWidget, reason: 'snack bar');
+  });
+
+  List<Object> following(int from, int count) => [
+        for (var i = from; i < from + count; i++)
+          {'id': i, 'type': 'FOLLOWING', 'createdAt': _minutesAgo(i), 'user': _user(i)},
+      ];
+
+  Future<void> scrollToEnd(WidgetTester tester) async {
+    await tester.drag(find.byType(ListView), const Offset(0, -3000));
+    await tester.pump();
+    await tester.pump();
+  }
+
+  testWidgets('stops loading more after a failed page and retries only on tap', (tester) async {
+    var page2Attempts = 0;
+    await pumpInbox(tester, (request) {
+      if (request.variables['page'] == 1) {
+        return jsonResponse(_page(following(1, 15), hasNextPage: true));
+      }
+      page2Attempts++;
+      return jsonResponse({'errors': []}, status: 500);
+    });
+
+    await scrollToEnd(tester);
+    expect(page2Attempts, 1);
+
+    await tester.drag(find.byType(ListView), const Offset(0, -50));
+    await tester.drag(find.byType(ListView), const Offset(0, -50));
+    await tester.pump();
+    expect(page2Attempts, 1, reason: 'no automatic retry while failed');
+    expect(find.byKey(const Key('load-more-retry')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('load-more-retry')));
+    await tester.pump();
+    await tester.pump();
+    expect(page2Attempts, 2);
+  });
+
+  testWidgets('offers a load more button when fetched pages added nothing', (tester) async {
+    var loadMoreRequests = 0;
+    await pumpInbox(tester, (request) {
+      final page = request.variables['page'] as int;
+      if (page <= 3) {
+        return jsonResponse(_page([
+          {'id': page, 'type': 'THREAD_COMMENT_REPLY'},
+        ], hasNextPage: true));
+      }
+      loadMoreRequests++;
+      return jsonResponse(_page(following(50, 1)));
+    });
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byKey(const Key('load-more-button')), findsOneWidget);
+    expect(loadMoreRequests, 0);
+
+    await tester.tap(find.byKey(const Key('load-more-button')));
+    await tester.pump();
+    await tester.pump();
+    expect(loadMoreRequests, 1);
+    expect(find.text('50m ago'), findsOneWidget);
+  });
+
+  testWidgets('drops a load-more page that finishes after a refresh', (tester) async {
+    final page2 = Completer<http.Response>();
+    var firstLoads = 0;
+    var page2Requested = 0;
+    await pumpInbox(tester, (request) {
+      if (request.variables['page'] == 1) {
+        firstLoads++;
+        return jsonResponse(_page(firstLoads == 1 ? following(1, 15) : following(100, 15), hasNextPage: true));
+      }
+      // Only the first page-2 request is the stale one held back.
+      return page2Requested++ == 0 ? page2.future : jsonResponse(_page(const []));
+    });
+
+    await scrollToEnd(tester);
+    await tester.drag(find.byType(ListView), const Offset(0, 3000));
+    await tester.pump();
+    await tester.fling(find.byType(ListView), const Offset(0, 400), 1000);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    expect(firstLoads, 2);
+
+    page2.complete(jsonResponse(_page([
+      {'id': 500, 'type': 'FOLLOWING', 'createdAt': _minutesAgo(45), 'user': _user(500)},
+    ])));
+    await tester.pump();
+    await tester.pump();
+
+    await tester.drag(find.byType(ListView), const Offset(0, -3000));
+    await tester.pump();
+    expect(find.text('45m ago'), findsNothing);
   });
 }

@@ -95,7 +95,11 @@ class ReplyCountButton extends StatelessWidget {
   }
 }
 
-/// A user's round avatar that opens their profile.
+/// Smallest comfortable touch target.
+const _minTapSize = 44.0;
+
+/// A user's round avatar that opens their profile. The hit area is at least
+/// 44x44 even when the avatar is drawn smaller.
 class ProfileAvatar extends StatelessWidget {
   const ProfileAvatar({super.key, required this.user, this.radius = 18});
 
@@ -108,10 +112,46 @@ class ProfileAvatar extends StatelessWidget {
       button: true,
       label: user?['name'] as String?,
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () => openUserProfile(context, user),
-        child: UserAvatar(
-          url: asJsonMap(user?['avatar'])?['large'] as String?,
-          size: radius * 2,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: _minTapSize, minHeight: _minTapSize),
+          child: Center(
+            widthFactor: 1,
+            heightFactor: 1,
+            child: UserAvatar(
+              url: asJsonMap(user?['avatar'])?['large'] as String?,
+              size: radius * 2,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A user's name (or any inline label) as a button with a hit area at least
+/// 44px high.
+class TappableUserName extends StatelessWidget {
+  const TappableUserName({super.key, required this.onTap, required this.child});
+
+  final VoidCallback onTap;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: _minTapSize),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            widthFactor: 1,
+            child: child,
+          ),
         ),
       ),
     );

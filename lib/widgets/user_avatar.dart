@@ -21,6 +21,7 @@ class UserAvatar extends StatelessWidget {
       child: Icon(Icons.person, size: size * 0.55, color: cs.onSurfaceVariant),
     );
     final url = this.url;
+    final decodeWidth = (size * MediaQuery.devicePixelRatioOf(context)).round();
     return ExcludeSemantics(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius ?? size / 2),
@@ -30,6 +31,7 @@ class UserAvatar extends StatelessWidget {
                 imageUrl: url,
                 width: size,
                 height: size,
+                memCacheWidth: decodeWidth,
                 fit: BoxFit.cover,
                 placeholder: (_, _) => placeholder,
                 errorWidget: (_, _, _) => placeholder,

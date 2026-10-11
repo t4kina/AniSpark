@@ -8,6 +8,7 @@ import '../services/auth_service.dart';
 import '../services/social_api.dart';
 import '../utils/activity_text.dart' show relativeTime;
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
 import '../widgets/social/social_widgets.dart';
 import 'activity_thread_screen.dart';
@@ -34,6 +35,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   bool _loadingMore = false;
   bool _hasMore = false;
   bool _hasError = false;
+  // The last page request failed: paging waits for a tap on the footer.
+  bool _moreFailed = false;
+  // The last pages fetched held nothing to show, so no scroll will follow:
+  // paging waits for a tap on the footer.
+  bool _moreStalled = false;
+  // Bumped on every (re)load so a page requested before it can't be added
+  // to the refreshed list.
+  int _loadGeneration = 0;
   // Cached pages aren't paged further: the fresh first page replaces them.
   bool _isFresh = false;
   int _page = 1;
@@ -61,6 +70,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _isFresh = isFresh;
     _loading = false;
     _hasError = false;
+    _loadingMore = false;
+    _moreFailed = false;
+    _moreStalled = page.items.isEmpty && page.hasNextPage;
   }
 
   Future<void> _load({bool force = false}) async {
@@ -75,8 +87,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       setState(() => _loading = false);
       return;
     }
+    _loadGeneration++;
     setState(() {
       _hasError = false;
+      _loadingMore = false;
+      _moreFailed = false;
+      _moreStalled = false;
       _loading = _items.isEmpty;
     });
     try {
@@ -107,23 +123,36 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  Future<void> _loadMore() async {
+  Future<void> _loadMore({bool retry = false}) async {
     final token = context.read<AuthService>().token;
     if (_loadingMore || !_hasMore || !_isFresh || token == null) return;
-    setState(() => _loadingMore = true);
+    if ((_moreFailed || _moreStalled) && !retry) return;
+    final generation = _loadGeneration;
+    setState(() {
+      _loadingMore = true;
+      _moreFailed = false;
+      _moreStalled = false;
+    });
     try {
       final result = await _fetchFrom(token, _page + 1);
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       final seen = {for (final item in _items) item.id};
+      final added = result.items.where((item) => !seen.contains(item.id)).toList();
       setState(() {
-        _items = [..._items, ...result.items.where((item) => !seen.contains(item.id))];
+        _items = [..._items, ...added];
         _hasMore = result.hasNextPage;
         _page = result.page;
         _loadingMore = false;
+        _moreStalled = added.isEmpty && result.hasNextPage;
       });
     } on Exception catch (e) {
       debugPrint('[NotificationsScreen] Loading notifications page ${_page + 1} failed: $e');
-      if (mounted) setState(() => _loadingMore = false);
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _loadingMore = false;
+          _moreFailed = true;
+        });
+      }
     }
   }
 
@@ -132,6 +161,27 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _loadMore();
     }
     return false;
+  }
+
+  Widget _footer(String lang) {
+    if (_moreStalled) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Center(
+          child: TextButton(
+            key: const Key('load-more-button'),
+            onPressed: () => _loadMore(retry: true),
+            child: Text(tr('social_load_more', lang)),
+          ),
+        ),
+      );
+    }
+    return LoadMoreFooter(
+      key: _moreFailed ? const Key('load-more-retry') : null,
+      hasMore: true,
+      failed: _moreFailed,
+      onRetry: () => _loadMore(retry: true),
+    );
   }
 
   @override
@@ -177,6 +227,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 children: [
                   const SizedBox(height: 120),
                   _CenteredMessage(icon: Icons.notifications_none, text: tr('inbox_empty', lang)),
+                  if (_hasMore) _footer(lang),
                 ],
               )
             : ListView.separated(
@@ -186,10 +237,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 separatorBuilder: (_, _) => const Divider(height: 1, indent: 68),
                 itemBuilder: (_, i) {
                   if (i == _items.length) {
-                    return const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 20),
-                      child: Center(child: CircularProgressIndicator()),
-                    );
+                    return _footer(lang);
                   }
                   return _NotificationTile(notification: _items[i], lang: lang);
                 },
@@ -275,8 +323,8 @@ class _NotificationTile extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(width: 40, child: _leading(context)),
-            const SizedBox(width: 12),
+            SizedBox(width: 44, child: Align(alignment: Alignment.topLeft, child: _leading(context))),
+            const SizedBox(width: 8),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

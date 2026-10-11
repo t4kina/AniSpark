@@ -194,23 +194,24 @@ class _FollowingRow extends StatelessWidget {
   }
 }
 
+/// Fill of the status chip per AniList list status. Dark enough for the
+/// white 11px label to reach 4.5:1 contrast (checked by a test).
+@visibleForTesting
+const followingStatusChipColors = {
+  'CURRENT': Color(0xFF0277BD),
+  'COMPLETED': Color(0xFF2E7D32),
+  'PLANNING': Color(0xFFBF4A00),
+  'PAUSED': Color(0xFF8A6500),
+  'DROPPED': Color(0xFFC62828),
+  'REPEATING': Color(0xFF8E24AA),
+};
+
 /// Coloured pill with a list status, worded for anime or manga.
 class _StatusChip extends StatelessWidget {
   const _StatusChip({required this.status, required this.isManga});
 
   final String status;
   final bool isManga;
-
-  // Darker than AniList's own shades (except CURRENT's blue) so the white
-  // label stays readable.
-  static const _colors = {
-    'CURRENT': Color(0xFF3DB4F2),
-    'COMPLETED': Color(0xFF388E3C),
-    'PLANNING': Color(0xFFEF6C00),
-    'PAUSED': Color(0xFFB28704),
-    'DROPPED': Color(0xFFE53935),
-    'REPEATING': Color(0xFF8E24AA),
-  };
 
   String? get _labelKey => switch (status) {
         'CURRENT' => isManga ? 'reading' : 'watching',
@@ -226,7 +227,7 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
     final key = _labelKey;
-    final color = _colors[status];
+    final color = followingStatusChipColors[status];
     if (key == null || color == null) return const SizedBox.shrink();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),

@@ -9,8 +9,10 @@ import '../services/anilist_service.dart' show AniListRequestException;
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../services/social_api.dart';
+import '../utils/activity_status.dart';
 import '../utils/activity_text.dart';
-import '../utils/translations.dart' show tr, trf;
+import '../utils/translations.dart' show tr;
+import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
 import '../widgets/social/social_widgets.dart';
 
@@ -52,6 +54,10 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
   bool _isFresh = false;
   bool _hasMore = false;
   bool _loadingMore = false;
+  // The last replies page failed: paging waits for a tap on the footer.
+  bool _moreFailed = false;
+  // The viewer the thread was loaded for; only they may write it to the cache.
+  int? _loadedViewerId;
   bool _sending = false;
   bool _likingActivity = false;
   final Set<int> _likingReplies = {};
@@ -71,10 +77,15 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
     super.dispose();
   }
 
-  String _cacheKey() {
-    final viewerId = context.read<AuthService>().user?['id'] as int?;
+  /// Where this viewer's copy of the thread is cached, or null when it must
+  /// not be: a token without a known user id could be anyone, and the thread
+  /// holds viewer-specific data (likes, private messages).
+  String? _cacheKey() {
+    final auth = context.read<AuthService>();
     final key = 'thread:${widget.activityId}';
-    return viewerId != null ? ApiCache.userKey(viewerId, key) : 'anon:$key';
+    final viewerId = auth.user?['id'] as int?;
+    if (viewerId != null) return ApiCache.userKey(viewerId, key);
+    return auth.token == null ? 'anon:$key' : null;
   }
 
   /// Replies without duplicates, oldest first.
@@ -83,37 +94,47 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
     return byId.values.toList()..sort((a, b) => (a['id'] as int).compareTo(b['id'] as int));
   }
 
+  void _applyThread(ActivityThread thread, {required bool isFresh}) {
+    if (!mounted) return;
+    setState(() {
+      _activity = thread.activity;
+      _replies = _merged(thread.replies);
+      _hasMore = thread.hasNextPage;
+      _page = thread.page;
+      _isFresh = isFresh;
+      _moreFailed = false;
+      _loadingMore = false;
+      _loading = false;
+    });
+    if (isFresh) widget.onActivityChanged?.call(thread.activity);
+  }
+
   Future<void> _load({bool force = false}) async {
     if (!mounted) return;
-    final token = context.read<AuthService>().token;
+    final auth = context.read<AuthService>();
+    final token = auth.token;
     final cache = context.read<ApiCache>();
     final key = _cacheKey();
+    _loadedViewerId = auth.user?['id'] as int?;
     setState(() {
       _hasError = false;
       _loading = true;
     });
     try {
+      if (key == null) {
+        _applyThread(await _api.fetchThread(widget.activityId, token: token), isFresh: true);
+        return;
+      }
       await cache.load<ActivityThread>(
         key: key,
         force: force,
         fetch: () => _api.fetchThread(widget.activityId, token: token),
         decode: ActivityThread.fromJson,
-        onData: (thread, {required isFresh}) {
-          if (!mounted) return;
-          setState(() {
-            _activity = thread.activity;
-            _replies = _merged(thread.replies);
-            _hasMore = thread.hasNextPage;
-            _page = thread.page;
-            _isFresh = isFresh;
-            _loading = false;
-          });
-          if (isFresh) widget.onActivityChanged?.call(thread.activity);
-        },
+        onData: (thread, {required isFresh}) => _applyThread(thread, isFresh: isFresh),
       );
     } on AniListRequestException catch (e) {
       debugPrint('[ActivityThreadScreen] Loading activity ${widget.activityId} failed: $e');
-      if (e.statusCode == 404) unawaited(cache.remove(key));
+      if (e.statusCode == 404 && key != null) unawaited(cache.remove(key));
       _showLoadFailure(notFound: e.statusCode == 404);
     } on Exception catch (e) {
       debugPrint('[ActivityThreadScreen] Loading activity ${widget.activityId} failed: $e');
@@ -131,11 +152,14 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
     });
   }
 
-  Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore || !_isFresh) return;
+  Future<void> _loadMore({bool retry = false}) async {
+    if (_loadingMore || !_hasMore || !_isFresh || (_moreFailed && !retry)) return;
     final token = context.read<AuthService>().token;
     final nextPage = _page + 1;
-    setState(() => _loadingMore = true);
+    setState(() {
+      _loadingMore = true;
+      _moreFailed = false;
+    });
     try {
       final result = await _api.fetchReplies(widget.activityId, page: nextPage, token: token);
       if (!mounted) return;
@@ -147,7 +171,12 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
       });
     } on Exception catch (e) {
       debugPrint('[ActivityThreadScreen] Loading replies page $nextPage failed: $e');
-      if (mounted) setState(() => _loadingMore = false);
+      if (mounted) {
+        setState(() {
+          _loadingMore = false;
+          _moreFailed = true;
+        });
+      }
     }
   }
 
@@ -159,11 +188,16 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
   }
 
   /// Saves what's on screen so reopening the thread shows it right away.
+  /// Skipped once the session ended or changed hands since the thread loaded.
   void _persist() {
     final activity = _activity;
-    if (!_isFresh || activity == null) return;
+    if (!_isFresh || activity == null || !mounted) return;
+    final auth = context.read<AuthService>();
+    final viewerId = auth.user?['id'] as int?;
+    if (!auth.isLoggedIn || viewerId == null || viewerId != _loadedViewerId) return;
     final thread = ActivityThread(activity: activity, replies: _replies, hasNextPage: _hasMore, page: _page);
-    unawaited(context.read<ApiCache>().write(_cacheKey(), thread.toJson()));
+    final key = ApiCache.userKey(viewerId, 'thread:${widget.activityId}');
+    unawaited(context.read<ApiCache>().write(key, thread.toJson()));
   }
 
   void _showSaveFailed(ScaffoldMessengerState messenger, String lang) =>
@@ -319,9 +353,11 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
             if (i == 1) return _repliesStatus(lang);
             final index = i - 2;
             if (index == _replies.length) {
-              return const Padding(
-                padding: EdgeInsets.symmetric(vertical: 20),
-                child: Center(child: CircularProgressIndicator()),
+              return LoadMoreFooter(
+                key: _moreFailed ? const Key('load-more-retry') : null,
+                hasMore: true,
+                failed: _moreFailed,
+                onRetry: () => _loadMore(retry: true),
               );
             }
             final reply = _replies[index];
@@ -435,7 +471,7 @@ class _UserName extends StatelessWidget {
   final String lang;
 
   @override
-  Widget build(BuildContext context) => GestureDetector(
+  Widget build(BuildContext context) => TappableUserName(
         onTap: () => openUserProfile(context, user),
         child: Text(user?['name'] as String? ?? tr('feed_unknown', lang), style: style),
       );
@@ -472,11 +508,7 @@ class _ListActivityBody extends StatelessWidget {
     final mediaId = media?['id'] as int?;
     final cover = asJsonMap(media?['coverImage'])?['large'] as String?;
     final title = context.read<SettingsProvider>().resolveTitle(asJsonMap(media?['title']));
-    final status = activity['status'] as String? ?? '';
-    final progress = activity['progress'];
-    final action = progress != null
-        ? trf('feed_status_progress_of', lang, {'status': status, 'progress': progress})
-        : status;
+    final action = activityStatusText(activity['status'] as String?, activity['progress'], lang);
     return InkWell(
       onTap: mediaId == null ? null : () => openMediaDetail(context, mediaId),
       borderRadius: BorderRadius.circular(8),
