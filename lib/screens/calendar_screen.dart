@@ -24,7 +24,6 @@ class CalendarScreen extends StatefulWidget {
 }
 
 class _CalendarScreenState extends State<CalendarScreen> {
-  static const _days = 7;
   static const _maxAge = Duration(minutes: 30);
 
   static const _weekdayKeys = [
@@ -40,11 +39,31 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool? _myListOnly;
   // Ignores responses from loads that a newer one replaced.
   int _request = 0;
+  // Who the shown data was loaded for, to reload when the session changes.
+  (String?, int?)? _session;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final auth = context.watch<AuthService>();
+    final session = (auth.token, auth.user?['id'] as int?);
+    final previous = _session;
+    _session = session;
+    if (previous == null || previous == session) return;
+    // The list statuses belong to the previous session: don't show them
+    // while the new ones load (build runs right after this).
+    _schedules = null;
+    _loading = true;
+    _hasError = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   /// Shows the cached calendar right away and refreshes it once it's older
@@ -55,7 +74,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final userId = auth.user?['id'] as int?;
     final cache = context.read<ApiCache>();
     final today = localDay(DateTime.now());
-    final end = DateTime(today.year, today.month, today.day + _days);
     final request = ++_request;
     if (_hasError) {
       setState(() {
@@ -73,10 +91,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
 
     Future<List<Map<String, dynamic>>> fetch() =>
-        _api.airingSchedule(from: today, to: end, token: token);
+        _api.weekSchedule(token: token);
 
     // A new day gets a new key, so the calendar never starts on yesterday.
-    final name = 'calendar:${_dateKey(today)}';
+    final name = DiscoverApi.weekCacheName(today);
     // With a token the data carries the user's list statuses.
     final key = switch ((token, userId)) {
       (null, _) => name,
@@ -92,7 +110,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       await cache.load<List<Map<String, dynamic>>>(
         key: key,
         fetch: fetch,
-        decode: _decode,
+        decode: DiscoverApi.decodeSchedule,
         onData: show,
         maxAge: _maxAge,
         force: force,
@@ -114,13 +132,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(tr('load_error', lang))));
   }
-
-  static List<Map<String, dynamic>> _decode(Object? json) => List.unmodifiable(
-      [for (final item in json as List) item as Map<String, dynamic>]);
-
-  static String _dateKey(DateTime day) =>
-      '${day.year}-${day.month.toString().padLeft(2, '0')}-'
-      '${day.day.toString().padLeft(2, '0')}';
 
   @override
   Widget build(BuildContext context) {

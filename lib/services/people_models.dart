@@ -12,10 +12,22 @@ String? _text(Object? value) => value is String && value.trim().isNotEmpty ? val
 String? _imageUrl(Object? image) =>
     image is Map ? _text(image['large']) ?? _text(image['medium']) : null;
 
-bool _hasNextPage(Map json) {
+/// Whether more pages follow. A page that came back with no entries at all
+/// ends the list whatever AniList says, so a misbehaving `hasNextPage` can't
+/// keep it loading forever; one whose entries were all filtered out (adult
+/// media) does not, as later pages may still have something to show.
+bool _hasNextPage(Map json, {required bool sawEntries}) {
   final pageInfo = json['pageInfo'];
-  return pageInfo is Map && pageInfo['hasNextPage'] == true;
+  if (pageInfo is! Map || pageInfo['hasNextPage'] != true) return false;
+  // Set by toJson on a cached page whose entries were all filtered out.
+  return sawEntries || pageInfo['moreAfterFiltered'] == true;
 }
+
+/// `pageInfo` for a page being cached with [items] visible entries.
+Map<String, dynamic> _pageInfoJson({required bool hasNextPage, required bool hasItems}) => {
+      'hasNextPage': hasNextPage,
+      if (hasNextPage && !hasItems) 'moreAfterFiltered': true,
+    };
 
 /// A date AniList may only know part of (its `FuzzyDate`).
 @immutable
@@ -216,6 +228,7 @@ class VoicedCharactersPage {
   static VoicedCharactersPage fromJson(Object? json) {
     if (json is! Map) return empty;
     final edges = json['edges'];
+    final sawEntries = edges is List && edges.isNotEmpty;
     final items = <VoicedCharacter>[];
     if (edges is List) {
       for (final edge in edges) {
@@ -232,12 +245,12 @@ class VoicedCharactersPage {
     }
     return VoicedCharactersPage(
       items: appendVoicedCharacters(const [], items),
-      hasNextPage: _hasNextPage(json),
+      hasNextPage: _hasNextPage(json, sawEntries: sawEntries),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'pageInfo': {'hasNextPage': hasNextPage},
+        'pageInfo': _pageInfoJson(hasNextPage: hasNextPage, hasItems: items.isNotEmpty),
         'edges': [
           for (final item in items)
             {
@@ -295,6 +308,7 @@ class StaffRolesPage {
   static StaffRolesPage fromJson(Object? json) {
     if (json is! Map) return empty;
     final edges = json['edges'];
+    final sawEntries = edges is List && edges.isNotEmpty;
     final credits = <StaffRole>[];
     if (edges is List) {
       for (final edge in edges) {
@@ -304,11 +318,14 @@ class StaffRolesPage {
         credits.add(StaffRole(media: media, roles: [?_text(edge['staffRole'])]));
       }
     }
-    return StaffRolesPage(items: appendStaffRoles(const [], credits), hasNextPage: _hasNextPage(json));
+    return StaffRolesPage(
+      items: appendStaffRoles(const [], credits),
+      hasNextPage: _hasNextPage(json, sawEntries: sawEntries),
+    );
   }
 
   Map<String, dynamic> toJson() => {
-        'pageInfo': {'hasNextPage': hasNextPage},
+        'pageInfo': _pageInfoJson(hasNextPage: hasNextPage, hasItems: items.isNotEmpty),
         'edges': [
           for (final item in items)
             if (item.roles.isEmpty)
@@ -455,12 +472,12 @@ class MediaPage {
           for (final node in nodes)
             if (MediaRef.fromJson(node) case final MediaRef media when !media.isAdult) media,
       ]),
-      hasNextPage: _hasNextPage(json),
+      hasNextPage: _hasNextPage(json, sawEntries: nodes is List && nodes.isNotEmpty),
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'pageInfo': {'hasNextPage': hasNextPage},
+        'pageInfo': _pageInfoJson(hasNextPage: hasNextPage, hasItems: media.isNotEmpty),
         'nodes': [for (final item in media) item.toJson()],
       };
 }

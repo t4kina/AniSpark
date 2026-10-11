@@ -96,7 +96,11 @@ class _SeasonScreenState extends State<SeasonScreen> {
   }
 
   int get _lastPage => _pages.keys.fold(0, max);
-  bool get _hasNextPage => _pages[_lastPage]?.hasNextPage ?? false;
+  // An empty page ends the list even if AniList says more follow.
+  bool get _hasNextPage {
+    final page = _pages[_lastPage];
+    return page != null && page.hasNextPage && page.media.isNotEmpty;
+  }
 
   @override
   void initState() {

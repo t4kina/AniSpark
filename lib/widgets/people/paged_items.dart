@@ -15,9 +15,11 @@ class PagedItems<T> {
     this.failed = false,
   });
 
-  /// A list whose first page is [items]; an empty first page ends it.
-  PagedItems.firstPage(List<T> items, {required bool hasNextPage})
-      : this(items: items, lastPage: 1, hasNextPage: hasNextPage && items.isNotEmpty);
+  /// A list whose first page is [items]. [hasNextPage] must already be false
+  /// for a page AniList returned empty (the people models do that), but not
+  /// for one whose entries were all filtered out.
+  const PagedItems.firstPage(List<T> items, {required bool hasNextPage})
+      : this(items: items, lastPage: 1, hasNextPage: hasNextPage);
 
   final List<T> items;
   final int lastPage;
@@ -43,11 +45,12 @@ class PagedItems<T> {
 
   PagedItems<T> stoppedWithError() => _copy(loading: false, failed: true);
 
-  /// After loading [nextPage]: [merged] is every item shown so far. A page
-  /// with nothing in it ends the list, so a misbehaving `hasNextPage` can't
-  /// keep it loading forever.
-  PagedItems<T> withPage(List<T> merged, {required bool hasNextPage, required bool pageWasEmpty}) =>
-      PagedItems(items: merged, lastPage: nextPage, hasNextPage: hasNextPage && !pageWasEmpty);
+  /// After loading [nextPage]: [merged] is every item shown so far. Whether
+  /// the list goes on is [hasNextPage]; deciding that an empty page ends it
+  /// is up to the page models, which can tell a page AniList returned empty
+  /// from one whose entries were all filtered out.
+  PagedItems<T> withPage(List<T> merged, {required bool hasNextPage}) =>
+      PagedItems(items: merged, lastPage: nextPage, hasNextPage: hasNextPage);
 }
 
 /// Loads the next pages of [PagedItems] lists held by a [State]. Pages that
@@ -83,7 +86,7 @@ mixin PagedLoading<W extends StatefulWidget> on State<W> {
       if (!mounted || generation != _pagingGeneration) return;
       setState(() {
         final latest = read();
-        write(latest.withPage(merge(latest.items, items), hasNextPage: hasNextPage, pageWasEmpty: items.isEmpty));
+        write(latest.withPage(merge(latest.items, items), hasNextPage: hasNextPage));
       });
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) loadMoreIfNearEnd();

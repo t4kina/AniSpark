@@ -1,31 +1,31 @@
+import 'text_scan.dart';
 import 'translations.dart' show trf;
 
 // AniList's media embeds: img220(url), img(url), img50%(url), webm(url),
 // youtube(id).
-final _embed = RegExp(r'\b(?:img\s*\d*%?|webm|youtube)\s*\([^)]*\)', caseSensitive: false);
-final _spoiler = RegExp(r'~!(.*?)!~', dotAll: true);
+final _embed = RegExp(r'\b(?:img\s*\d*%?|webm|youtube)\s*\([^)]{0,2048}\)', caseSensitive: false);
 final _lineBreak = RegExp(r'<br\s*/?>', caseSensitive: false);
 final _paragraphEnd = RegExp(r'</p\s*>', caseSensitive: false);
-final _htmlLink = RegExp(r'<a\b[^>]*>(.*?)</a\s*>', caseSensitive: false, dotAll: true);
-final _markdownImage = RegExp(r'!\[[^\]]*\]\([^)]*\)');
-final _markdownLink = RegExp(r'\[([^\]]+)\]\([^)\s]+\)');
+final _htmlLink = RegExp(r'<a\b[^>]{0,1000}>(.{0,2000}?)</a\s*>', caseSensitive: false, dotAll: true);
+final _markdownImage = RegExp(r'!\[[^\]]{0,1000}\]\([^)]{0,2048}\)');
+final _markdownLink = RegExp(r'\[([^\]]{1,1000})\]\([^)\s]{1,2048}\)');
 // Only well-known tag names, so text like "a <b and c> d" or "<3" survives.
 final _htmlTag = RegExp(
   r'</?(?:a|b|i|u|s|p|br|hr|em|strong|span|div|center|img|h[1-6]|ul|ol|li|'
-  r'blockquote|code|pre|del|strike|sup|sub|small|big)\b[^>]*>',
+  r'blockquote|code|pre|del|strike|sup|sub|small|big)\b[^>]{0,1000}>',
   caseSensitive: false,
 );
-final _center = RegExp(r'~~~(.+?)~~~', dotAll: true);
-final _strike = RegExp(r'~~(.+?)~~', dotAll: true);
-final _bold = RegExp(r'(\*\*|__)(.+?)\1', dotAll: true);
+final _center = RegExp(r'~~~(.{1,2000}?)~~~', dotAll: true);
+final _strike = RegExp(r'~~(.{1,2000}?)~~', dotAll: true);
+final _bold = RegExp(r'(\*\*|__)(.{1,2000}?)\1', dotAll: true);
 // Single * or _ only counts as italics around a word, so snake_case and
 // "2 * 3 * 4" are left alone.
-final _italic = RegExp(r'(?<![\w*_])([*_])(?=\S)([^*_\n]+?)(?<=\S)\1(?![\w*_])');
+final _italic = RegExp(r'(?<![\w*_])([*_])(?=\S)([^*_\n]{1,1000}?)(?<=\S)\1(?![\w*_])');
 final _heading = RegExp(r'^#{1,6}[ \t]+', multiLine: true);
 final _quote = RegExp(r'^>[ \t]?', multiLine: true);
 final _rule = RegExp(r'^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$', multiLine: true);
 final _codeFence = RegExp(r'^[ \t]*```.*$', multiLine: true);
-final _inlineCode = RegExp(r'`([^`\n]+)`');
+final _inlineCode = RegExp(r'`([^`\n]{1,1000})`');
 final _numericEntity = RegExp(r'&#(x[0-9a-f]+|\d+);', caseSensitive: false);
 final _spaces = RegExp(r'[ \t]{2,}');
 final _edgeSpaces = RegExp(r'^[ \t]+|[ \t]+$', multiLine: true);
@@ -49,10 +49,19 @@ const _namedEntities = {
 /// line break.
 String cleanActivityText(String? text, {String spoilerLabel = '[spoiler]'}) {
   if (text == null || text.isEmpty) return '';
-  var result = text
-      .replaceAll('\r\n', '\n')
+  return _memo.of('$spoilerLabel\u0000$text', () => _clean(text, spoilerLabel));
+}
+
+final _memo = LruMemo();
+
+// Real activities are a few KB; anything longer is truncated so hostile text
+// can't make the regex passes below slow.
+const _maxActivityLength = 20000;
+
+String _clean(String input, String spoilerLabel) {
+  final text = input.length > _maxActivityLength ? input.substring(0, _maxActivityLength) : input;
+  var result = replaceSpoilers(text.replaceAll('\r\n', '\n'), _spoilerSentinel)
       // Spoilers go first so nothing inside them (images, links) leaks out.
-      .replaceAll(_spoiler, _spoilerSentinel)
       .replaceAll(_embed, '')
       .replaceAll(_lineBreak, '\n')
       .replaceAll(_paragraphEnd, '\n')

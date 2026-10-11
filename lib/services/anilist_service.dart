@@ -15,7 +15,10 @@ class AniListRequestException implements Exception {
 }
 
 class AniListService {
-  AniListService({http.Client? client}) : _client = client ?? _sharedClient;
+  /// [retryDelay] replaces the real wait before a rate-limit retry (tests).
+  AniListService({http.Client? client, Future<void> Function(Duration)? retryDelay})
+      : _client = client ?? _sharedClient,
+        _retryDelay = retryDelay ?? Future.delayed;
 
   static const String _baseUrl = 'https://graphql.anilist.co';
 
@@ -25,6 +28,11 @@ class AniListService {
   // Shared across instances so connections are kept alive between requests.
   static final http.Client _sharedClient = http.Client();
   final http.Client _client;
+  final Future<void> Function(Duration) _retryDelay;
+
+  static const _minRetryAfter = 1;
+  static const _maxRetryAfter = 120;
+  static const _defaultRetryAfter = 60;
 
   Future<Map<String, String>> _headers([String? token]) => Future.value({
         'Content-Type': 'application/json',
@@ -46,13 +54,17 @@ class AniListService {
     if (response.statusCode == 429) {
       _rateLimitCount++;
       if (_rateLimitCount == 1) rateLimitActiveNotifier.value = true;
-      final retryAfter = int.tryParse(response.headers['retry-after'] ?? '') ?? 60;
-      await Future.delayed(Duration(seconds: retryAfter));
-      response = await _client
-          .post(Uri.parse(_baseUrl), headers: headers, body: body)
-          .timeout(_requestTimeout);
-      _rateLimitCount--;
-      if (_rateLimitCount == 0) rateLimitActiveNotifier.value = false;
+      final seconds = (int.tryParse(response.headers['retry-after'] ?? '') ?? _defaultRetryAfter)
+          .clamp(_minRetryAfter, _maxRetryAfter);
+      try {
+        await _retryDelay(Duration(seconds: seconds));
+        response = await _client
+            .post(Uri.parse(_baseUrl), headers: headers, body: body)
+            .timeout(_requestTimeout);
+      } finally {
+        _rateLimitCount--;
+        if (_rateLimitCount == 0) rateLimitActiveNotifier.value = false;
+      }
     }
     return response;
   }

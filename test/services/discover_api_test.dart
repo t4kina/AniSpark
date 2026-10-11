@@ -132,42 +132,63 @@ void main() {
     });
   });
 
-  group('watchingThisWeek', () {
-    final now = DateTime.utc(2026, 10, 10);
-    final nowSeconds = now.millisecondsSinceEpoch ~/ 1000;
+  group('weekSchedule', () {
+    final now = DateTime(2026, 10, 10, 15, 30);
 
-    Map<String, dynamic> withStatus(int id, String? status) {
-      final schedule = _schedule(id);
-      return {
-        ...schedule,
-        'media': {
-          ...schedule['media'] as Map<String, dynamic>,
-          'mediaListEntry': status == null ? null : {'status': status},
-        },
-      };
-    }
-
-    test('asks for the next seven days with list statuses', () async {
+    test('asks for today from midnight through the next seven days', () async {
       final api = apiReturning(_schedulePage([]));
 
-      await api.watchingThisWeek('t', now: now);
+      await api.weekSchedule(token: 't', now: now);
 
-      expect(log.single.variables['from'], nowSeconds - 1);
-      expect(log.single.variables['to'], nowSeconds + 7 * 86400);
+      final midnight = DateTime(2026, 10, 10).millisecondsSinceEpoch ~/ 1000;
+      final end = DateTime(2026, 10, 17).millisecondsSinceEpoch ~/ 1000;
+      expect(log.single.variables['from'], midnight - 1);
+      expect(log.single.variables['to'], end);
       expect(log.single.variables['withListStatus'], isTrue);
       expect(log.single.authorization, 'Bearer t');
     });
 
-    test('keeps only titles the user is watching, across every page', () async {
-      final api = apiAnswering((request) => jsonResponse(switch (request.variables['page']) {
-            1 => _schedulePage([withStatus(1, 'CURRENT'), withStatus(2, 'COMPLETED')], hasNextPage: true),
-            _ => _schedulePage([withStatus(3, null), withStatus(4, 'CURRENT')]),
-          }));
+    test('works logged out, without list statuses', () async {
+      final api = apiReturning(_schedulePage([]));
 
-      final week = await api.watchingThisWeek('t', now: now);
+      await api.weekSchedule(now: now);
 
-      expect(log, hasLength(2));
-      expect([for (final s in week) s['id']], [1, 4]);
+      expect(log.single.variables['withListStatus'], isFalse);
+      expect(log.single.authorization, isNull);
+    });
+
+    test('names the cache after the local day', () {
+      expect(DiscoverApi.weekCacheName(DateTime(2026, 3, 5, 23, 59)), 'calendar:2026-03-05');
+    });
+  });
+
+  group('currentlyWatching', () {
+    final now = DateTime(2026, 10, 10, 15);
+    int at(Duration offset) => now.add(offset).millisecondsSinceEpoch ~/ 1000;
+
+    Map<String, dynamic> entry(int id, String? status, int airingAt) => {
+          'id': id,
+          'airingAt': airingAt,
+          'media': {'id': id, 'mediaListEntry': status == null ? null : {'status': status}},
+        };
+
+    test('keeps CURRENT titles that have not aired yet and air within seven days', () {
+      final week = [
+        entry(1, 'CURRENT', at(const Duration(hours: 2))),
+        entry(2, 'PLANNING', at(const Duration(hours: 2))),
+        entry(3, null, at(const Duration(hours: 2))),
+        entry(4, 'CURRENT', at(const Duration(hours: -2))),
+        entry(5, 'CURRENT', at(const Duration(days: 7, hours: 1))),
+        entry(6, 'CURRENT', at(const Duration(days: 6))),
+      ];
+
+      final kept = DiscoverApi.currentlyWatching(week, now: now);
+
+      expect([for (final s in kept) s['id']], [1, 6]);
+    });
+
+    test('ignores entries without an airing time', () {
+      expect(DiscoverApi.currentlyWatching([entry(1, 'CURRENT', 0)], now: now), isEmpty);
     });
   });
 

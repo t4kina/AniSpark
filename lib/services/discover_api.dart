@@ -100,13 +100,44 @@ class DiscoverApi {
     return List.unmodifiable(episodes);
   }
 
-  /// The episodes airing in the next seven days (from [now]) of titles on the
-  /// user's CURRENT list. Throws like [airingSchedule].
-  Future<List<Map<String, dynamic>>> watchingThisWeek(String token, {DateTime? now}) async {
-    final from = now ?? DateTime.now();
-    final week = await airingSchedule(from: from, to: from.add(const Duration(days: 7)), token: token);
+  /// Days of airing schedule shared by the calendar and Home's THIS WEEK.
+  static const weekDays = 7;
+
+  /// Name under which the week starting on [day]'s calendar day is cached.
+  /// Home and the calendar share it so either one warms the other. A new day
+  /// gets a new name, so a week never starts on yesterday.
+  static String weekCacheName(DateTime day) =>
+      'calendar:${day.year}-${day.month.toString().padLeft(2, '0')}-'
+      '${day.day.toString().padLeft(2, '0')}';
+
+  /// Every episode airing from local midnight today through the next seven
+  /// days, with the user's list statuses when a [token] is given. Throws like
+  /// [airingSchedule].
+  Future<List<Map<String, dynamic>>> weekSchedule({String? token, DateTime? now}) {
+    final current = now ?? DateTime.now();
+    final today = DateTime(current.year, current.month, current.day);
+    final end = DateTime(today.year, today.month, today.day + weekDays);
+    return airingSchedule(from: today, to: end, token: token);
+  }
+
+  /// Rebuilds a [weekSchedule] read back from the cache.
+  static List<Map<String, dynamic>> decodeSchedule(Object? json) => List.unmodifiable(
+      [for (final item in json as List) item as Map<String, dynamic>]);
+
+  /// The episodes of [week] of titles on the user's CURRENT list that have not
+  /// aired yet and air within seven days of [now] (a cached week can be hours
+  /// old and starts at midnight).
+  static List<Map<String, dynamic>> currentlyWatching(
+    Iterable<Map<String, dynamic>> week, {
+    DateTime? now,
+  }) {
+    final from = _epochSeconds(now ?? DateTime.now());
+    final to = from + weekDays * Duration.secondsPerDay;
     return List.unmodifiable(week.where((schedule) {
-      final entry = (schedule['media'] as Map)['mediaListEntry'];
+      final airingAt = schedule['airingAt'];
+      if (airingAt is! num || airingAt <= from || airingAt > to) return false;
+      final media = schedule['media'];
+      final entry = media is Map ? media['mediaListEntry'] : null;
       return entry is Map && entry['status'] == 'CURRENT';
     }));
   }

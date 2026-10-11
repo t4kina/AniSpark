@@ -1,3 +1,5 @@
+import 'text_scan.dart';
+
 /// Turns the markdown/HTML mix that AniList reviews are written in into
 /// readable plain text.
 ///
@@ -7,10 +9,16 @@
 /// revealed. Runs of three or more newlines collapse into one blank line.
 String cleanReviewText(String? raw, {String spoilerPlaceholder = '[spoiler]'}) {
   if (raw == null) return '';
+  return _memo.of('$spoilerPlaceholder\u0000$raw', () => _clean(raw, spoilerPlaceholder));
+}
+
+final _memo = LruMemo();
+
+String _clean(String raw, String spoilerPlaceholder) {
   var text = raw.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
   // Spoilers go first so nothing inside them (images, links…) survives, and
   // become a sentinel so later steps can't mangle the placeholder text.
-  text = text.replaceAll(_spoiler, _spoilerSentinel);
+  text = replaceSpoilers(text, _spoilerSentinel);
   for (final pattern in _embeds) {
     text = text.replaceAll(pattern, '');
   }
@@ -29,14 +37,12 @@ String cleanReviewText(String? raw, {String spoilerPlaceholder = '[spoiler]'}) {
 // A private-use character that never appears in real text.
 const _spoilerSentinel = '';
 
-final _spoiler = RegExp(r'~!([\s\S]*?)!~');
-
 // AniList's img(url), img220(url) and img50%(url), video embeds, markdown
 // images and <img> tags.
 final _embeds = [
-  RegExp(r'(?<![A-Za-z0-9_])(?:img\d*%?|youtube|webm)\([^)\s]*\)', caseSensitive: false),
-  RegExp(r'!\[[^\]]*\]\([^)]*\)'),
-  RegExp(r'<img\b[^>]*>', caseSensitive: false),
+  RegExp(r'(?<![A-Za-z0-9_])(?:img\d*%?|youtube|webm)\([^)\s(]{0,2048}\)', caseSensitive: false),
+  RegExp(r'!\[[^\[\]]{0,1000}\]\([^)(]{0,2048}\)'),
+  RegExp(r'<img\b[^<>]{0,1000}>', caseSensitive: false),
 ];
 
 final _lineBreakTag = RegExp(r'<br\s*/?>', caseSensitive: false);
@@ -47,14 +53,14 @@ final _blockEndTag = RegExp(
   caseSensitive: false,
 );
 // Only real tags: "<3" or "2 < 3 > 1" are left alone.
-final _anyTag = RegExp(r'</?[A-Za-z][A-Za-z0-9]*(?:\s[^<>]*)?/?>');
+final _anyTag = RegExp(r'</?[A-Za-z][A-Za-z0-9]*(?:\s[^<>]{0,1000})?/?>');
 
 String _stripHtml(String text) => text
     .replaceAll(_lineBreakTag, '\n')
     .replaceAll(_blockEndTag, '\n')
     .replaceAll(_anyTag, '');
 
-final _link = RegExp(r'\[([^\]]*)\]\([^)]*\)');
+final _link = RegExp(r'\[([^\[\]]{0,1000})\]\([^)(]{0,2048}\)');
 
 final _horizontalRule = RegExp(r'^[ \t]*([-*_])(?:[ \t]*\1){2,}[ \t]*$', multiLine: true);
 final _header = RegExp(r'^[ \t]*#{1,6}[ \t]*', multiLine: true);
@@ -70,18 +76,21 @@ String _stripLineMarkers(String text) => text
     .replaceAll(_header, '')
     .replaceAll(_listItem, '• ');
 
-// Bold may wrap onto the next line, but never across a blank line.
-const _withinParagraph = r'((?:[^\n]|\n(?!\n))+?)';
+// A span's text stops where the closing [mark] run starts, which is where a
+// lazy match would end anyway; the cap keeps unclosed openers from rescanning
+// each other. Bold may wrap onto the next line, but never across a blank line.
+String _span(String mark, int count) =>
+    '((?:[^\n$mark]|$mark(?!${mark * (count - 1)})|\n(?!\n)){1,2000}?)';
 
 final _emphasis = [
-  RegExp(r'\*\*\*' + _withinParagraph + r'\*\*\*'),
-  RegExp('___${_withinParagraph}___'),
-  RegExp(r'\*\*' + _withinParagraph + r'\*\*'),
-  RegExp('__${_withinParagraph}__'),
-  RegExp(r'~~(?=\S)(.+?)~~'),
+  RegExp(r'\*\*\*' + _span(r'\*', 3) + r'\*\*\*'),
+  RegExp('___${_span('_', 3)}___'),
+  RegExp(r'\*\*' + _span(r'\*', 2) + r'\*\*'),
+  RegExp('__${_span('_', 2)}__'),
+  RegExp(r'~~(?=\S)((?:[^~\n]|~(?!~)){1,2000}?)~~'),
   // Single markers only count around a word, so snake_case and 2*3*4 stay.
-  RegExp(r'(?<![A-Za-z0-9_*])\*(?![\s*])(.+?)(?<![\s*])\*(?![A-Za-z0-9_*])'),
-  RegExp(r'(?<![A-Za-z0-9_])_(?![\s_])(.+?)(?<![\s_])_(?![A-Za-z0-9_])'),
+  RegExp(r'(?<![A-Za-z0-9_*])\*(?![\s*])([^*\n]{1,2000}?)(?<![\s*])\*(?![A-Za-z0-9_*])'),
+  RegExp(r'(?<![A-Za-z0-9_])_(?![\s_])([^_\n]{1,2000}?)(?<![\s_])_(?![A-Za-z0-9_])'),
 ];
 
 // Nested markers like "____x____" need a second pass.

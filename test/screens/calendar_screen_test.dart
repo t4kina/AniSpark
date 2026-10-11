@@ -1,6 +1,7 @@
 import 'package:anispark/screens/calendar_screen.dart';
 import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/services/discover_api.dart';
 import 'package:anispark/utils/translations.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +35,33 @@ http.Response _page(List<Object?> schedules) => jsonResponse({
       },
     });
 
+/// A session the test can switch while the screen is open.
+class _SwitchableAuth extends AuthService {
+  String? _token;
+  Map<String, dynamic>? _user;
+
+  void signIn(String token, int id) {
+    _token = token;
+    _user = {'id': id};
+    notifyListeners();
+  }
+
+  void signOut() {
+    _token = null;
+    _user = null;
+    notifyListeners();
+  }
+
+  @override
+  String? get token => _token;
+
+  @override
+  Map<String, dynamic>? get user => _user;
+
+  @override
+  bool get isLoggedIn => _token != null;
+}
+
 void main() {
   late ApiCache cache;
   late List<RecordedRequest> log;
@@ -50,7 +78,7 @@ void main() {
   DiscoverApi apiAnswering(http.Response Function(RecordedRequest) handler) =>
       DiscoverApi(service: AniListService(client: mockAniList(log, handler)));
 
-  Future<void> pumpCalendar(WidgetTester tester, DiscoverApi api, {FakeAuthService? auth}) async {
+  Future<void> pumpCalendar(WidgetTester tester, DiscoverApi api, {AuthService? auth}) async {
     await tester.pumpWidget(appWith(CalendarScreen(api: api), cache: cache, auth: auth));
     for (var i = 0; i < 5; i++) {
       await tester.pump();
@@ -160,5 +188,40 @@ void main() {
 
     expect(find.text('Frieren'), findsOneWidget);
     expect(find.text(_en('load_error')), findsNothing);
+  });
+
+  testWidgets('reloads with the user list when the user logs in while open', (tester) async {
+    final auth = _SwitchableAuth();
+    await pumpCalendar(tester, apiAnswering((_) => _page(schedules)), auth: auth);
+
+    expect(find.byType(SegmentedButton<bool>), findsNothing);
+    expect(find.text('Dandadan'), findsOneWidget);
+    expect(log, hasLength(1));
+
+    auth.signIn('tok', 7);
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+
+    expect(log, hasLength(2));
+    expect(log.last.authorization, 'Bearer tok');
+    expect(log.last.variables['withListStatus'], isTrue);
+    expect(find.text('Frieren'), findsOneWidget);
+    expect(find.text('Dandadan'), findsNothing, reason: '"My list" is the default once logged in');
+  });
+
+  testWidgets('drops the user list when the user logs out while open', (tester) async {
+    final auth = _SwitchableAuth()..signIn('tok', 7);
+    await pumpCalendar(tester, apiAnswering((_) => _page(schedules)), auth: auth);
+    expect(find.text('Dandadan'), findsNothing);
+
+    auth.signOut();
+    for (var i = 0; i < 5; i++) {
+      await tester.pump();
+    }
+
+    expect(log, hasLength(2));
+    expect(log.last.authorization, isNull);
+    expect(find.text('Dandadan'), findsOneWidget);
   });
 }

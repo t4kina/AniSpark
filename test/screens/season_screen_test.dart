@@ -88,6 +88,21 @@ void main() {
     expect(find.text('Show 2-${DiscoverApi.seasonPageSize - 1}'), findsOneWidget);
   });
 
+  testWidgets('stops paging at an empty page even if AniList reports more', (tester) async {
+    await pumpSeason(
+      tester,
+      apiAnswering((r) => _page(r.variables['page'] as int,
+          count: r.variables['page'] == 1 ? DiscoverApi.seasonPageSize : 0, hasNextPage: true)),
+    );
+
+    for (var i = 0; i < 3; i++) {
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -20000));
+      await settle(tester);
+    }
+
+    expect(log.map((r) => r.variables['page']), [1, 2], reason: 'an empty page 2 is the end');
+  });
+
   testWidgets('filters by format and steps to the next season', (tester) async {
     await pumpSeason(tester, apiAnswering((r) => _page(1, count: 1)));
 

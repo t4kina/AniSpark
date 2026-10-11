@@ -16,7 +16,10 @@ import 'search_screen.dart';
 import 'season_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.discover});
+
+  /// Replaces the AniList discover API, for tests.
+  final DiscoverApi? discover;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -24,7 +27,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final _service = AniListService();
-  final _discover = DiscoverApi();
+  late final DiscoverApi _discover = widget.discover ?? DiscoverApi();
   List<dynamic> _trending = [];
   List<dynamic> _seasonal = [];
   List<dynamic> _popular = [];
@@ -50,41 +53,35 @@ class _HomeScreenState extends State<HomeScreen> {
     await Future.wait([_load(force: true), _loadCalendar(force: true)]);
   }
 
+  /// THIS WEEK is the calendar's week (same fetch, same cache entry, so
+  /// opening either one warms the other) narrowed to what the user is watching.
   Future<void> _loadCalendar({bool force = false}) async {
     final auth = context.read<AuthService>();
     final token = auth.token;
     if (!auth.isLoggedIn || token == null) return;
     final userId = auth.user?['id'] as int?;
     final cache = context.read<ApiCache>();
-    void show(List<dynamic> schedule) {
-      if (mounted) setState(() => _weeklySchedule = schedule);
+    void show(List<Map<String, dynamic>> week) {
+      if (mounted) setState(() => _weeklySchedule = DiscoverApi.currentlyWatching(week));
     }
 
     try {
       if (userId == null) {
         // Account id not fetched yet, so there is no cache namespace for it.
-        show(await _discover.watchingThisWeek(token));
+        show(await _discover.weekSchedule(token: token));
         return;
       }
-      await cache.load<List<dynamic>>(
-        key: ApiCache.userKey(userId, 'schedule'),
-        fetch: () => _discover.watchingThisWeek(token),
-        decode: (json) => _upcomingOnly(json as List<dynamic>),
-        onData: (schedule, {required isFresh}) => show(schedule),
+      await cache.load<List<Map<String, dynamic>>>(
+        key: ApiCache.userKey(userId, DiscoverApi.weekCacheName(DateTime.now())),
+        fetch: () => _discover.weekSchedule(token: token),
+        decode: DiscoverApi.decodeSchedule,
+        onData: (week, {required isFresh}) => show(week),
         maxAge: _scheduleMaxAge,
         force: force,
       );
     } on Exception catch (e) {
       debugPrint('[HomeScreen] Loading the weekly schedule failed: $e');
     }
-  }
-
-  // A cached schedule can be days old; drop episodes that have already aired.
-  static List<dynamic> _upcomingOnly(List<dynamic> schedule) {
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    return schedule
-        .where((s) => s is Map && ((s['airingAt'] as num?) ?? 0) > now)
-        .toList();
   }
 
   bool get _hasAnySection => [
