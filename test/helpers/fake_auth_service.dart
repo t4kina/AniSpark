@@ -23,13 +23,16 @@ class FakeAuthService extends AuthService {
 }
 
 /// Wraps [screen] with the providers screens read, using [auth] (logged out
-/// by default).
-Widget appWith(Widget screen, {required ApiCache cache, AuthService? auth}) =>
+/// by default) and [settings] (defaults when omitted).
+Widget appWith(Widget screen, {required ApiCache cache, AuthService? auth, SettingsProvider? settings}) =>
     MultiProvider(
       providers: [
         Provider.value(value: cache),
         ChangeNotifierProvider<AuthService>(create: (_) => auth ?? FakeAuthService()),
-        ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        if (settings != null)
+          ChangeNotifierProvider.value(value: settings)
+        else
+          ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
       child: MaterialApp(home: screen),
     );

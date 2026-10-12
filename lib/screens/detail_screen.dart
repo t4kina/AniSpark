@@ -408,7 +408,7 @@ class _DetailScreenState extends State<DetailScreen> {
     final characters = (d['characters']?['edges'] as List? ?? []).cast<Map<String, dynamic>>();
     final recommendations = [
       for (final node in (d['recommendations']?['nodes'] as List? ?? []).cast<Map<String, dynamic>>())
-        ?_recommendationItem(node),
+        ?_recommendationItem(node, settings),
     ];
     final trailer = d['trailer'] as Map<String, dynamic>?;
     final externalLinks = (d['externalLinks'] as List? ?? []).cast<Map<String, dynamic>>();
@@ -568,7 +568,7 @@ class _DetailScreenState extends State<DetailScreen> {
           _sectionPad(_sectionTitle(tr('detail_relations', lang))),
           DetailMediaRow(
             heroScope: 'detail-${widget.animeId}-relations',
-            items: [for (final edge in relations) _relationItem(edge, lang)],
+            items: [for (final edge in relations) _relationItem(edge, settings)],
             onOpen: _openMedia,
           ),
           const Divider(height: 1),
@@ -687,27 +687,34 @@ class _DetailScreenState extends State<DetailScreen> {
     );
   }
 
-  DetailMediaItem _relationItem(Map<String, dynamic> edge, String lang) {
+  /// [media]'s title in the user's title language (English, Romaji or
+  /// Native), like the page's own title.
+  static String _titleOf(Map<String, dynamic> media, SettingsProvider settings) {
+    final title = media['title'];
+    return settings.resolveTitle(title is Map<String, dynamic> ? title : null);
+  }
+
+  DetailMediaItem _relationItem(Map<String, dynamic> edge, SettingsProvider settings) {
     final node = edge['node'] as Map<String, dynamic>? ?? {};
     return DetailMediaItem(
       id: node['id'] as int?,
-      title: (node['title']?['english'] ?? node['title']?['romaji'] ?? '') as String,
+      title: _titleOf(node, settings),
       coverUrl: node['coverImage']?['large'] as String?,
       subtitle: Text(
-        _relationLabel(edge['relationType'] as String? ?? '', lang),
+        _relationLabel(edge['relationType'] as String? ?? '', settings.language),
         style: const TextStyle(fontSize: 10, color: Colors.grey),
       ),
     );
   }
 
   /// Null when AniList sent the recommendation without its media.
-  DetailMediaItem? _recommendationItem(Map<String, dynamic> node) {
+  DetailMediaItem? _recommendationItem(Map<String, dynamic> node, SettingsProvider settings) {
     final rec = node['mediaRecommendation'] as Map<String, dynamic>?;
     if (rec == null) return null;
     final rating = node['rating'] as int? ?? 0;
     return DetailMediaItem(
       id: rec['id'] as int?,
-      title: (rec['title']?['english'] ?? rec['title']?['romaji'] ?? '') as String,
+      title: _titleOf(rec, settings),
       coverUrl: rec['coverImage']?['large'] as String?,
       subtitle: Row(children: [
         const Icon(Icons.thumb_up_outlined, size: 10, color: Colors.grey),
