@@ -26,7 +26,16 @@ import 'character_screen.dart';
 
 class DetailScreen extends StatefulWidget {
   final int animeId;
-  const DetailScreen({super.key, required this.animeId});
+
+  /// Tag of the cover [Hero] in the list this page was opened from (see
+  /// `coverHeroTag`), so that cover flies into place; null without one.
+  final String? heroTag;
+
+  /// The cover the opening list already showed, so the page can draw it
+  /// from the first frame (where the flying cover lands) while it loads.
+  final String? initialCoverUrl;
+
+  const DetailScreen({super.key, required this.animeId, this.heroTag, this.initialCoverUrl});
 
   @override
   State<DetailScreen> createState() => _DetailScreenState();
@@ -34,6 +43,9 @@ class DetailScreen extends StatefulWidget {
 
 class _DetailScreenState extends State<DetailScreen> {
   final _service = AniListService();
+
+  /// The cover's hero tag: the opening list's, so its cover flies in.
+  String get _coverTag => widget.heroTag ?? 'cover_${widget.animeId}';
   Map<String, dynamic>? _data;
   bool _customListsRequested = false;
   bool _loading = true;
@@ -409,7 +421,7 @@ class _DetailScreenState extends State<DetailScreen> {
                         child: GestureDetector(
                           onTap: cover != null ? () => _openCover(context, cover!) : null,
                           child: Hero(
-                            tag: 'cover_${widget.animeId}',
+                            tag: _coverTag,
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(10),
                               child: cover != null
@@ -852,7 +864,7 @@ class _DetailScreenState extends State<DetailScreen> {
     Navigator.push(context, PageRouteBuilder(
       opaque: false,
       barrierColor: Colors.black87,
-      pageBuilder: (_, _, _) => _CoverViewer(tag: 'cover_${widget.animeId}', imageUrl: imageUrl),
+      pageBuilder: (_, _, _) => _CoverViewer(tag: _coverTag, imageUrl: imageUrl),
       transitionsBuilder: (_, animation, _, child) => FadeTransition(opacity: animation, child: child),
     ));
   }
