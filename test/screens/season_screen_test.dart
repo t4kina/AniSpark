@@ -120,6 +120,32 @@ void main() {
     expect(log.last.variables['formats'], ['MOVIE'], reason: 'filters are kept');
   });
 
+  testWidgets('the first page cascades in, and another season cross-fades in with its own covers',
+      (tester) async {
+    await pumpSeason(tester, apiAnswering((r) => _page(1, count: 2)));
+
+    double opacityOf(String title) => tester
+        .widget<FadeTransition>(find.ancestor(of: find.text(title), matching: find.byType(FadeTransition)).first)
+        .opacity
+        .value;
+    expect(opacityOf('Show 1-0'), lessThan(1), reason: 'entering');
+    await tester.pumpAndSettle();
+    expect(opacityOf('Show 1-0'), 1);
+
+    await tester.tap(find.byTooltip(_en('season_next')));
+    await settle(tester);
+
+    // Both grids are on screen while they cross-fade, with the same media.
+    expect(find.byType(CustomScrollView), findsNWidgets(2));
+    final tags = tester.widgetList<Hero>(find.byType(Hero)).map((hero) => hero.tag).toList();
+    expect(tags, hasLength(4));
+    expect(tags.toSet(), hasLength(4), reason: "each grid's covers have their own tags");
+    expect(tester.takeException(), isNull, reason: 'paging copes with both grids on the controller');
+
+    await tester.pumpAndSettle();
+    expect(find.byType(CustomScrollView), findsOneWidget);
+  });
+
   testWidgets('changes the sort from the menu', (tester) async {
     await pumpSeason(tester, apiAnswering((r) => _page(1, count: 1)));
 

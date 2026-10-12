@@ -5,7 +5,13 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
+import '../theme/app_motion.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/motion/cover_hero.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pressable.dart';
+import '../widgets/motion/rounded_hero.dart';
+import '../widgets/motion/staggered_entrance.dart';
 import 'detail_screen.dart';
 
 /// SharedPreferences key of the recent searches; cleared on logout.
@@ -53,6 +59,9 @@ class _SearchScreenState extends State<SearchScreen> {
   Timer? _debounce;
 
   List<dynamic> _results = [];
+  // Bumped for every new set of results: the old list fades out while the
+  // new one fades in, and their covers need different hero tags.
+  int _resultsVersion = 0;
   bool _loading = false;
   bool _hasError = false;
   bool _searched = false;
@@ -144,6 +153,7 @@ class _SearchScreenState extends State<SearchScreen> {
     if (_cache.containsKey(key)) {
       setState(() {
         _results = _cache[key]!;
+        _resultsVersion++;
         _searched = true;
         _loading = false;
         _hasError = false;
@@ -168,6 +178,7 @@ class _SearchScreenState extends State<SearchScreen> {
       if (key != _cacheKey) return;
       setState(() {
         _results = results;
+        _resultsVersion++;
         _loading = false;
         _searched = true;
       });
@@ -361,22 +372,35 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
           const Divider(height: 1),
           // Results
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _hasError
-                    ? _buildError()
-                    : !_searched
-                        ? _buildEmptyState(lang)
-                        : _results.isEmpty
-                            ? Center(child: Text(tr('no_results', lang)))
-                            : ListView.builder(
-                                padding: const EdgeInsets.only(top: 8, bottom: 16),
-                                itemCount: _results.length,
-                                itemBuilder: (_, i) => _ResultCard(data: _results[i]),
-                              ),
-          ),
+          Expanded(child: FadeSwitcher(child: _buildResults(lang))),
         ],
+      ),
+    );
+  }
+
+  /// The area under the controls; each state has its own key so changing
+  /// state (or getting new results) cross-fades.
+  Widget _buildResults(String lang) {
+    if (_loading) {
+      return const Center(key: ValueKey('loading'), child: CircularProgressIndicator());
+    }
+    if (_hasError) return KeyedSubtree(key: const ValueKey('error'), child: _buildError());
+    if (!_searched) return KeyedSubtree(key: const ValueKey('start'), child: _buildEmptyState(lang));
+    if (_results.isEmpty) {
+      return Center(key: const ValueKey('no-results'), child: Text(tr('no_results', lang)));
+    }
+    final heroScope = 'search-$_resultsVersion';
+    final results = _results;
+    return EntranceGate(
+      key: ValueKey(heroScope),
+      trigger: results,
+      child: ListView.builder(
+        padding: const EdgeInsets.only(top: 8, bottom: 16),
+        itemCount: results.length,
+        itemBuilder: (_, i) => StaggeredEntrance(
+          index: i,
+          child: _ResultCard(data: results[i], heroScope: heroScope),
+        ),
       ),
     );
   }
@@ -486,7 +510,11 @@ class _SearchScreenState extends State<SearchScreen> {
 
 class _ResultCard extends StatelessWidget {
   final dynamic data;
-  const _ResultCard({required this.data});
+
+  /// The results list's scope for the cover's hero tag.
+  final String heroScope;
+
+  const _ResultCard({required this.data, required this.heroScope});
 
   @override
   Widget build(BuildContext context) {
@@ -515,13 +543,20 @@ class _ResultCard extends StatelessWidget {
       ?episodeLabel,
       if (score != null) '★ ${(score / 10).toStringAsFixed(1)}',
     ];
+    final heroTag = id == null ? null : coverHeroTag(heroScope, id);
+    final fadeIn = AppMotion.of(context, AppMotion.short);
+    final coverPlaceholder = ColoredBox(color: Colors.grey[800]!);
 
-    return GestureDetector(
+    return Pressable(
+      // A full-width card only needs a hint of a press.
+      pressedScale: 0.98,
       onTap: id == null
           ? null
           : () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)),
+                MaterialPageRoute(
+                  builder: (_) => DetailScreen(animeId: id, heroTag: heroTag, initialCoverUrl: cover),
+                ),
               ),
       child: Container(
         height: 140,
@@ -540,6 +575,8 @@ class _ResultCard extends StatelessWidget {
                 imageUrl: banner,
                 fit: BoxFit.cover,
                 memCacheWidth: 600,
+                fadeInDuration: fadeIn,
+                fadeOutDuration: Duration.zero,
                 errorWidget: (_, _, _) => const SizedBox.shrink(),
               ),
             // Dark overlay
@@ -562,21 +599,22 @@ class _ResultCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Cover
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: SizedBox(
-                      width: 78,
-                      height: 116,
+                  SizedBox(
+                    width: 78,
+                    height: 116,
+                    child: RoundedHero(
+                      tag: heroTag,
+                      borderRadius: const BorderRadius.all(Radius.circular(6)),
                       child: cover != null
                           ? CachedNetworkImage(
                               imageUrl: cover,
                               fit: BoxFit.cover,
                               memCacheWidth: 160,
-                              errorWidget: (_, _, _) => Container(
-                                color: Colors.grey[800],
-                              ),
+                              fadeInDuration: fadeIn,
+                              fadeOutDuration: Duration.zero,
+                              errorWidget: (_, _, _) => coverPlaceholder,
                             )
-                          : Container(color: Colors.grey[800]),
+                          : coverPlaceholder,
                     ),
                   ),
                   const SizedBox(width: 12),

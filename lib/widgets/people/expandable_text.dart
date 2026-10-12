@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_motion.dart';
+
 /// A long text cut to [collapsedLines] lines, with a "read more" / "show
 /// less" toggle once it's longer than [toggleThreshold] characters.
 class ExpandableText extends StatefulWidget {
@@ -33,7 +35,10 @@ class _ExpandableTextState extends State<ExpandableText> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         AnimatedCrossFade(
-          duration: const Duration(milliseconds: 200),
+          duration: AppMotion.of(context, AppMotion.medium),
+          firstCurve: AppMotion.exit,
+          secondCurve: AppMotion.enter,
+          sizeCurve: AppMotion.standard,
           crossFadeState: _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
           firstChild: Text(
             widget.text,

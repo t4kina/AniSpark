@@ -7,8 +7,14 @@ import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/api_cache.dart';
 import '../services/discover_api.dart';
+import '../theme/app_motion.dart';
 import '../utils/anime_season.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/motion/cover_hero.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pressable.dart';
+import '../widgets/motion/rounded_hero.dart';
+import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/skeletons.dart';
 import 'detail_screen.dart';
 
@@ -132,6 +138,13 @@ class _SeasonScreenState extends State<SeasonScreen> {
     return 'season:${_season.key}:$sort:$formats:p$page';
   }
 
+  /// The season, sort and formats shown, e.g. `FALL-2026:SCORE_DESC:TV`.
+  /// Another selection gets a new grid that cross-fades with the old one.
+  String get _selectionKey {
+    final formats = _formats.isEmpty ? 'ALL' : (_formats.toList()..sort()).join('+');
+    return '${_season.key}:$_sort:$formats';
+  }
+
   /// Loads [page] of the current selection, from the cache first.
   Future<void> _loadPage(int page, {bool force = false}) async {
     final generation = _generation;
@@ -204,7 +217,9 @@ class _SeasonScreenState extends State<SeasonScreen> {
 
   void _onScroll() {
     if (!mounted || !_scroll.hasClients) return;
-    if (_scroll.position.extentAfter > _loadMoreExtent) return;
+    // While a new selection's grid fades in over the old one both use the
+    // controller; the newest is the one that pages.
+    if (_scroll.positions.last.extentAfter > _loadMoreExtent) return;
     if (_loadingFirst || _loadingMore || _hasError || _moreError || !_hasNextPage) return;
     _loadPage(_lastPage + 1);
   }
@@ -404,34 +419,45 @@ class _SeasonScreenState extends State<SeasonScreen> {
         ),
       );
 
-  Widget _buildContent(String lang) {
+  Widget _buildContent(String lang) => FadeSwitcher(child: _buildState(lang));
+
+  Widget _buildState(String lang) {
     if (_loadingFirst && _pages.isEmpty) return const _GridSkeleton();
     if (_hasError) return _buildError(lang);
     final items = _items;
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: CustomScrollView(
-        controller: _scroll,
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          if (items.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Text(tr('no_results', lang), style: const TextStyle(color: Colors.grey)),
+    final selection = _selectionKey;
+    // The first page cascades in; later pages are past the staggered items.
+    return EntranceGate(
+      key: ValueKey(selection),
+      trigger: _pages[1],
+      child: RefreshIndicator(
+        onRefresh: _refresh,
+        child: CustomScrollView(
+          controller: _scroll,
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            if (items.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Text(tr('no_results', lang), style: const TextStyle(color: Colors.grey)),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.all(12),
+                sliver: SliverGrid.builder(
+                  gridDelegate: _gridDelegate,
+                  itemCount: items.length,
+                  itemBuilder: (_, i) => StaggeredEntrance(
+                    index: i,
+                    child: _SeasonTile(media: items[i], lang: lang, heroScope: 'season-$selection'),
+                  ),
+                ),
               ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.all(12),
-              sliver: SliverGrid.builder(
-                gridDelegate: _gridDelegate,
-                itemCount: items.length,
-                itemBuilder: (_, i) => _SeasonTile(media: items[i], lang: lang),
-              ),
-            ),
-          SliverToBoxAdapter(child: _buildFooter(lang)),
-        ],
+            SliverToBoxAdapter(child: _buildFooter(lang)),
+          ],
+        ),
       ),
     );
   }
@@ -480,10 +506,13 @@ class _SeasonScreenState extends State<SeasonScreen> {
 
 /// Grid cover with score, title, format and episode count.
 class _SeasonTile extends StatelessWidget {
-  const _SeasonTile({required this.media, required this.lang});
+  const _SeasonTile({required this.media, required this.lang, required this.heroScope});
 
   final Map<String, dynamic> media;
   final String lang;
+
+  /// The grid's scope for the cover's hero tag.
+  final String heroScope;
 
   @override
   Widget build(BuildContext context) {
@@ -499,39 +528,42 @@ class _SeasonTile extends StatelessWidget {
       if (format != null) _formatLabel(format, lang),
       if (episodes != null) trf('search_eps', lang, {'n': episodes}),
     ].join(' · ');
-    final placeholder =
-        Container(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final heroTag = id == null ? null : coverHeroTag(heroScope, id);
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
+    return Pressable(
       onTap: id == null
           ? null
           : () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)),
+                MaterialPageRoute(
+                  builder: (_) => DetailScreen(animeId: id, heroTag: heroTag, initialCoverUrl: cover),
+                ),
               ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (cover == null)
-                    placeholder
-                  else
-                    CachedNetworkImage(
-                      imageUrl: cover,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 240,
-                      placeholder: (_, _) => placeholder,
-                      errorWidget: (_, _, _) => placeholder,
-                    ),
-                  if (score != null) _ScoreOverlay(score: score),
-                ],
-              ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // Only the cover flies; the score stays on the tile.
+                RoundedHero(
+                  tag: heroTag,
+                  child: cover == null
+                      ? placeholder
+                      : CachedNetworkImage(
+                          imageUrl: cover,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 240,
+                          fadeInDuration: AppMotion.of(context, AppMotion.short),
+                          fadeOutDuration: Duration.zero,
+                          placeholder: (_, _) => placeholder,
+                          errorWidget: (_, _, _) => placeholder,
+                        ),
+                ),
+                if (score != null) _ScoreOverlay(score: score),
+              ],
             ),
           ),
           const SizedBox(height: 5),
@@ -568,6 +600,7 @@ class _ScoreOverlay extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
           decoration: BoxDecoration(
+            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,

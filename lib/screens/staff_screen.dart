@@ -12,6 +12,8 @@ import '../utils/review_text.dart';
 import '../utils/translations.dart';
 import '../widgets/detail/load_error_view.dart';
 import '../widgets/detail/section_title.dart';
+import '../widgets/motion/cover_hero.dart';
+import '../widgets/motion/fade_switcher.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/people/expandable_text.dart';
 import '../widgets/people/info_pill.dart';
@@ -182,7 +184,7 @@ class _StaffScreenState extends State<StaffScreen> with PagedLoading {
     return Scaffold(
       body: Stack(
         children: [
-          _body(lang),
+          FadeSwitcher(child: _body(lang)),
           // 44px touch target around a 36px circle, so the offset is 4px smaller.
           Positioned(
             top: MediaQuery.paddingOf(context).top + 2,
@@ -318,10 +320,13 @@ class _StaffScreenState extends State<StaffScreen> with PagedLoading {
               itemCount: _characters.items.length,
               itemBuilder: (context, i) {
                 final item = _characters.items[i];
+                // One media can be on several tiles (each character once).
+                final heroTag = coverHeroTag('staff-${widget.staffId}-voiced-${item.character.id}', item.media.id);
                 return VoicedCharacterTile(
                   item: item,
                   onCharacterTap: () => openCharacter(context, item.character),
-                  onMediaTap: () => openMedia(context, item.media),
+                  onMediaTap: () => openMedia(context, item.media, heroTag: heroTag),
+                  mediaHeroTag: heroTag,
                 );
               },
             ),
@@ -330,11 +335,13 @@ class _StaffScreenState extends State<StaffScreen> with PagedLoading {
               itemCount: _roles.items.length,
               itemBuilder: (context, i) {
                 final role = _roles.items[i];
+                final heroTag = coverHeroTag('staff-${widget.staffId}-roles', role.media.id);
                 return MediaCoverTile(
                   media: role.media,
                   subtitle: role.roles.join(', '),
                   subtitleLines: 2,
-                  onTap: () => openMedia(context, role.media),
+                  onTap: () => openMedia(context, role.media, heroTag: heroTag),
+                  heroTag: heroTag,
                 );
               },
             ),

@@ -1,8 +1,10 @@
+import 'package:anispark/screens/detail_screen.dart';
 import 'package:anispark/screens/studio_screen.dart';
 import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/people_api.dart';
 import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/motion/cover_hero.dart';
 import 'package:anispark/widgets/people/media_cover_tile.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -120,6 +122,19 @@ void main() {
     expect(find.byType(MediaCoverTile), findsNWidgets(2));
     expect(find.text(_en('studio_main_productions').toUpperCase()), findsNothing);
     expect(find.text(_en('studio_other_productions').toUpperCase()), findsNothing);
+  });
+
+  testWidgets('opens a production with its cover flying from the grid', (tester) async {
+    await pumpStudio(tester, apiAnswering((_) => _studio(main: _page([1]), other: _page([]))));
+
+    await tester.tap(find.text('Show 1'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(tester.takeException(), isNull);
+    final detail = tester.widget<DetailScreen>(find.byType(DetailScreen));
+    expect(detail.animeId, 1);
+    expect(detail.heroTag, coverHeroTag('studio-11-main', 1));
   });
 
   testWidgets('shows an error with retry and the known name when loading fails', (tester) async {

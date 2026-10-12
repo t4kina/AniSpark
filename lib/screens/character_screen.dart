@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
@@ -6,9 +7,15 @@ import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../services/people_api.dart';
+import '../theme/app_motion.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/review_text.dart';
 import '../utils/translations.dart' show tr;
+import '../widgets/motion/cover_hero.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pop_on_change.dart';
+import '../widgets/motion/pressable.dart';
+import '../widgets/motion/rounded_hero.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/people/expandable_text.dart';
 import '../widgets/people/info_pill.dart';
@@ -130,6 +137,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
     }
     final current = _data;
     if (current != null) {
+      if (!wasFav) HapticFeedback.lightImpact();
       setState(() => _data = current.copyWith(isFavourite: !wasFav));
     }
     _load(force: true);
@@ -143,7 +151,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          _loading ? _buildShimmer() : _buildContent(),
+          FadeSwitcher(child: _loading ? _buildPlaceholder() : _buildContent()),
           // 44px touch targets around 36px circles, so offsets are 4px smaller.
           Positioned(
             top: MediaQuery.of(context).padding.top + 2,
@@ -157,11 +165,16 @@ class _CharacterScreenState extends State<CharacterScreen> {
                   onPressed: () => Navigator.pop(context),
                 ),
                 const Spacer(),
-                overlayBtn(
-                  icon: isFav ? Icons.favorite : Icons.favorite_border,
-                  color: isFav ? Colors.red : Colors.white,
-                  tooltip: tr('tooltip_favourite', lang),
-                  onPressed: _isFresh && !_togglingFav ? _toggleFavourite : null,
+                // Pops when it becomes a favourite, not when it stops.
+                PopOnChange(
+                  value: isFav,
+                  when: (value) => value == true,
+                  child: overlayBtn(
+                    icon: isFav ? Icons.favorite : Icons.favorite_border,
+                    color: isFav ? Colors.red : Colors.white,
+                    tooltip: tr('tooltip_favourite', lang),
+                    onPressed: _isFresh && !_togglingFav ? _toggleFavourite : null,
+                  ),
                 ),
               ],
             ),
@@ -171,24 +184,54 @@ class _CharacterScreenState extends State<CharacterScreen> {
     );
   }
 
-  Widget _buildShimmer() {
+  /// Shaped like the loaded page (the photo with the name over its bottom,
+  /// then the info pills), so cross-fading to it doesn't jump.
+  Widget _buildPlaceholder() {
     final topPadding = MediaQuery.of(context).padding.top;
     final cs = Theme.of(context).colorScheme;
+    Widget block(double width, double height, {double radius = 6, Color? color}) => Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: color ?? cs.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(radius),
+          ),
+        );
+    final onPhoto = cs.surface.withValues(alpha: 0.6);
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(height: 300 + topPadding, color: cs.surfaceContainerHighest),
-        const SizedBox(height: 16),
+        Container(
+          height: _photoHeight + topPadding,
+          padding: const EdgeInsets.only(bottom: 24),
+          alignment: Alignment.bottomCenter,
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest,
+            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              block(180, 24, color: onPhoto),
+              const SizedBox(height: 8),
+              block(110, 14, color: onPhoto),
+            ],
+          ),
+        ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Column(children: [
-            Container(height: 20, color: cs.surfaceContainerHighest),
-            const SizedBox(height: 8),
-            Container(height: 14, width: 120, color: cs.surfaceContainerHighest),
-          ]),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [block(84, 26, radius: 20), block(64, 26, radius: 20), block(96, 26, radius: 20)],
+          ),
         ),
       ],
     );
   }
+
+  /// Height of the photo at the top, under the status bar.
+  static const _photoHeight = 340.0;
 
   Widget _buildContent() {
     final d = _data;
@@ -242,7 +285,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
                     bottomRight: Radius.circular(24),
                   ),
                   child: SizedBox(
-                    height: 340 + topPadding,
+                    height: _photoHeight + topPadding,
                     width: double.infinity,
                     child: image != null
                         ? CachedNetworkImage(
@@ -382,7 +425,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: media.length,
-                itemBuilder: (_, i) => _mediaCard(media[i], settings.resolveTitle(media[i].title)),
+                itemBuilder: (_, i) => _mediaCard(media[i], settings.resolveTitle(media[i].title), i),
               ),
             ),
           ),
@@ -426,38 +469,42 @@ class _CharacterScreenState extends State<CharacterScreen> {
         ),
       );
 
-  /// [title] is in the viewer's title language.
-  Widget _mediaCard(MediaRef media, String title) {
+  /// [title] is in the viewer's title language; [index] is its place in the
+  /// row (AniList may list a media twice, and hero tags must differ).
+  Widget _mediaCard(MediaRef media, String title, int index) {
     final image = media.coverUrl;
-    final cs = Theme.of(context).colorScheme;
+    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final heroTag = coverHeroTag('character-${widget.characterId}-media-$index', media.id);
 
     return Padding(
       padding: const EdgeInsets.only(right: 10),
       child: MergeSemantics(
         child: Semantics(
           button: true,
-          child: GestureDetector(
-            onTap: () => openMedia(context, media),
+          child: Pressable(
+            onTap: () => openMedia(context, media, heroTag: heroTag),
             child: SizedBox(
               width: 100,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: image != null
-                        ? CachedNetworkImage(
-                            imageUrl: image,
-                            width: 100,
-                            height: 130,
-                            fit: BoxFit.cover,
-                            memCacheWidth: 200,
-                            placeholder: (_, _) => Container(color: cs.surfaceContainerHighest),
-                            errorWidget: (_, _, _) => Container(color: cs.surfaceContainerHighest),
-                          )
-                        : Container(
-                            width: 100, height: 130,
-                            color: cs.surfaceContainerHighest),
+                  SizedBox(
+                    width: 100,
+                    height: 130,
+                    child: RoundedHero(
+                      tag: heroTag,
+                      child: image != null
+                          ? CachedNetworkImage(
+                              imageUrl: image,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 200,
+                              fadeInDuration: AppMotion.of(context, AppMotion.short),
+                              fadeOutDuration: Duration.zero,
+                              placeholder: (_, _) => placeholder,
+                              errorWidget: (_, _, _) => placeholder,
+                            )
+                          : placeholder,
+                    ),
                   ),
                   const SizedBox(height: 4),
                   Text(title,

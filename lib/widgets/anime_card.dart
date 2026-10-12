@@ -6,18 +6,29 @@ import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../screens/detail_screen.dart';
 import '../services/auth_service.dart';
+import '../theme/app_motion.dart';
 import '../utils/translations.dart' show tr;
 import 'entry_editor/entry_editor_sheet.dart';
+import 'motion/cover_hero.dart';
+import 'motion/pressable.dart';
+import 'motion/rounded_hero.dart';
 
 class AnimeCard extends StatelessWidget {
   final dynamic animeData; // from API
   final bool showScore;
 
+  /// The list this card is in (see `coverHeroTag`), so its cover flies into
+  /// the detail page; unique on the screen. No flight without one.
+  final String? heroScope;
+
   const AnimeCard({
     super.key,
     required this.animeData,
     this.showScore = true,
+    this.heroScope,
   });
+
+  static const _coverRadius = BorderRadius.all(Radius.circular(8));
 
   /// Long-press quick add: opens the entry editor, which looks the media up
   /// in the user's list (a new entry starts as Planning). Does nothing when
@@ -37,19 +48,22 @@ class AnimeCard extends StatelessWidget {
     final title = context.select<SettingsProvider, String>(
       (s) => s.resolveTitle(animeData['title'] as Map<String, dynamic>?),
     );
-    final image = animeData['coverImage']?['large'];
+    final image = animeData['coverImage']?['large'] as String?;
     final score = animeData['averageScore'];
     final lang = context.select<SettingsProvider, String>((s) => s.language);
     final loggedIn = context.select<AuthService, bool>((a) => a.isLoggedIn);
     final canQuickAdd = id != null && loggedIn;
+    final scope = heroScope;
+    final heroTag = id != null && scope != null ? coverHeroTag(scope, id) : null;
+    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
 
-    final card = GestureDetector(
+    final card = Pressable(
       onTap: id == null
           ? null
           : () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => DetailScreen(animeId: id),
+                  builder: (_) => DetailScreen(animeId: id, heroTag: heroTag, initialCoverUrl: image),
                 ),
               ),
       onLongPress: id == null ? null : () => _quickAdd(context),
@@ -57,23 +71,22 @@ class AnimeCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  image != null
-                      ? CachedNetworkImage(
-                          imageUrl: image,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 240,
-                          placeholder: (ctx, _) =>
-                              Container(color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
-                          errorWidget: (ctx, _, _) =>
-                              Container(color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
-                        )
-                      : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                ],
+            child: SizedBox(
+              width: double.infinity,
+              child: RoundedHero(
+                tag: heroTag,
+                borderRadius: _coverRadius,
+                child: image != null
+                    ? CachedNetworkImage(
+                        imageUrl: image,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 240,
+                        fadeInDuration: AppMotion.of(context, AppMotion.short),
+                        fadeOutDuration: Duration.zero,
+                        placeholder: (_, _) => placeholder,
+                        errorWidget: (_, _, _) => placeholder,
+                      )
+                    : placeholder,
               ),
             ),
           ),

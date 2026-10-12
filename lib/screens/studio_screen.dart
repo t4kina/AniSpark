@@ -9,6 +9,8 @@ import '../services/people_api.dart';
 import '../utils/translations.dart';
 import '../widgets/detail/load_error_view.dart';
 import '../widgets/detail/section_title.dart';
+import '../widgets/motion/cover_hero.dart';
+import '../widgets/motion/fade_switcher.dart';
 import '../widgets/people/info_pill.dart';
 import '../widgets/people/media_cover_tile.dart';
 import '../widgets/people/paged_items.dart';
@@ -140,39 +142,58 @@ class _StudioScreenState extends State<StudioScreen> with PagedLoading {
     final lang = context.watch<SettingsProvider>().language;
     final studio = _studio;
     final name = studio != null && studio.name.isNotEmpty ? studio.name : widget.name ?? '';
+    // Loading, failed and loaded are whole pages, app bar included, so they
+    // cross-fade; only the loaded one scrolls with [_scroll] and refreshes.
     return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: _refresh,
-        // Nothing to refresh until the page has loaded (retry covers that).
-        notificationPredicate: (notification) => _studio != null && notification.depth == 0,
-        child: CustomScrollView(
-          controller: _scroll,
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverAppBar.medium(
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back),
-                tooltip: tr('tooltip_back', lang),
-                onPressed: () => Navigator.pop(context),
-              ),
-              title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+      body: FadeSwitcher(
+        child: switch ((studio, _loading)) {
+          (final StudioDetail studio, _) => RefreshIndicator(
+              key: const ValueKey('content'),
+              onRefresh: _refresh,
+              child: _page(name, lang, controller: _scroll, slivers: _content(studio, lang)),
             ),
-            ..._content(studio, lang),
-          ],
-        ),
+          (null, true) => _page(
+              name,
+              lang,
+              key: const ValueKey('loading'),
+              slivers: const [SliverToBoxAdapter(child: _GridSkeleton())],
+            ),
+          (null, false) => _page(
+              name,
+              lang,
+              key: const ValueKey('error'),
+              slivers: [SliverFillRemaining(hasScrollBody: false, child: LoadErrorView(onRetry: _retry))],
+            ),
+        },
       ),
     );
   }
 
-  List<Widget> _content(StudioDetail? studio, String lang) {
-    if (studio == null) {
-      return [
-        if (_loading)
-          const SliverToBoxAdapter(child: _GridSkeleton())
-        else
-          SliverFillRemaining(hasScrollBody: false, child: LoadErrorView(onRetry: _retry)),
-      ];
-    }
+  Widget _page(
+    String name,
+    String lang, {
+    Key? key,
+    ScrollController? controller,
+    required List<Widget> slivers,
+  }) =>
+      CustomScrollView(
+        key: key,
+        controller: controller,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverAppBar.medium(
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              tooltip: tr('tooltip_back', lang),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+          ...slivers,
+        ],
+      );
+
+  List<Widget> _content(StudioDetail studio, String lang) {
     final mainIds = {for (final media in _main.items) media.id};
     final others = _main.hasNextPage
         ? const <MediaRef>[]
@@ -213,10 +234,10 @@ class _StudioScreenState extends State<StudioScreen> with PagedLoading {
           child: Center(child: Text(tr('nothing_here', lang), style: const TextStyle(color: Colors.grey))),
         ),
       if (showsTitles && _main.items.isNotEmpty) _title(tr('studio_main_productions', lang)),
-      _grid(_main.items, lang),
+      _grid(_main.items, lang, heroScope: 'studio-${widget.studioId}-main'),
       if (others.isNotEmpty) ...[
         if (showsTitles) _title(tr('studio_other_productions', lang)),
-        _grid(others, lang),
+        _grid(others, lang, heroScope: 'studio-${widget.studioId}-other'),
       ],
       SliverToBoxAdapter(
         child: LoadMoreFooter(
@@ -236,16 +257,20 @@ class _StudioScreenState extends State<StudioScreen> with PagedLoading {
         ),
       );
 
-  Widget _grid(List<MediaRef> media, String lang) => SliverPadding(
+  Widget _grid(List<MediaRef> media, String lang, {required String heroScope}) => SliverPadding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         sliver: SliverGrid.builder(
           gridDelegate: mediaCoverGridDelegate,
           itemCount: media.length,
-          itemBuilder: (context, i) => MediaCoverTile(
-            media: media[i],
-            subtitle: mediaFormatAndYear(media[i], lang),
-            onTap: () => openMedia(context, media[i]),
-          ),
+          itemBuilder: (context, i) {
+            final heroTag = coverHeroTag(heroScope, media[i].id);
+            return MediaCoverTile(
+              media: media[i],
+              subtitle: mediaFormatAndYear(media[i], lang),
+              onTap: () => openMedia(context, media[i], heroTag: heroTag),
+              heroTag: heroTag,
+            );
+          },
         ),
       );
 }

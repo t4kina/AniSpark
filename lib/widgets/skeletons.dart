@@ -117,43 +117,77 @@ class FeedSkeleton extends StatelessWidget {
       );
 }
 
-/// Placeholder for the media detail page (banner, cover, title, buttons).
-class DetailSkeleton extends StatelessWidget {
-  const DetailSkeleton({super.key});
+/// Placeholder for the media detail page's title, studio and stats, under
+/// the cover. The page draws the banner and the cover itself while loading
+/// (the cover flies in from the list that opened it).
+class DetailInfoSkeleton extends StatelessWidget {
+  const DetailInfoSkeleton({super.key});
 
   @override
   Widget build(BuildContext context) => Skeleton(
-        child: SingleChildScrollView(
-          physics: const NeverScrollableScrollPhysics(),
-          child: Column(
-            children: [
-              const SkeletonBox(height: 200, radius: 0),
-              const SizedBox(height: 16),
-              const SkeletonBox(width: 130, height: 190, radius: 10),
-              const SizedBox(height: 16),
-              const SkeletonBox(width: 220, height: 18),
-              const SizedBox(height: 8),
-              const SkeletonBox(width: 120, height: 12),
-              const SizedBox(height: 24),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Row(
-                  children: [
-                    for (var i = 0; i < 3; i++) ...[
-                      if (i > 0) const SizedBox(width: 8),
-                      const Expanded(child: SkeletonBox(height: 52, radius: 10)),
-                    ],
+        child: Column(
+          children: [
+            const SkeletonBox(width: 220, height: 22),
+            const SizedBox(height: 10),
+            const SkeletonBox(width: 120, height: 14),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                for (var i = 0; i < 3; i++)
+                  const Expanded(
+                    child: Column(
+                      children: [
+                        SkeletonBox(width: 64, height: 9),
+                        SizedBox(height: 6),
+                        SkeletonBox(width: 44, height: 22),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
+      );
+}
+
+/// Placeholder for the media detail page under its header: the list
+/// buttons and the start of the summary.
+class DetailBodySkeleton extends StatelessWidget {
+  const DetailBodySkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) => Skeleton(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  for (var i = 0; i < 3; i++) ...[
+                    if (i > 0) const SizedBox(width: 8),
+                    const Expanded(child: SkeletonBox(height: 66, radius: 10)),
                   ],
+                ],
+              ),
+            ),
+            const SizedBox(height: 36),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Align(alignment: Alignment.centerLeft, child: SkeletonBox(width: 70, height: 11)),
+            ),
+            const SizedBox(height: 12),
+            for (var i = 0; i < 4; i++)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: SkeletonBox(width: i == 3 ? 180 : null, height: 12),
                 ),
               ),
-              const SizedBox(height: 24),
-              for (var i = 0; i < 4; i++)
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 0, 16, 10),
-                  child: SkeletonBox(height: 12),
-                ),
-            ],
-          ),
+          ],
         ),
       );
 }

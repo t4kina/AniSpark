@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../motion/pressable.dart';
 import '../user_avatar.dart';
 
 /// A round photo with a name and a grey line under it (a role, a dub
@@ -31,9 +32,8 @@ class PersonCard extends StatelessWidget {
     return MergeSemantics(
       child: Semantics(
         button: onTap != null,
-        child: InkWell(
+        child: Pressable(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
           child: SizedBox(
             width: avatarSize + 20,
             child: Padding(

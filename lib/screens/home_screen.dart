@@ -7,13 +7,22 @@ import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../services/discover_api.dart';
 import '../providers/settings_provider.dart';
+import '../theme/app_motion.dart';
 import '../utils/anime_season.dart';
+import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/anime_card.dart';
+import '../widgets/motion/cover_hero.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pressable.dart';
+import '../widgets/motion/rounded_hero.dart';
 import 'calendar_screen.dart';
 import 'detail_screen.dart';
 import 'search_screen.dart';
 import 'season_screen.dart';
+
+/// The bottom-navigation tab that shows Discover.
+const _discoverTab = 2;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.discover});
@@ -28,6 +37,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _service = AniListService();
   late final DiscoverApi _discover = widget.discover ?? DiscoverApi();
+  final _scroll = ScrollController();
+  late final VoidCallback _stopListeningToReselect;
   List<dynamic> _trending = [];
   List<dynamic> _seasonal = [];
   List<dynamic> _popular = [];
@@ -45,8 +56,30 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    _stopListeningToReselect = scrollToTopOnReselect(
+      tabReselectedNotifier,
+      tab: _discoverTab,
+      onReselected: _scrollToTop,
+    );
     _load();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadCalendar());
+  }
+
+  @override
+  void dispose() {
+    _stopListeningToReselect();
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Tapping Discover again while it's open goes back to the top.
+  void _scrollToTop() {
+    if (!mounted) return;
+    if (AppMotion.reduced(context)) {
+      if (_scroll.hasClients) _scroll.jumpTo(0);
+    } else {
+      scrollToTop(_scroll);
+    }
   }
 
   Future<void> _refresh() async {
@@ -227,75 +260,75 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           Expanded(
-            child: _loading
-                ? _buildShimmer()
-                : _hasError
-                    ? _buildError()
-                    : RefreshIndicator(
-                    onRefresh: _refresh,
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildShortcuts(lang),
-                          if (_weeklySchedule.isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            _sectionHeader(tr('home_this_week', lang), lang,
-                                onSeeAll: _openCalendar),
-                            const SizedBox(height: 10),
-                            _buildWeeklySchedule(lang),
-                            const SizedBox(height: 8),
-                            const Divider(indent: 16, endIndent: 16),
-                          ],
-                          const SizedBox(height: 12),
-                          _sectionHeader(tr('trending', lang), lang, items: _trending),
-                          const SizedBox(height: 10),
-                          _buildHorizontalRow(_trending),
-                          const SizedBox(height: 20),
-                          _sectionHeader(
-                              _seasonHeader('home_current_season', _currentSeason, lang),
-                              lang,
-                              onSeeAll: () => _openSeason(_currentSeason)),
-                          const SizedBox(height: 10),
-                          _buildHorizontalRow(_seasonal),
-                          const SizedBox(height: 20),
-                          _sectionHeader(
-                              _seasonHeader('home_upcoming_season', _nextSeason, lang),
-                              lang,
-                              onSeeAll: () => _openSeason(_nextSeason)),
-                          const SizedBox(height: 10),
-                          _buildHorizontalRow(_popular),
-                          const SizedBox(height: 20),
-                          _sectionHeader(tr('top_airing', lang), lang, items: _topAiring),
-                          const SizedBox(height: 10),
-                          _buildHorizontalRow(_topAiring),
-                          const SizedBox(height: 28),
-                          const Divider(indent: 16, endIndent: 16),
-                          const SizedBox(height: 16),
-                          _sectionHeader(tr('home_trending_manga', lang), lang,
-                              items: _trendingManga),
-                          const SizedBox(height: 10),
-                          _buildHorizontalRow(_trendingManga),
-                          const SizedBox(height: 20),
-                          _sectionHeader(tr('home_top_manga', lang), lang, items: _topManga),
-                          const SizedBox(height: 10),
-                          _buildHorizontalRow(_topManga),
-                          const SizedBox(height: 20),
-                          _sectionHeader(tr('home_popular_manhwa', lang), lang,
-                              items: _manhwa),
-                          const SizedBox(height: 10),
-                          _buildHorizontalRow(_manhwa),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
-                    ),
-                  ),
+            child: FadeSwitcher(
+              child: _loading
+                  ? _buildShimmer()
+                  : _hasError
+                      ? _buildError()
+                      : _buildSections(lang),
+            ),
           ),
         ],
       ),
     );
   }
+
+  // Each row has its own hero scope: one media can be in several rows, and
+  // two covers with one tag on a page break the flight to the detail page.
+  Widget _buildSections(String lang) => RefreshIndicator(
+        onRefresh: _refresh,
+        child: SingleChildScrollView(
+          controller: _scroll,
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildShortcuts(lang),
+              if (_weeklySchedule.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _sectionHeader(tr('home_this_week', lang), lang, onSeeAll: _openCalendar),
+                const SizedBox(height: 10),
+                _buildWeeklySchedule(lang),
+                const SizedBox(height: 8),
+                const Divider(indent: 16, endIndent: 16),
+              ],
+              const SizedBox(height: 12),
+              _sectionHeader(tr('trending', lang), lang, items: _trending),
+              const SizedBox(height: 10),
+              _buildHorizontalRow(_trending, heroScope: 'home-trending'),
+              const SizedBox(height: 20),
+              _sectionHeader(_seasonHeader('home_current_season', _currentSeason, lang), lang,
+                  onSeeAll: () => _openSeason(_currentSeason)),
+              const SizedBox(height: 10),
+              _buildHorizontalRow(_seasonal, heroScope: 'home-season'),
+              const SizedBox(height: 20),
+              _sectionHeader(_seasonHeader('home_upcoming_season', _nextSeason, lang), lang,
+                  onSeeAll: () => _openSeason(_nextSeason)),
+              const SizedBox(height: 10),
+              _buildHorizontalRow(_popular, heroScope: 'home-next-season'),
+              const SizedBox(height: 20),
+              _sectionHeader(tr('top_airing', lang), lang, items: _topAiring),
+              const SizedBox(height: 10),
+              _buildHorizontalRow(_topAiring, heroScope: 'home-top-airing'),
+              const SizedBox(height: 28),
+              const Divider(indent: 16, endIndent: 16),
+              const SizedBox(height: 16),
+              _sectionHeader(tr('home_trending_manga', lang), lang, items: _trendingManga),
+              const SizedBox(height: 10),
+              _buildHorizontalRow(_trendingManga, heroScope: 'home-trending-manga'),
+              const SizedBox(height: 20),
+              _sectionHeader(tr('home_top_manga', lang), lang, items: _topManga),
+              const SizedBox(height: 10),
+              _buildHorizontalRow(_topManga, heroScope: 'home-top-manga'),
+              const SizedBox(height: 20),
+              _sectionHeader(tr('home_popular_manhwa', lang), lang, items: _manhwa),
+              const SizedBox(height: 10),
+              _buildHorizontalRow(_manhwa, heroScope: 'home-manhwa'),
+              const SizedBox(height: 24),
+            ],
+          ),
+        ),
+      );
 
   void _openCalendar() => Navigator.push(
         context,
@@ -381,7 +414,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
   }
 
-  Widget _buildHorizontalRow(List<dynamic> items) => SizedBox(
+  Widget _buildHorizontalRow(List<dynamic> items, {required String heroScope}) => SizedBox(
         height: 222,
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
@@ -391,7 +424,7 @@ class _HomeScreenState extends State<HomeScreen> {
             padding: const EdgeInsets.only(right: 10),
             child: SizedBox(
               width: 120,
-              child: AnimeCard(animeData: items[i]),
+              child: AnimeCard(animeData: items[i], heroScope: heroScope),
             ),
           ),
         ),
@@ -422,10 +455,18 @@ class _HomeScreenState extends State<HomeScreen> {
           final dt = DateTime.fromMillisecondsSinceEpoch(airingAt * 1000);
           final dayLabel = tr(_weekdayKeys[dt.weekday - 1], lang);
           final timeLabel = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+          // A show can air more than once this week, so the scope is per card.
+          final heroTag = id == null ? null : coverHeroTag('home-week-$i', id);
+          final placeholder = ColoredBox(color: Theme.of(ctx).colorScheme.surfaceContainerHighest);
 
-          return GestureDetector(
+          return Pressable(
             onTap: id != null
-                ? () => Navigator.push(ctx, MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)))
+                ? () => Navigator.push(
+                      ctx,
+                      MaterialPageRoute(
+                        builder: (_) => DetailScreen(animeId: id, heroTag: heroTag, initialCoverUrl: cover),
+                      ),
+                    )
                 : null,
             child: Container(
               width: 220,
@@ -436,17 +477,24 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               child: Row(
                 children: [
-                  ClipRRect(
-                    borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
-                    child: cover != null
-                        ? CachedNetworkImage(
-                            imageUrl: cover,
-                            width: 70,
-                            height: 130,
-                            fit: BoxFit.cover,
-                            memCacheWidth: 140,
-                          )
-                        : Container(width: 70, color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
+                  SizedBox(
+                    width: 70,
+                    height: 130,
+                    child: RoundedHero(
+                      tag: heroTag,
+                      borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
+                      child: cover != null
+                          ? CachedNetworkImage(
+                              imageUrl: cover,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 140,
+                              fadeInDuration: AppMotion.of(ctx, AppMotion.short),
+                              fadeOutDuration: Duration.zero,
+                              placeholder: (_, _) => placeholder,
+                              errorWidget: (_, _, _) => placeholder,
+                            )
+                          : placeholder,
+                    ),
                   ),
                   Expanded(
                     child: Padding(
@@ -512,9 +560,33 @@ class _HomeScreenState extends State<HomeScreen> {
         baseColor: isDark ? Colors.grey[800]! : Colors.grey[300]!,
         highlightColor: isDark ? Colors.grey[600]! : Colors.grey[100]!,
         child: SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-            children: List.generate(7, (_) => _shimmerSection()),
+            children: [
+              // The Calendar and Seasons shortcuts, so the rows don't shift
+              // down when the content replaces this.
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Row(
+                  children: [
+                    for (var i = 0; i < 2; i++) ...[
+                      if (i > 0) const SizedBox(width: 10),
+                      Expanded(
+                        child: Container(
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              ...List.generate(7, (_) => _shimmerSection()),
+            ],
           ),
         ),
       );
@@ -603,61 +675,69 @@ class _BrowseAllScreen extends StatelessWidget {
           final title = settings.resolveTitle(item['title'] as Map<String, dynamic>?);
           final score = item['averageScore'] as int?;
           final cs = Theme.of(context).colorScheme;
+          final heroTag = id == null ? null : coverHeroTag('home-browse', id);
+          final placeholder = ColoredBox(color: cs.surfaceContainerHighest);
 
-          return GestureDetector(
+          return Pressable(
             onTap: id != null
-                ? () => Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)))
+                ? () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => DetailScreen(animeId: id, heroTag: heroTag, initialCoverUrl: cover),
+                      ),
+                    )
                 : null,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        cover != null
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      // Only the cover flies; the score stays on the tile.
+                      RoundedHero(
+                        tag: heroTag,
+                        child: cover != null
                             ? CachedNetworkImage(
                                 imageUrl: cover,
                                 fit: BoxFit.cover,
                                 memCacheWidth: 200,
-                                placeholder: (_, _) => Container(
-                                    color: cs.surfaceContainerHighest),
-                                errorWidget: (context, error, stack) => Container(
-                                    color: cs.surfaceContainerHighest),
+                                fadeInDuration: AppMotion.of(context, AppMotion.short),
+                                fadeOutDuration: Duration.zero,
+                                placeholder: (_, _) => placeholder,
+                                errorWidget: (_, _, _) => placeholder,
                               )
-                            : Container(color: cs.surfaceContainerHighest),
-                        if (score != null)
-                          Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  vertical: 4, horizontal: 6),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.bottomCenter,
-                                  end: Alignment.topCenter,
-                                  colors: [
-                                    Colors.black.withValues(alpha: 0.75),
-                                    Colors.transparent,
-                                  ],
-                                ),
-                              ),
-                              child: Text(
-                                '★ ${(score / 10).toStringAsFixed(1)}',
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600),
+                            : placeholder,
+                      ),
+                      if (score != null)
+                        Positioned(
+                          bottom: 0,
+                          left: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 4, horizontal: 6),
+                            decoration: BoxDecoration(
+                              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+                              gradient: LinearGradient(
+                                begin: Alignment.bottomCenter,
+                                end: Alignment.topCenter,
+                                colors: [
+                                  Colors.black.withValues(alpha: 0.75),
+                                  Colors.transparent,
+                                ],
                               ),
                             ),
+                            child: Text(
+                              '★ ${(score / 10).toStringAsFixed(1)}',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600),
+                            ),
                           ),
-                      ],
-                    ),
+                        ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 5),

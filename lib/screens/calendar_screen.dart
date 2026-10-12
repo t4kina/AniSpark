@@ -6,8 +6,14 @@ import '../providers/settings_provider.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../services/discover_api.dart';
+import '../theme/app_motion.dart';
 import '../utils/airing_calendar.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/motion/cover_hero.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pressable.dart';
+import '../widgets/motion/rounded_hero.dart';
+import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/skeletons.dart';
 import 'detail_screen.dart';
 
@@ -178,7 +184,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
   }
 
-  Widget _buildContent(String lang, {required bool myListOnly}) {
+  /// The calendar cascades in when it loads (the gate only restarts on new
+  /// data), and switching between "All" and "My list" cross-fades.
+  Widget _buildContent(String lang, {required bool myListOnly}) => EntranceGate(
+        trigger: _schedules,
+        child: FadeSwitcher(child: _buildState(lang, myListOnly: myListOnly)),
+      );
+
+  Widget _buildState(String lang, {required bool myListOnly}) {
     if (_loading) return const _CalendarSkeleton();
     if (_hasError) return _buildError(lang);
     final now = DateTime.now();
@@ -187,32 +200,51 @@ class _CalendarScreenState extends State<CalendarScreen> {
       for (final schedule in _schedules ?? const <Map<String, dynamic>>[])
         if (!myListOnly || isOnWatchList(schedule)) schedule,
     ]).where((day) => !day.date.isBefore(today)).toList();
+    // Both filters' lists are on screen while they cross-fade, so their
+    // covers need different hero tags.
+    final heroScope = myListOnly ? 'calendar-mine' : 'calendar-all';
+
+    // Position of each day's header in the whole list, for the cascade.
+    final firstIndexOfDay = <int>[];
+    var next = 0;
+    for (final day in days) {
+      firstIndexOfDay.add(next);
+      next += 1 + day.episodes.length;
+    }
 
     return RefreshIndicator(
+      key: ValueKey(heroScope),
       onRefresh: () => _load(force: true),
       child: days.isEmpty
           ? _buildEmpty(lang, myListOnly: myListOnly)
           : CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                for (final day in days)
+                for (final (d, day) in days.indexed)
                   SliverMainAxisGroup(
                     slivers: [
                       PinnedHeaderSliver(
-                        child: _DayHeader(
-                          label: _dayLabel(day.date, today, lang),
-                          date: trf('cal_month_day', lang, {
-                            'month': tr('detail_month_${day.date.month}', lang),
-                            'day': day.date.day,
-                          }),
+                        child: StaggeredEntrance(
+                          index: firstIndexOfDay[d],
+                          child: _DayHeader(
+                            label: _dayLabel(day.date, today, lang),
+                            date: trf('cal_month_day', lang, {
+                              'month': tr('detail_month_${day.date.month}', lang),
+                              'day': day.date.day,
+                            }),
+                          ),
                         ),
                       ),
                       SliverList.builder(
                         itemCount: day.episodes.length,
-                        itemBuilder: (_, i) => _EpisodeRow(
-                          schedule: day.episodes[i],
-                          now: now,
-                          lang: lang,
+                        itemBuilder: (_, i) => StaggeredEntrance(
+                          index: firstIndexOfDay[d] + 1 + i,
+                          child: _EpisodeRow(
+                            schedule: day.episodes[i],
+                            now: now,
+                            lang: lang,
+                            heroScope: heroScope,
+                          ),
                         ),
                       ),
                     ],
@@ -301,11 +333,22 @@ class _DayHeader extends StatelessWidget {
 
 /// One airing episode: cover, title, episode number, list badge and time.
 class _EpisodeRow extends StatelessWidget {
-  const _EpisodeRow({required this.schedule, required this.now, required this.lang});
+  const _EpisodeRow({
+    required this.schedule,
+    required this.now,
+    required this.lang,
+    required this.heroScope,
+  });
 
   final Map<String, dynamic> schedule;
   final DateTime now;
   final String lang;
+
+  /// The list's scope for the cover's hero tag.
+  final String heroScope;
+
+  /// How visible episodes that already aired are.
+  static const _airedOpacity = 0.6;
 
   /// Label keys of the user's AniList list statuses.
   static const _statusKeys = {
@@ -330,87 +373,109 @@ class _EpisodeRow extends StatelessWidget {
     final aired = time != null && !time.isAfter(now);
     final statusKey = _statusKeys[listStatusOf(schedule)];
     final cs = Theme.of(context).colorScheme;
-    final placeholder = Container(color: cs.surfaceContainerHighest);
+    // The cover is dimmed by its own paint rather than an Opacity around
+    // the row, so it stays dimmed while it flies to the detail page.
+    final dim = aired ? Colors.white.withValues(alpha: _airedOpacity) : null;
+    final placeholder = ColoredBox(
+      color: cs.surfaceContainerHighest.withValues(alpha: aired ? _airedOpacity : 1),
+    );
+    // A show can air more than once in the week shown.
+    final heroTag = id == null ? null : coverHeroTag('$heroScope-${schedule['id'] ?? schedule['airingAt']}', id);
 
-    return InkWell(
+    return Pressable(
+      // A full-width row only needs a hint of a press.
+      pressedScale: 0.98,
       onTap: id == null
           ? null
           : () => Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)),
-              ),
-      child: Opacity(
-        opacity: aired ? 0.6 : 1,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: SizedBox(
-                  width: 46,
-                  height: 64,
-                  child: cover == null
-                      ? placeholder
-                      : CachedNetworkImage(
-                          imageUrl: cover,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 92,
-                          placeholder: (_, _) => placeholder,
-                          errorWidget: (_, _, _) => placeholder,
-                        ),
+                MaterialPageRoute(
+                  builder: (_) => DetailScreen(animeId: id, heroTag: heroTag, initialCoverUrl: cover),
                 ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 46,
+              height: 64,
+              child: RoundedHero(
+                tag: heroTag,
+                borderRadius: const BorderRadius.all(Radius.circular(6)),
+                child: cover == null
+                    ? placeholder
+                    : CachedNetworkImage(
+                        imageUrl: cover,
+                        fit: BoxFit.cover,
+                        memCacheWidth: 92,
+                        color: dim,
+                        colorBlendMode: dim == null ? null : BlendMode.modulate,
+                        fadeInDuration: AppMotion.of(context, AppMotion.short),
+                        fadeOutDuration: Duration.zero,
+                        placeholder: (_, _) => placeholder,
+                        errorWidget: (_, _, _) => placeholder,
+                      ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Opacity(
+                opacity: aired ? _airedOpacity : 1,
+                child: Row(
                   children: [
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        if (episode != null)
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            trf('list_episode_n', lang, {'n': episode}),
-                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                           ),
-                        if (statusKey != null) _ListBadge(label: tr(statusKey, lang)),
+                          const SizedBox(height: 4),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              if (episode != null)
+                                Text(
+                                  trf('list_episode_n', lang, {'n': episode}),
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                              if (statusKey != null) _ListBadge(label: tr(statusKey, lang)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        if (time != null)
+                          Text(
+                            formatClock(time),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: aired ? Colors.grey : cs.primary,
+                            ),
+                          ),
+                        if (aired)
+                          Text(
+                            tr('cal_aired', lang),
+                            style: const TextStyle(fontSize: 11, color: Colors.grey),
+                          ),
                       ],
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  if (time != null)
-                    Text(
-                      formatClock(time),
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: aired ? Colors.grey : cs.primary,
-                      ),
-                    ),
-                  if (aired)
-                    Text(
-                      tr('cal_aired', lang),
-                      style: const TextStyle(fontSize: 11, color: Colors.grey),
-                    ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

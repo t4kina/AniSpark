@@ -26,10 +26,13 @@ void openCharacter(BuildContext context, CharacterRef character) => Navigator.pu
       ),
     );
 
-/// Opens the detail page of [media] (anime or manga).
-void openMedia(BuildContext context, MediaRef media) => Navigator.push(
+/// Opens the detail page of [media] (anime or manga). With the [heroTag] of
+/// the cover that was tapped (see `coverHeroTag`), that cover flies there.
+void openMedia(BuildContext context, MediaRef media, {String? heroTag}) => Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => DetailScreen(animeId: media.id)),
+      MaterialPageRoute(
+        builder: (_) => DetailScreen(animeId: media.id, heroTag: heroTag, initialCoverUrl: media.coverUrl),
+      ),
     );
 
 /// Opens the page of the studio [studioId].

@@ -7,6 +7,7 @@ import '../services/media_extras_api.dart';
 import '../utils/review_text.dart';
 import '../utils/translations.dart';
 import '../widgets/detail/load_error_view.dart';
+import '../widgets/motion/fade_switcher.dart';
 import '../widgets/user_avatar.dart';
 import '../widgets/skeletons.dart';
 
@@ -69,7 +70,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
         ),
         title: Text(tr('review_title', lang)),
       ),
-      body: _failed && _review == null ? LoadErrorView(onRetry: _retry) : _content(lang),
+      body: FadeSwitcher(
+        child: _failed && _review == null ? LoadErrorView(onRetry: _retry) : _content(lang),
+      ),
     );
   }
 
@@ -80,33 +83,48 @@ class _ReviewScreenState extends State<ReviewScreen> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
       children: [
-        if (header != null) _ReviewHeader(review: header) else const _HeaderSkeleton(),
-        if (header != null && header.summary.isNotEmpty) ...[
-          const SizedBox(height: 16),
-          Text(
-            header.summary,
-            style: TextStyle(fontSize: 16, height: 1.4, fontStyle: FontStyle.italic, color: cs.onSurfaceVariant),
-          ),
-        ],
+        FadeSwitcher(
+          child: header == null
+              ? const _HeaderSkeleton()
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _ReviewHeader(review: header),
+                    if (header.summary.isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        header.summary,
+                        style: TextStyle(
+                            fontSize: 16, height: 1.4, fontStyle: FontStyle.italic, color: cs.onSurfaceVariant),
+                      ),
+                    ],
+                  ],
+                ),
+        ),
         const SizedBox(height: 16),
         const Divider(height: 1),
         const SizedBox(height: 16),
-        if (review == null)
-          const _BodySkeleton()
-        else ...[
-          Text(
-            cleanReviewText(review.body, spoilerPlaceholder: tr('review_spoiler', lang)),
-            style: TextStyle(fontSize: 15, height: 1.55, color: cs.onSurface),
-          ),
-          if (review.ratingAmount > 0) ...[
-            const SizedBox(height: 28),
-            Text(
-              trf('review_liked_by', lang, {'liked': review.rating, 'total': review.ratingAmount}),
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: Colors.grey),
-            ),
-          ],
-        ],
+        FadeSwitcher(
+          child: review == null
+              ? const _BodySkeleton()
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      cleanReviewText(review.body, spoilerPlaceholder: tr('review_spoiler', lang)),
+                      style: TextStyle(fontSize: 15, height: 1.55, color: cs.onSurface),
+                    ),
+                    if (review.ratingAmount > 0) ...[
+                      const SizedBox(height: 28),
+                      Text(
+                        trf('review_liked_by', lang, {'liked': review.rating, 'total': review.ratingAmount}),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 13, color: Colors.grey),
+                      ),
+                    ],
+                  ],
+                ),
+        ),
       ],
     );
   }

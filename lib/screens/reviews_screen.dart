@@ -8,6 +8,8 @@ import '../services/media_extras_api.dart';
 import '../utils/translations.dart';
 import '../widgets/detail/load_error_view.dart';
 import '../widgets/detail/review_card.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/skeletons.dart';
 import 'review_screen.dart';
 
@@ -93,7 +95,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
         ),
         title: Text(tr('review_all_title', lang)),
       ),
-      body: _body(lang),
+      body: FadeSwitcher(child: _body(lang)),
     );
   }
 
@@ -103,17 +105,24 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
       if (_failed) return LoadErrorView(onRetry: _loadMore);
       return Center(child: Text(tr('nothing_here', lang), style: const TextStyle(color: Colors.grey)));
     }
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-      itemCount: _reviews.length + 1,
-      itemBuilder: (context, i) {
-        if (i == _reviews.length) return _footer(lang);
-        final review = _reviews[i];
-        return Padding(
-          padding: const EdgeInsets.only(bottom: _cardSpacing),
-          child: ReviewCard(review: review, onTap: () => _open(review)),
-        );
-      },
+    // The first page cascades in; later pages are past the staggered cards.
+    return EntranceGate(
+      trigger: _reviews,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        itemCount: _reviews.length + 1,
+        itemBuilder: (context, i) {
+          if (i == _reviews.length) return _footer(lang);
+          final review = _reviews[i];
+          return StaggeredEntrance(
+            index: i,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: _cardSpacing),
+              child: ReviewCard(review: review, onTap: () => _open(review)),
+            ),
+          );
+        },
+      ),
     );
   }
 

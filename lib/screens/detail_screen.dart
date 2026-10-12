@@ -1,18 +1,21 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData, HapticFeedback;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
+import '../theme/app_motion.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/external_url.dart';
 import '../utils/media_color.dart';
 import '../utils/score_utils.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/detail/detail_header.dart';
 import '../widgets/detail/following_section.dart';
+import '../widgets/detail/media_row.dart';
 import '../widgets/detail/reviews_section.dart';
 import '../widgets/detail/staff_section.dart';
 import '../widgets/detail/studio_links.dart';
@@ -20,6 +23,10 @@ import '../widgets/entry_editor/entry_draft.dart' show FuzzyDate, entryStatusKey
 import '../widgets/entry_editor/entry_editor_api.dart' show loadCustomListNames;
 import '../widgets/entry_editor/entry_editor_fields.dart' show formatFuzzyDate;
 import '../widgets/entry_editor/entry_editor_sheet.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pop_on_change.dart';
+import '../widgets/motion/pressable.dart';
+import '../widgets/motion/rounded_hero.dart';
 import '../utils/translations.dart';
 import '../providers/settings_provider.dart';
 import 'character_screen.dart';
@@ -142,6 +149,7 @@ class _DetailScreenState extends State<DetailScreen> {
     final auth = context.read<AuthService>();
     if (!auth.isLoggedIn) return;
     final wasFav = _data!['isFavourite'] == true;
+    if (!wasFav) HapticFeedback.lightImpact();
     setState(() { _togglingFav = true; _data!['isFavourite'] = !wasFav; });
     final ok = await _service.toggleFavourite(
       mediaId: widget.animeId,
@@ -180,27 +188,19 @@ class _DetailScreenState extends State<DetailScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
-    final lang = settings.language;
-    if (_loading) {
-      return Scaffold(
-        body: Stack(
-          children: [
-            const DetailSkeleton(),
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 2,
-              left: 8,
-              child: overlayBtn(
-                icon: Icons.arrow_back,
-                tooltip: tr('tooltip_back', lang),
-                onPressed: () => Navigator.pop(context),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-    if (_data == null) {
-      return Scaffold(
+    final data = _data;
+    // The page's frame (banner, cover, back button) is up from the first
+    // frame, so a cover flying in from a list lands on it while the rest
+    // loads; only a failed load replaces the whole page.
+    return FadeSwitcher(
+      child: !_loading && data == null
+          ? _buildError(settings.language)
+          : _buildPage(context, data, settings),
+    );
+  }
+
+  Widget _buildError(String lang) => Scaffold(
+        key: const ValueKey('error'),
         appBar: AppBar(),
         body: Center(
           child: Column(
@@ -222,14 +222,172 @@ class _DetailScreenState extends State<DetailScreen> {
           ),
         ),
       );
-    }
 
-    final d = _data!;
+  /// The page, with skeletons cross-fading to what [d] (null while loading)
+  /// fills in. The cover stays the same widget throughout, so its flight in
+  /// from a list is never cut short by the data arriving.
+  Widget _buildPage(BuildContext context, Map<String, dynamic>? d, SettingsProvider settings) {
+    // The page picks up the cover's colour (made readable for the theme).
+    final theme = Theme.of(context);
+    final accent = d == null ? null : mediaAccentColor(d['coverImage']?['color'] as String?, theme.brightness);
+    final pageTheme = accent == null
+        ? theme
+        : theme.copyWith(colorScheme: theme.colorScheme.copyWith(primary: accent));
 
+    return Theme(
+      key: const ValueKey('page'),
+      data: pageTheme,
+      child: Builder(builder: (context) => Scaffold(
+        body: Stack(
+          children: [
+            CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      DetailHeader(
+                        banner: FadeSwitcher(
+                          child: d == null
+                              ? const Skeleton(child: SkeletonBox(height: DetailHeader.bannerHeight, radius: 0))
+                              : _buildBanner(context, d['bannerImage'] as String?),
+                        ),
+                        cover: _buildCover(context, d),
+                        info: FadeSwitcher(
+                          child: d == null ? const DetailInfoSkeleton() : _buildInfo(d, settings),
+                        ),
+                      ),
+                      FadeSwitcher(
+                        child: d == null ? const DetailBodySkeleton() : _buildBody(context, d, settings),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            _buildOverlayButtons(context, d, settings.language),
+          ],
+        ),
+      )),
+    );
+  }
+
+  Widget _buildBanner(BuildContext context, String? url) {
+    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    return SizedBox.expand(
+      child: url == null
+          ? placeholder
+          : CachedNetworkImage(
+              imageUrl: url,
+              fit: BoxFit.cover,
+              fadeInDuration: AppMotion.of(context, AppMotion.short),
+              fadeOutDuration: Duration.zero,
+              placeholder: (_, _) => placeholder,
+              errorWidget: (_, _, _) => placeholder,
+            ),
+    );
+  }
+
+  /// The cover, in the hero the opening list's cover flies into: the list's
+  /// cover at first, sharpened by the full-size one once [d] has loaded.
+  Widget _buildCover(BuildContext context, Map<String, dynamic>? d) {
+    final full = d == null ? null : (d['coverImage']?['extraLarge'] ?? d['coverImage']?['large']) as String?;
+    // Always tappable (doing nothing without a cover yet): adding the
+    // gesture later would rebuild the hero mid-flight.
+    return Pressable(
+      onTap: () {
+        final url = full ?? widget.initialCoverUrl;
+        if (url != null) _openCover(context, url);
+      },
+      child: RoundedHero(
+        tag: _coverTag,
+        borderRadius: DetailHeader.coverRadius,
+        child: DetailCoverImage(previewUrl: widget.initialCoverUrl, url: full),
+      ),
+    );
+  }
+
+  /// Title, studio, next episode and the score and ranking stats.
+  Widget _buildInfo(Map<String, dynamic> d, SettingsProvider settings) {
+    final lang = settings.language;
     final title = settings.resolveTitle(d['title'] as Map<String, dynamic>?);
-    final cover = d['coverImage']?['extraLarge'] ?? d['coverImage']?['large'];
-    final banner = d['bannerImage'] as String?;
     final score = d['averageScore'] as int?;
+    final nextAiring = d['nextAiringEpisode'] as Map<String, dynamic>?;
+    final rankings = (d['rankings'] as List? ?? []).cast<Map<String, dynamic>>();
+    final studios = (d['studios']?['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
+    final hasAnimationStudio = studios.any((s) => s['isAnimationStudio'] == true);
+    final highestRated = _topRanking(rankings, 'RATED');
+    final mostPopular = _topRanking(rankings, 'POPULAR');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            children: [
+              Text(title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              if (hasAnimationStudio) ...[
+                const SizedBox(height: 6),
+                StudioLinks(
+                  studios: studios,
+                  isAnimationStudio: true,
+                  alignment: WrapAlignment.center,
+                ),
+              ],
+              if (nextAiring != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  trf('detail_episode_airs_in', lang, {
+                    'n': '${nextAiring['episode']}',
+                    'time': _airingCountdown(nextAiring['airingAt'] as int, lang),
+                  }),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              _statCell(tr('detail_average_score', lang),
+                  score != null ? '$score%' : '—',
+                  score != null && score >= 70 ? Colors.green : Colors.grey),
+              if (highestRated != null) ...[
+                _vDivider(),
+                _statCell(tr('detail_highest_rated', lang), '#${highestRated['rank']}', null,
+                    sub: _rankingSub(highestRated, lang)),
+              ],
+              if (mostPopular != null) ...[
+                _vDivider(),
+                _statCell(tr('detail_most_popular', lang), '#${mostPopular['rank']}', null,
+                    sub: _rankingSub(mostPopular, lang)),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  /// The all-time [type] ranking, else the best seasonal or yearly one.
+  Map<String, dynamic>? _topRanking(List<Map<String, dynamic>> rankings, String type) {
+    final allTime = rankings.where((r) => r['type'] == type && r['allTime'] == true);
+    if (allTime.isNotEmpty) return allTime.first;
+    final others = rankings.where((r) => r['type'] == type && r['allTime'] != true).toList()
+      ..sort((a, b) => (a['rank'] as int).compareTo(b['rank'] as int));
+    return others.isEmpty ? null : others.first;
+  }
+
+  /// Everything under the header, from the list buttons down.
+  Widget _buildBody(BuildContext context, Map<String, dynamic> d, SettingsProvider settings) {
+    final lang = settings.language;
     final popularity = d['popularity'] as int?;
     final favourites = d['favourites'] as int?;
     final trending = d['trending'] as int?;
@@ -243,34 +401,25 @@ class _DetailScreenState extends State<DetailScreen> {
     final format = d['format'] as String?;
     final genres = (d['genres'] as List? ?? []).cast<String>();
     final description = (d['description'] ?? '').replaceAll(RegExp(r'<[^>]*>'), '') as String;
-    final nextAiring = d['nextAiringEpisode'] as Map<String, dynamic>?;
-    final rankings = (d['rankings'] as List? ?? []).cast<Map<String, dynamic>>();
     final tags = (d['tags'] as List? ?? []).cast<Map<String, dynamic>>();
     final relations = (d['relations']?['edges'] as List? ?? []).cast<Map<String, dynamic>>();
     final characters = (d['characters']?['edges'] as List? ?? []).cast<Map<String, dynamic>>();
-    final recommendations = (d['recommendations']?['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
+    final recommendations = [
+      for (final node in (d['recommendations']?['nodes'] as List? ?? []).cast<Map<String, dynamic>>())
+        ?_recommendationItem(node),
+    ];
     final trailer = d['trailer'] as Map<String, dynamic>?;
     final externalLinks = (d['externalLinks'] as List? ?? []).cast<Map<String, dynamic>>();
     final streamingEps = (d['streamingEpisodes'] as List? ?? []).cast<Map<String, dynamic>>();
     final synonyms = (d['synonyms'] as List? ?? []).cast<String>();
     final studios = (d['studios']?['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
-    final animationStudios = studios.where((s) => s['isAnimationStudio'] == true).map((s) => s['name'] as String).toList();
-    final producers = studios.where((s) => s['isAnimationStudio'] != true).map((s) => s['name'] as String).toList();
+    final hasProducers = studios.any((s) => s['isAnimationStudio'] != true);
 
     final listEntry = d['mediaListEntry'] as Map<String, dynamic>?;
     final inList = listEntry != null;
     final listStatus = listEntry?['status'] as String? ?? 'PLANNING';
     final listProgress = (listEntry?['progress'] as num?)?.toInt() ?? 0;
     final listScore = (listEntry?['score'] as num?)?.toDouble() ?? 0;
-
-    final allTimeRated = rankings.where((r) => r['type'] == 'RATED' && r['allTime'] == true).toList();
-    final allTimePopular = rankings.where((r) => r['type'] == 'POPULAR' && r['allTime'] == true).toList();
-    final yearRated = rankings.where((r) => r['type'] == 'RATED' && r['allTime'] != true).toList()
-      ..sort((a, b) => (a['rank'] as int).compareTo(b['rank'] as int));
-    final yearPopular = rankings.where((r) => r['type'] == 'POPULAR' && r['allTime'] != true).toList()
-      ..sort((a, b) => (a['rank'] as int).compareTo(b['rank'] as int));
-    final highestRated = allTimeRated.isNotEmpty ? allTimeRated.first : (yearRated.isNotEmpty ? yearRated.first : null);
-    final mostPopular = allTimePopular.isNotEmpty ? allTimePopular.first : (yearPopular.isNotEmpty ? yearPopular.first : null);
 
     final startStr = formatFuzzyDate(FuzzyDate.fromJson(d['startDate']), lang);
     final endStr = formatFuzzyDate(FuzzyDate.fromJson(d['endDate']), lang);
@@ -282,397 +431,315 @@ class _DetailScreenState extends State<DetailScreen> {
         ? _seasonYear(season, seasonYear, lang) : null;
 
     final totalDuration = (episodes != null && duration != null) ? episodes * duration : null;
-    final watched = listProgress;
     final remaining = (episodes != null && duration != null)
-        ? (episodes - watched) * duration : null;
+        ? (episodes - listProgress) * duration : null;
     final scoreFormat = scoreFormatOf(context.select<AuthService, Map<String, dynamic>?>((a) => a.user));
 
-    // The page picks up the cover's colour (made readable for the theme).
-    final theme = Theme.of(context);
-    final accent = mediaAccentColor(d['coverImage']?['color'] as String?, theme.brightness);
-    final pageTheme = accent == null
-        ? theme
-        : theme.copyWith(colorScheme: theme.colorScheme.copyWith(primary: accent));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 16),
 
-    return Theme(data: pageTheme, child: Builder(builder: (context) => Scaffold(
-      body: Stack(
+        // ── Action buttons ──
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              _actionBtn(
+                context,
+                inList
+                    ? tr(entryStatusKey(listStatus, manga: isManga), lang).toUpperCase()
+                    : tr('add_to_list', lang).toUpperCase(),
+                icon: inList ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
+                sublabel: tr('status', lang).toUpperCase(),
+                onTap: () => _openEditor(context),
+              ),
+              const SizedBox(width: 8),
+              _actionBtn(
+                context,
+                progressTotal != null
+                    ? '$listProgress / $progressTotal $progressUnit'
+                    : '$listProgress $progressUnit',
+                icon: Icons.play_circle_outline_rounded,
+                sublabel: tr('progress', lang).toUpperCase(),
+                onTap: () => _openEditor(context),
+              ),
+              const SizedBox(width: 8),
+              _actionBtn(
+                context,
+                listScore == 0 ? tr('detail_not_scored', lang) : formatScore(listScore, scoreFormat),
+                icon: listScore == 0 ? Icons.star_outline_rounded : Icons.star_rounded,
+                sublabel: tr('detail_score', lang),
+                onTap: () => _openEditor(context),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 20),
+        const Divider(height: 1),
+
+        // ── Summary ──
+        if (description.isNotEmpty) ...[
+          _SummarySection(description: description),
+          const Divider(height: 1),
+        ],
+
+        // ── Series Info grid ──
+        _sectionPad(Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle(tr('detail_series_info', lang)),
+            const SizedBox(height: 12),
+            _infoGrid([
+              if (format != null) _InfoItem(tr('detail_type', lang), _formatLabel(format, lang)),
+              if (airingRange.isNotEmpty) _InfoItem(tr(isManga ? 'detail_published' : 'detail_airing', lang), airingRange),
+              if (episodes != null) _InfoItem(tr('detail_episodes', lang), '$episodes'),
+              if (chapters != null) _InfoItem(tr('detail_chapters', lang), '$chapters'),
+              if (volumes != null) _InfoItem(tr('detail_volumes', lang), '$volumes'),
+              if (duration != null) _InfoItem(tr('detail_runtime', lang), trf('detail_per_episode', lang, {'time': _durationStr(duration, lang)})),
+              if (totalDuration != null) _InfoItem(tr('detail_total_duration', lang), _durationStr(totalDuration, lang)),
+              if (remaining != null && remaining > 0) _InfoItem(tr('detail_time_remaining', lang), _durationStr(remaining, lang)),
+              if (seasonStr != null) _InfoItem(tr('detail_season', lang), seasonStr),
+              if (popularity != null) _InfoItem(tr('popularity', lang).toUpperCase(), trf('detail_on_user_lists', lang, {'n': _fmt(popularity)})),
+              if (favourites != null) _InfoItem(tr('detail_favorites', lang), _fmt(favourites)),
+              if (trending != null) _InfoItem(tr('trending_sort', lang).toUpperCase(), trf('detail_trending_updates', lang, {'n': trending})),
+            ]),
+          ],
+        )),
+
+        // ── Titles ──
+        _sectionPad(Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle(tr('detail_titles', lang)),
+            const SizedBox(height: 10),
+            if (d['title']?['romaji'] != null) _titleRow(tr('detail_title_romaji', lang), d['title']['romaji'] as String),
+            if (d['title']?['english'] != null) _titleRow(tr('detail_title_english', lang), d['title']['english'] as String),
+            if (d['title']?['native'] != null) _titleRow(tr('detail_title_native', lang), d['title']['native'] as String),
+            if (synonyms.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              _titleRow(tr('detail_other_names', lang), synonyms.join('\n')),
+            ],
+          ],
+        )),
+        const Divider(height: 1),
+
+        // ── Tags ──
+        if (tags.isNotEmpty) ...[
+          _TagsSection(tags: tags),
+          const Divider(height: 1),
+        ],
+
+        // ── Genres ──
+        if (genres.isNotEmpty) ...[
+          _sectionPad(Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionTitle(tr('detail_genres', lang)),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: genres.map((g) => _chip(context, g)).toList(),
+              ),
+            ],
+          )),
+          const Divider(height: 1),
+        ],
+
+        // ── Producers ──
+        if (hasProducers) ...[
+          _sectionPad(Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionTitle(tr('detail_producers', lang)),
+              const SizedBox(height: 10),
+              StudioLinks(studios: studios, isAnimationStudio: false),
+            ],
+          )),
+          const Divider(height: 1),
+        ],
+
+        // ── Relations ──
+        if (relations.isNotEmpty) ...[
+          _sectionPad(_sectionTitle(tr('detail_relations', lang))),
+          DetailMediaRow(
+            heroScope: 'detail-${widget.animeId}-relations',
+            items: [for (final edge in relations) _relationItem(edge, lang)],
+            onOpen: _openMedia,
+          ),
+          const Divider(height: 1),
+        ],
+
+        // ── Characters ──
+        if (characters.isNotEmpty) ...[
+          _sectionPad(_sectionTitle(tr('characters', lang).toUpperCase())),
+          _CharactersSection(
+            characters: characters,
+            onTap: (id, name, img) => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => CharacterScreen(
+                    characterId: id, name: name, imageUrl: img))),
+          ),
+          const Divider(height: 1),
+        ],
+
+        // ── Staff ── (brings its own title and divider; hides when empty)
+        StaffSection(edges: (d['staff']?['edges'] as List?) ?? const []),
+
+        // ── Recommended ──
+        if (recommendations.isNotEmpty) ...[
+          _sectionPad(_sectionTitle(tr('detail_recommended', lang))),
+          DetailMediaRow(
+            heroScope: 'detail-${widget.animeId}-recommended',
+            height: 195,
+            items: recommendations,
+            onOpen: _openMedia,
+          ),
+          const Divider(height: 1),
+        ],
+
+        // ── Following ── (hides itself when logged out or empty)
+        FollowingSection(mediaId: widget.animeId, isManga: isManga),
+
+        // ── Trailer ──
+        if (trailer != null && trailer['site'] == 'youtube') ...[
+          _TrailerSection(
+            trailerId: trailer['id'] as String,
+            onOpenUrl: _openUrl,
+          ),
+          const Divider(height: 1),
+        ],
+
+        // ── Episodes ──
+        if (streamingEps.isNotEmpty) ...[
+          _StreamingEpisodesSection(
+            episodes: streamingEps,
+            onOpenUrl: _openUrl,
+          ),
+          const Divider(height: 1),
+        ],
+
+        // ── Reviews ── (hides itself when there are none)
+        ReviewsSection(mediaId: widget.animeId),
+
+        // ── External links ──
+        if (externalLinks.isNotEmpty)
+          _ExternalLinksSection(links: externalLinks, onOpenUrl: _openUrl),
+
+        const SizedBox(height: 32),
+      ],
+    );
+  }
+
+  /// Back, and once the page has loaded share, favourite and edit, over the
+  /// banner (44px touch targets around 36px circles, so offsets are 4px
+  /// smaller than the visible spacing).
+  Widget _buildOverlayButtons(BuildContext context, Map<String, dynamic>? d, String lang) {
+    final isFav = d?['isFavourite'] == true;
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 2,
+      left: 8,
+      right: 8,
+      child: Row(
         children: [
-          CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-
-                // ── HEADER CARD ──
-                Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(24),
-                      bottomRight: Radius.circular(24),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.14),
-                        blurRadius: 18,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    alignment: Alignment.topCenter,
+          overlayBtn(
+            icon: Icons.arrow_back,
+            tooltip: tr('tooltip_back', lang),
+            onPressed: () => Navigator.pop(context),
+          ),
+          const Spacer(),
+          FadeSwitcher(
+            child: d == null
+                ? const SizedBox(key: ValueKey('loading'), height: 44)
+                : Row(
+                    key: const ValueKey('actions'),
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Banner image
-                          SizedBox(
-                            height: 200,
-                            width: double.infinity,
-                            child: ClipRRect(
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(0),
-                                topRight: Radius.circular(0),
-                              ),
-                              child: banner != null
-                                  ? CachedNetworkImage(imageUrl: banner, fit: BoxFit.cover)
-                                  : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                            ),
-                          ),
-                          // Space for cover overflow below banner
-                          const SizedBox(height: 80),
-                          // Title + studio + airing
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Column(
-                              children: [
-                                Text(title,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                                if (animationStudios.isNotEmpty) ...[
-                                  const SizedBox(height: 6),
-                                  StudioLinks(
-                                    studios: studios,
-                                    isAnimationStudio: true,
-                                    alignment: WrapAlignment.center,
-                                  ),
-                                ],
-                                if (nextAiring != null) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    trf('detail_episode_airs_in', lang, {
-                                      'n': '${nextAiring['episode']}',
-                                      'time': _airingCountdown(nextAiring['airingAt'] as int, lang),
-                                    }),
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(color: Colors.grey, fontSize: 13),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          // Stats row
-                          IntrinsicHeight(
-                            child: Row(
-                              children: [
-                                _statCell(tr('detail_average_score', lang),
-                                    score != null ? '$score%' : '—',
-                                    score != null && score >= 70 ? Colors.green : Colors.grey),
-                                if (highestRated != null) ...[
-                                  _vDivider(),
-                                  _statCell(tr('detail_highest_rated', lang), '#${highestRated['rank']}', null,
-                                      sub: _rankingSub(highestRated, lang)),
-                                ],
-                                if (mostPopular != null) ...[
-                                  _vDivider(),
-                                  _statCell(tr('detail_most_popular', lang), '#${mostPopular['rank']}', null,
-                                      sub: _rankingSub(mostPopular, lang)),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
+                      overlayBtn(
+                        icon: Icons.ios_share_rounded,
+                        tooltip: tr('tooltip_share', lang),
+                        onPressed: _copyLink,
                       ),
-                      // Gradient: banner fades into surface color
-                      Positioned(
-                        top: 110, left: 0, right: 0,
-                        child: Container(
-                          height: 90,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Theme.of(context).colorScheme.surface.withValues(alpha: 0),
-                                Theme.of(context).colorScheme.surface,
-                              ],
-                              stops: const [0.3, 1.0],
-                            ),
-                          ),
+                      // Pops when it becomes a favourite, not when it stops.
+                      PopOnChange(
+                        value: isFav,
+                        when: (value) => value == true,
+                        child: overlayBtn(
+                          icon: isFav ? Icons.favorite : Icons.favorite_border,
+                          color: isFav ? Colors.red : Colors.white,
+                          tooltip: tr('tooltip_favourite', lang),
+                          onPressed: _toggleFav,
                         ),
                       ),
-                      // Cover image straddling banner / content
-                      Positioned(
-                        top: 80,
-                        child: GestureDetector(
-                          onTap: cover != null ? () => _openCover(context, cover!) : null,
-                          child: Hero(
-                            tag: _coverTag,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: cover != null
-                                  ? CachedNetworkImage(
-                                      imageUrl: cover,
-                                      width: 130,
-                                      height: 190,
-                                      fit: BoxFit.cover,
-                                      memCacheWidth: 260,
-                                    )
-                                  : Container(width: 130, height: 190,
-                                      color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                            ),
-                          ),
-                        ),
+                      overlayBtn(
+                        icon: Icons.more_horiz,
+                        tooltip: tr('tooltip_edit_entry', lang),
+                        onPressed: () => _openEditor(context),
                       ),
                     ],
                   ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // ── Action buttons ──
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      _actionBtn(
-                        context,
-                        inList
-                            ? tr(entryStatusKey(listStatus, manga: isManga), lang).toUpperCase()
-                            : tr('add_to_list', lang).toUpperCase(),
-                        icon: inList ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
-                        sublabel: tr('status', lang).toUpperCase(),
-                        onTap: () => _openEditor(context),
-                      ),
-                      const SizedBox(width: 8),
-                      _actionBtn(
-                        context,
-                        progressTotal != null
-                            ? '$listProgress / $progressTotal $progressUnit'
-                            : '$listProgress $progressUnit',
-                        icon: Icons.play_circle_outline_rounded,
-                        sublabel: tr('progress', lang).toUpperCase(),
-                        onTap: () => _openEditor(context),
-                      ),
-                      const SizedBox(width: 8),
-                      _actionBtn(
-                        context,
-                        listScore == 0 ? tr('detail_not_scored', lang) : formatScore(listScore, scoreFormat),
-                        icon: listScore == 0 ? Icons.star_outline_rounded : Icons.star_rounded,
-                        sublabel: tr('detail_score', lang),
-                        onTap: () => _openEditor(context),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-                const Divider(height: 1),
-
-                // ── Summary ──
-                if (description.isNotEmpty) ...[
-                  _SummarySection(description: description),
-                  const Divider(height: 1),
-                ],
-
-                // ── Series Info grid ──
-                _sectionPad(Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionTitle(tr('detail_series_info', lang)),
-                    const SizedBox(height: 12),
-                    _infoGrid([
-                      if (format != null) _InfoItem(tr('detail_type', lang), _formatLabel(format, lang)),
-                      if (airingRange.isNotEmpty) _InfoItem(tr(isManga ? 'detail_published' : 'detail_airing', lang), airingRange),
-                      if (episodes != null) _InfoItem(tr('detail_episodes', lang), '$episodes'),
-                      if (chapters != null) _InfoItem(tr('detail_chapters', lang), '$chapters'),
-                      if (volumes != null) _InfoItem(tr('detail_volumes', lang), '$volumes'),
-                      if (duration != null) _InfoItem(tr('detail_runtime', lang), trf('detail_per_episode', lang, {'time': _durationStr(duration, lang)})),
-                      if (totalDuration != null) _InfoItem(tr('detail_total_duration', lang), _durationStr(totalDuration, lang)),
-                      if (remaining != null && remaining > 0) _InfoItem(tr('detail_time_remaining', lang), _durationStr(remaining, lang)),
-                      if (seasonStr != null) _InfoItem(tr('detail_season', lang), seasonStr),
-                      if (popularity != null) _InfoItem(tr('popularity', lang).toUpperCase(), trf('detail_on_user_lists', lang, {'n': _fmt(popularity)})),
-                      if (favourites != null) _InfoItem(tr('detail_favorites', lang), _fmt(favourites)),
-                      if (trending != null) _InfoItem(tr('trending_sort', lang).toUpperCase(), trf('detail_trending_updates', lang, {'n': trending})),
-                    ]),
-                  ],
-                )),
-
-                // ── Titles ──
-                _sectionPad(Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionTitle(tr('detail_titles', lang)),
-                    const SizedBox(height: 10),
-                    if (d['title']?['romaji'] != null) _titleRow(tr('detail_title_romaji', lang), d['title']['romaji'] as String),
-                    if (d['title']?['english'] != null) _titleRow(tr('detail_title_english', lang), d['title']['english'] as String),
-                    if (d['title']?['native'] != null) _titleRow(tr('detail_title_native', lang), d['title']['native'] as String),
-                    if (synonyms.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      _titleRow(tr('detail_other_names', lang), synonyms.join('\n')),
-                    ],
-                  ],
-                )),
-                const Divider(height: 1),
-
-                // ── Tags ──
-                if (tags.isNotEmpty) ...[
-                  _TagsSection(tags: tags),
-                  const Divider(height: 1),
-                ],
-
-                // ── Genres ──
-                if (genres.isNotEmpty) ...[
-                  _sectionPad(Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _sectionTitle(tr('detail_genres', lang)),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: genres.map((g) => _chip(context, g)).toList(),
-                      ),
-                    ],
-                  )),
-                  const Divider(height: 1),
-                ],
-
-                // ── Producers ──
-                if (producers.isNotEmpty) ...[
-                  _sectionPad(Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _sectionTitle(tr('detail_producers', lang)),
-                      const SizedBox(height: 10),
-                      StudioLinks(studios: studios, isAnimationStudio: false),
-                    ],
-                  )),
-                  const Divider(height: 1),
-                ],
-
-                // ── Relations ──
-                if (relations.isNotEmpty) ...[
-                  _sectionPad(_sectionTitle(tr('detail_relations', lang))),
-                  _RelationsSection(
-                    relations: relations,
-                    onTap: (id) => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => DetailScreen(animeId: id))),
-                  ),
-                  const Divider(height: 1),
-                ],
-
-                // ── Characters ──
-                if (characters.isNotEmpty) ...[
-                  _sectionPad(_sectionTitle(tr('characters', lang).toUpperCase())),
-                  _CharactersSection(
-                    characters: characters,
-                    onTap: (id, name, img) => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => CharacterScreen(
-                            characterId: id, name: name, imageUrl: img))),
-                  ),
-                  const Divider(height: 1),
-                ],
-
-                // ── Staff ── (brings its own title and divider; hides when empty)
-                StaffSection(edges: (d['staff']?['edges'] as List?) ?? const []),
-
-                // ── Recommended ──
-                if (recommendations.isNotEmpty) ...[
-                  _sectionPad(_sectionTitle(tr('detail_recommended', lang))),
-                  _RecommendedSection(
-                    recommendations: recommendations,
-                    onTap: (id) => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => DetailScreen(animeId: id))),
-                  ),
-                  const Divider(height: 1),
-                ],
-
-                // ── Following ── (hides itself when logged out or empty)
-                FollowingSection(mediaId: widget.animeId, isManga: isManga),
-
-                // ── Trailer ──
-                if (trailer != null && trailer['site'] == 'youtube') ...[
-                  _TrailerSection(
-                    trailerId: trailer['id'] as String,
-                    onOpenUrl: _openUrl,
-                  ),
-                  const Divider(height: 1),
-                ],
-
-                // ── Episodes ──
-                if (streamingEps.isNotEmpty) ...[
-                  _StreamingEpisodesSection(
-                    episodes: streamingEps,
-                    onOpenUrl: _openUrl,
-                  ),
-                  const Divider(height: 1),
-                ],
-
-                // ── Reviews ── (hides itself when there are none)
-                ReviewsSection(mediaId: widget.animeId),
-
-                // ── External links ──
-                if (externalLinks.isNotEmpty)
-                  _ExternalLinksSection(links: externalLinks, onOpenUrl: _openUrl),
-
-                const SizedBox(height: 32),
-              ],
-            ),
           ),
         ],
       ),
+    );
+  }
 
-          // ── Overlay buttons ── (44px touch targets around 36px circles,
-          // so offsets are 4px smaller than the visible spacing)
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 2,
-            left: 8,
-            right: 8,
-            child: Row(
-              children: [
-                overlayBtn(
-                  icon: Icons.arrow_back,
-                  tooltip: tr('tooltip_back', lang),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                const Spacer(),
-                overlayBtn(
-                  icon: Icons.ios_share_rounded,
-                  tooltip: tr('tooltip_share', lang),
-                  onPressed: _copyLink,
-                ),
-                overlayBtn(
-                  icon: d['isFavourite'] == true ? Icons.favorite : Icons.favorite_border,
-                  color: d['isFavourite'] == true ? Colors.red : Colors.white,
-                  tooltip: tr('tooltip_favourite', lang),
-                  onPressed: _toggleFav,
-                ),
-                overlayBtn(
-                  icon: Icons.more_horiz,
-                  tooltip: tr('tooltip_edit_entry', lang),
-                  onPressed: () => _openEditor(context),
-                ),
-              ],
-            ),
-          ),
-        ],
+  DetailMediaItem _relationItem(Map<String, dynamic> edge, String lang) {
+    final node = edge['node'] as Map<String, dynamic>? ?? {};
+    return DetailMediaItem(
+      id: node['id'] as int?,
+      title: (node['title']?['english'] ?? node['title']?['romaji'] ?? '') as String,
+      coverUrl: node['coverImage']?['large'] as String?,
+      subtitle: Text(
+        _relationLabel(edge['relationType'] as String? ?? '', lang),
+        style: const TextStyle(fontSize: 10, color: Colors.grey),
       ),
-    )));
+    );
+  }
+
+  /// Null when AniList sent the recommendation without its media.
+  DetailMediaItem? _recommendationItem(Map<String, dynamic> node) {
+    final rec = node['mediaRecommendation'] as Map<String, dynamic>?;
+    if (rec == null) return null;
+    final rating = node['rating'] as int? ?? 0;
+    return DetailMediaItem(
+      id: rec['id'] as int?,
+      title: (rec['title']?['english'] ?? rec['title']?['romaji'] ?? '') as String,
+      coverUrl: rec['coverImage']?['large'] as String?,
+      subtitle: Row(children: [
+        const Icon(Icons.thumb_up_outlined, size: 10, color: Colors.grey),
+        const SizedBox(width: 3),
+        Text('$rating', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      ]),
+    );
+  }
+
+  String _relationLabel(String s, String lang) => switch (s) {
+    'PREQUEL' => tr('detail_relation_prequel', lang),
+    'SEQUEL' => tr('detail_relation_sequel', lang),
+    'SIDE_STORY' => tr('detail_relation_side_story', lang),
+    'PARENT' => tr('detail_relation_parent', lang),
+    'ALTERNATIVE' => tr('detail_relation_alternative', lang),
+    'SUMMARY' => tr('detail_relation_summary', lang),
+    'SPIN_OFF' => tr('detail_relation_spin_off', lang),
+    'ADAPTATION' => tr('detail_relation_adaptation', lang),
+    'SOURCE' => tr('detail_relation_source', lang),
+    'CHARACTER' => tr('detail_relation_character', lang),
+    _ => s,
+  };
+
+  /// Opens another media from the Relations or Recommended rows, its cover
+  /// flying from the row.
+  void _openMedia(DetailMediaItem item, String heroTag) {
+    final id = item.id;
+    if (id == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DetailScreen(animeId: id, heroTag: heroTag, initialCoverUrl: item.coverUrl),
+      ),
+    );
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
@@ -895,24 +962,35 @@ class _SummarySectionState extends State<_SummarySection> {
               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                   color: Colors.grey, letterSpacing: 0.5)),
           const SizedBox(height: 8),
-          GestureDetector(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Text(
-              widget.description,
-              style: const TextStyle(color: Colors.grey, height: 1.6, fontSize: 13),
-              maxLines: _expanded ? null : 4,
-              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+          // Opens and closes smoothly instead of jumping.
+          AnimatedSize(
+            duration: AppMotion.of(context, AppMotion.medium),
+            curve: AppMotion.standard,
+            alignment: AlignmentDirectional.topStart,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: () => setState(() => _expanded = !_expanded),
+                  child: Text(
+                    widget.description,
+                    style: const TextStyle(color: Colors.grey, height: 1.6, fontSize: 13),
+                    maxLines: _expanded ? null : 4,
+                    overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                  ),
+                ),
+                if (!_expanded)
+                  GestureDetector(
+                    onTap: () => setState(() => _expanded = true),
+                    child: Builder(builder: (ctx) => Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(tr('detail_read_more', lang),
+                          style: TextStyle(color: Theme.of(ctx).colorScheme.primary, fontSize: 12)),
+                    )),
+                  ),
+              ],
             ),
           ),
-          if (!_expanded)
-            GestureDetector(
-              onTap: () => setState(() => _expanded = true),
-              child: Builder(builder: (ctx) => Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(tr('detail_read_more', lang),
-                    style: TextStyle(color: Theme.of(ctx).colorScheme.primary, fontSize: 12)),
-              )),
-            ),
         ],
       ),
     );
@@ -988,79 +1066,21 @@ class _TagsSectionState extends State<_TagsSection> {
             ],
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: widget.tags
-                .where((t) => _showAll || t['isMediaSpoiler'] != true || _showSpoilers)
-                .take(_showAll ? 999 : 9)
-                .map((t) => _tagChip(t['name'] as String, t['isMediaSpoiler'] == true))
-                .toList(),
+          AnimatedSize(
+            duration: AppMotion.of(context, AppMotion.medium),
+            curve: AppMotion.standard,
+            alignment: AlignmentDirectional.topStart,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: widget.tags
+                  .where((t) => _showAll || t['isMediaSpoiler'] != true || _showSpoilers)
+                  .take(_showAll ? 999 : 9)
+                  .map((t) => _tagChip(t['name'] as String, t['isMediaSpoiler'] == true))
+                  .toList(),
+            ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _RelationsSection extends StatelessWidget {
-  final List<Map<String, dynamic>> relations;
-  final void Function(int id) onTap;
-  const _RelationsSection({required this.relations, required this.onTap});
-
-  String _relationLabel(String s, String lang) => switch (s) {
-    'PREQUEL' => tr('detail_relation_prequel', lang),
-    'SEQUEL' => tr('detail_relation_sequel', lang),
-    'SIDE_STORY' => tr('detail_relation_side_story', lang),
-    'PARENT' => tr('detail_relation_parent', lang),
-    'ALTERNATIVE' => tr('detail_relation_alternative', lang),
-    'SUMMARY' => tr('detail_relation_summary', lang),
-    'SPIN_OFF' => tr('detail_relation_spin_off', lang),
-    'ADAPTATION' => tr('detail_relation_adaptation', lang),
-    'SOURCE' => tr('detail_relation_source', lang),
-    'CHARACTER' => tr('detail_relation_character', lang),
-    _ => s,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final lang = context.watch<SettingsProvider>().language;
-    return SizedBox(
-      height: 200,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        itemCount: relations.length,
-        itemBuilder: (_, i) {
-          final node = relations[i]['node'] as Map<String, dynamic>? ?? {};
-          final relType = _relationLabel(relations[i]['relationType'] as String? ?? '', lang);
-          final relTitle = (node['title']?['english'] ?? node['title']?['romaji'] ?? '') as String;
-          final relCover = node['coverImage']?['large'] as String?;
-          final relId = node['id'] as int?;
-          return GestureDetector(
-            onTap: relId != null ? () => onTap(relId) : null,
-            child: Container(
-              width: 110,
-              margin: const EdgeInsets.only(right: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: relCover != null
-                        ? CachedNetworkImage(imageUrl: relCover, width: 110, height: 150, fit: BoxFit.cover)
-                        : Container(width: 110, height: 150,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(relTitle, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-                  Text(relType, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                ],
-              ),
-            ),
-          );
-        },
       ),
     );
   }
@@ -1081,6 +1101,8 @@ class _CharactersSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
+    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final fadeIn = AppMotion.of(context, AppMotion.short);
     return SizedBox(
       height: 180,
       child: ListView.builder(
@@ -1094,80 +1116,39 @@ class _CharactersSection extends StatelessWidget {
           final name = node['name']?['full'] as String? ?? '';
           final img = node['image']?['medium'] as String?;
           final role = _roleLabel(edge['role'] as String? ?? '', lang);
-          return GestureDetector(
-            onTap: charId != null ? () => onTap(charId, name, img) : null,
-            child: Container(
-              width: 80,
-              margin: const EdgeInsets.only(right: 10),
-              child: Column(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: img != null
-                        ? CachedNetworkImage(imageUrl: img, width: 80, height: 110,
-                            fit: BoxFit.cover, memCacheWidth: 160)
-                        : Container(width: 80, height: 110,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(name, maxLines: 2, overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
-                  Text(role, style: const TextStyle(fontSize: 9, color: Colors.grey)),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _RecommendedSection extends StatelessWidget {
-  final List<Map<String, dynamic>> recommendations;
-  final void Function(int id) onTap;
-  const _RecommendedSection({required this.recommendations, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 195,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        itemCount: recommendations.length,
-        itemBuilder: (_, i) {
-          final rec = recommendations[i]['mediaRecommendation'] as Map<String, dynamic>?;
-          if (rec == null) return const SizedBox.shrink();
-          final recId = rec['id'] as int?;
-          final recTitle = (rec['title']?['english'] ?? rec['title']?['romaji'] ?? '') as String;
-          final recCover = rec['coverImage']?['large'] as String?;
-          final rating = recommendations[i]['rating'] as int? ?? 0;
-          return GestureDetector(
-            onTap: recId != null ? () => onTap(recId) : null,
-            child: Container(
-              width: 110,
-              margin: const EdgeInsets.only(right: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: recCover != null
-                        ? CachedNetworkImage(imageUrl: recCover, width: 110, height: 150, fit: BoxFit.cover)
-                        : Container(width: 110, height: 150,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(recTitle, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-                  Row(children: [
-                    const Icon(Icons.thumb_up_outlined, size: 10, color: Colors.grey),
-                    const SizedBox(width: 3),
-                    Text('$rating', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                  ]),
-                ],
+          return Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Pressable(
+              onTap: charId != null ? () => onTap(charId, name, img) : null,
+              child: SizedBox(
+                width: 80,
+                child: Column(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: SizedBox(
+                        width: 80,
+                        height: 110,
+                        child: img != null
+                            ? CachedNetworkImage(
+                                imageUrl: img,
+                                fit: BoxFit.cover,
+                                memCacheWidth: 160,
+                                fadeInDuration: fadeIn,
+                                fadeOutDuration: Duration.zero,
+                                placeholder: (_, _) => placeholder,
+                                errorWidget: (_, _, _) => placeholder,
+                              )
+                            : placeholder,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(name, maxLines: 2, overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
+                    Text(role, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+                  ],
+                ),
               ),
             ),
           );
@@ -1194,7 +1175,9 @@ class _TrailerSection extends StatelessWidget {
               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                   color: Colors.grey, letterSpacing: 0.5)),
           const SizedBox(height: 10),
-          GestureDetector(
+          Pressable(
+            // A full-width card only needs a hint of a press.
+            pressedScale: 0.98,
             onTap: () => onOpenUrl('https://www.youtube.com/watch?v=$trailerId'),
             child: Stack(
               alignment: Alignment.center,
@@ -1206,6 +1189,8 @@ class _TrailerSection extends StatelessWidget {
                     width: double.infinity,
                     height: 200,
                     fit: BoxFit.cover,
+                    fadeInDuration: AppMotion.of(context, AppMotion.short),
+                    fadeOutDuration: Duration.zero,
                   ),
                 ),
                 Container(
@@ -1235,6 +1220,8 @@ class _StreamingEpisodesSection extends StatelessWidget {
     final title = site != null
         ? trf('detail_streaming_episodes_on', lang, {'site': site.toUpperCase()})
         : tr('detail_streaming_episodes', lang);
+    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final fadeIn = AppMotion.of(context, AppMotion.short);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1256,25 +1243,38 @@ class _StreamingEpisodesSection extends StatelessWidget {
               final thumb = ep['thumbnail'] as String?;
               final epTitle = ep['title'] as String? ?? '';
               final url = ep['url'] as String?;
-              return GestureDetector(
-                onTap: url != null ? () => onOpenUrl(url) : null,
-                child: Container(
-                  width: 160,
-                  margin: const EdgeInsets.only(right: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: thumb != null
-                            ? CachedNetworkImage(imageUrl: thumb, width: 160, height: 110, fit: BoxFit.cover)
-                            : Container(width: 160, height: 110,
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(epTitle, maxLines: 2, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11)),
-                    ],
+              return Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Pressable(
+                  onTap: url != null ? () => onOpenUrl(url) : null,
+                  child: SizedBox(
+                    width: 160,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: SizedBox(
+                            width: 160,
+                            height: 110,
+                            child: thumb != null
+                                ? CachedNetworkImage(
+                                    imageUrl: thumb,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth: 320,
+                                    fadeInDuration: fadeIn,
+                                    fadeOutDuration: Duration.zero,
+                                    placeholder: (_, _) => placeholder,
+                                    errorWidget: (_, _, _) => placeholder,
+                                  )
+                                : placeholder,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(epTitle, maxLines: 2, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11)),
+                      ],
+                    ),
                   ),
                 ),
               );

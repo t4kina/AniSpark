@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 
 import '../../providers/settings_provider.dart';
 import '../../services/people_api.dart';
+import '../../theme/app_motion.dart';
+import '../motion/pressable.dart';
+import '../motion/rounded_hero.dart';
 import 'people_labels.dart';
 
 /// Grid layout of [VoicedCharacterTile]s: two per row on phones.
@@ -22,11 +25,16 @@ class VoicedCharacterTile extends StatelessWidget {
     required this.item,
     this.onCharacterTap,
     this.onMediaTap,
+    this.mediaHeroTag,
   });
 
   final VoicedCharacter item;
   final VoidCallback? onCharacterTap;
   final VoidCallback? onMediaTap;
+
+  /// Tag of the media cover's hero (see `coverHeroTag`), when
+  /// [onMediaTap] opens its detail page with it.
+  final String? mediaHeroTag;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +66,7 @@ class VoicedCharacterTile extends StatelessWidget {
                 title: settings.resolveTitle(item.media.title),
                 subtitle: mediaFormatAndYear(item.media, lang),
                 onTap: onMediaTap,
+                heroTag: mediaHeroTag,
               ),
             ),
           ],
@@ -68,31 +77,31 @@ class VoicedCharacterTile extends StatelessWidget {
 }
 
 class _Half extends StatelessWidget {
-  const _Half({required this.imageUrl, required this.title, this.subtitle, this.onTap});
+  const _Half({required this.imageUrl, required this.title, this.subtitle, this.onTap, this.heroTag});
 
   final String? imageUrl;
   final String title;
   final String? subtitle;
   final VoidCallback? onTap;
+  final String? heroTag;
 
   @override
   Widget build(BuildContext context) {
     final imageUrl = this.imageUrl;
     final subtitle = this.subtitle;
-    final placeholder = Container(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
     return MergeSemantics(
       child: Semantics(
         button: onTap != null,
-        child: InkWell(
+        child: Pressable(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: SizedBox.expand(
+                child: SizedBox.expand(
+                  child: RoundedHero(
+                    tag: heroTag,
                     child: imageUrl == null
                         ? placeholder
                         : CachedNetworkImage(
@@ -100,6 +109,8 @@ class _Half extends StatelessWidget {
                             fit: BoxFit.cover,
                             alignment: Alignment.topCenter,
                             memCacheWidth: 240,
+                            fadeInDuration: AppMotion.of(context, AppMotion.short),
+                            fadeOutDuration: Duration.zero,
                             placeholder: (_, _) => placeholder,
                             errorWidget: (_, _, _) => placeholder,
                           ),

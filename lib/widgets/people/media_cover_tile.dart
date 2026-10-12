@@ -4,7 +4,10 @@ import 'package:provider/provider.dart';
 
 import '../../providers/settings_provider.dart';
 import '../../services/people_api.dart';
+import '../../theme/app_motion.dart';
 import '../../utils/translations.dart';
+import '../motion/pressable.dart';
+import '../motion/rounded_hero.dart';
 
 /// Grid layout shared by the cover grids of the staff and studio pages
 /// (the season browser's proportions, with room for a two-line subtitle).
@@ -24,12 +27,17 @@ class MediaCoverTile extends StatelessWidget {
     this.subtitle,
     this.subtitleLines = 1,
     this.onTap,
+    this.heroTag,
   });
 
   final MediaRef media;
   final String? subtitle;
   final int subtitleLines;
   final VoidCallback? onTap;
+
+  /// Tag of the cover's hero (see `coverHeroTag`), when [onTap] opens the
+  /// media's detail page with it.
+  final String? heroTag;
 
   @override
   Widget build(BuildContext context) {
@@ -39,37 +47,38 @@ class MediaCoverTile extends StatelessWidget {
     final cover = media.coverUrl;
     final score = media.averageScore;
     final subtitle = this.subtitle;
-    final placeholder = Container(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
 
     return MergeSemantics(
       child: Semantics(
         button: onTap != null,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(8),
+        child: Pressable(
           onTap: onTap,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      if (cover == null)
-                        placeholder
-                      else
-                        CachedNetworkImage(
-                          imageUrl: cover,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 240,
-                          placeholder: (_, _) => placeholder,
-                          errorWidget: (_, _, _) => placeholder,
-                        ),
-                      if (score != null && score > 0) _ScoreOverlay(score: score),
-                      if (media.isManga) _CornerLabel(text: tr('nav_manga', lang)),
-                    ],
-                  ),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    // Only the cover flies; the labels stay on the tile.
+                    RoundedHero(
+                      tag: heroTag,
+                      child: cover == null
+                          ? placeholder
+                          : CachedNetworkImage(
+                              imageUrl: cover,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 240,
+                              fadeInDuration: AppMotion.of(context, AppMotion.short),
+                              fadeOutDuration: Duration.zero,
+                              placeholder: (_, _) => placeholder,
+                              errorWidget: (_, _, _) => placeholder,
+                            ),
+                    ),
+                    if (score != null && score > 0) _ScoreOverlay(score: score),
+                    if (media.isManga) _CornerLabel(text: tr('nav_manga', lang)),
+                  ],
                 ),
               ),
               const SizedBox(height: 5),
@@ -108,6 +117,7 @@ class _ScoreOverlay extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
           decoration: BoxDecoration(
+            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
             gradient: LinearGradient(
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,

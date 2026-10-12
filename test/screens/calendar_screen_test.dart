@@ -138,6 +138,8 @@ void main() {
         _airing(100 + i, 'Tomorrow $i', DateTime(today.year, today.month, today.day + 1, 0, i)),
     ];
     await pumpCalendar(tester, apiAnswering((_) => _page(many)));
+    // Let the rows' entrance cascade finish, so they sit in place.
+    await tester.pumpAndSettle();
     final top = tester.getTopLeft(find.byType(CustomScrollView)).dy;
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));

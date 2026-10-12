@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../services/media_extras_api.dart';
 import '../../utils/translations.dart';
+import '../motion/pressable.dart';
 import '../skeletons.dart';
 import '../user_avatar.dart';
 
@@ -41,9 +42,10 @@ class ReviewCard extends StatelessWidget {
       child: Semantics(
         button: true,
         label: trf('review_by', lang, {'name': review.user.name}),
-        child: GestureDetector(
+        child: Pressable(
+          // A wide card only needs a hint of a press.
+          pressedScale: 0.98,
           onTap: onTap,
-          behavior: HitTestBehavior.opaque,
           child: SizedBox(
             width: width,
             child: Row(
