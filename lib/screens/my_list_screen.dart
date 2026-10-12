@@ -13,6 +13,14 @@ import '../providers/settings_provider.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
+import '../utils/tab_reselect.dart';
+import '../theme/app_motion.dart';
+import '../widgets/motion/animated_count.dart';
+import '../widgets/motion/cover_hero.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/press_scale.dart';
+import '../widgets/motion/rounded_hero.dart';
+import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/entry_editor/entry_editor_sheet.dart';
 import '../services/notification_service.dart';
@@ -136,7 +144,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
                       setSheet(() {});
                     },
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
+                      duration: AppMotion.of(ctx, AppMotion.short),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: selected ? cs.primary : cs.surfaceContainerHighest,
@@ -333,6 +341,11 @@ class _MediaListState extends State<_MediaList>
   };
 
   AuthService? _auth;
+  final _scrollController = ScrollController();
+  late final VoidCallback _stopReselectListener;
+
+  /// This list's index in the bottom navigation.
+  int get _tab => widget.type == 'ANIME' ? 0 : 1;
 
   @override
   void initState() {
@@ -343,12 +356,19 @@ class _MediaListState extends State<_MediaList>
       _load();
     });
     listRefreshNotifier.addListener(_onRefreshRequested);
+    _stopReselectListener = scrollToTopOnReselect(
+      tabReselectedNotifier,
+      tab: _tab,
+      onReselected: () => scrollToTop(_scrollController),
+    );
   }
 
   @override
   void dispose() {
     _auth?.removeListener(_onAuthChanged);
     listRefreshNotifier.removeListener(_onRefreshRequested);
+    _stopReselectListener();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -496,12 +516,12 @@ class _MediaListState extends State<_MediaList>
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 400),
+      transitionDuration: AppMotion.of(context, AppMotion.long),
       transitionBuilder: (ctx, animation, _, child) => FadeTransition(
-        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+        opacity: CurvedAnimation(parent: animation, curve: AppMotion.enter, reverseCurve: AppMotion.exit),
         child: SlideTransition(
           position: Tween(begin: const Offset(0, 0.06), end: Offset.zero)
-              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+              .animate(CurvedAnimation(parent: animation, curve: AppMotion.enter, reverseCurve: AppMotion.exit)),
           child: child,
         ),
       ),
@@ -567,6 +587,11 @@ class _MediaListState extends State<_MediaList>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    // Each state is keyed, so loading, errors and the list cross-fade.
+    return FadeSwitcher(child: _content(context));
+  }
+
+  Widget _content(BuildContext context) {
     final lang = context.select<SettingsProvider, String>((s) => s.language);
     final isLoggedIn = context.select<AuthService, bool>((auth) => auth.isLoggedIn);
     final (lists, loading, error) = context.select<MediaListStore, (MediaLists?, bool, Object?)>(
@@ -574,15 +599,17 @@ class _MediaListState extends State<_MediaList>
 
     if (!isLoggedIn) {
       return _ListMessage(
+        key: const ValueKey('list-logged-out'),
         icon: Icons.list_alt_outlined,
         message: tr('list_connect_prompt', lang),
       );
     }
     if (lists == null) {
       if (loading || error == null) {
-        return const ListSkeleton();
+        return const ListSkeleton(key: ValueKey('list-skeleton'));
       }
       return _ListMessage(
+        key: const ValueKey('list-error'),
         icon: Icons.wifi_off_rounded,
         message: tr('load_error', lang),
         action: FilledButton.icon(
@@ -596,6 +623,7 @@ class _MediaListState extends State<_MediaList>
       final isAnime = widget.type == 'ANIME';
       final cs = Theme.of(context).colorScheme;
       return Center(
+        key: const ValueKey('list-empty'),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
@@ -658,7 +686,9 @@ class _MediaListState extends State<_MediaList>
     final labels =
         widget.type == 'ANIME' ? _animeStatusLabels(lang) : _mangaStatusLabels(lang);
 
-    // Build a flat item list: headers + entries (only when expanded)
+    // Build a flat item list: headers + entries (only when expanded). An
+    // entry's status is the section it's shown in (a media can also be in
+    // custom lists), which keeps its cover hero unique.
     final items = <({bool isHeader, String? status, String? label, int? count, Map<String, dynamic>? entry, bool isCustom})>[];
     for (final status in _statusOrder) {
       final raw = lists[status];
@@ -668,7 +698,7 @@ class _MediaListState extends State<_MediaList>
       items.add((isHeader: true, status: status, label: labels[status] ?? status, count: filtered.length, entry: null, isCustom: false));
       if (!_collapsedSections.contains(status)) {
         for (final e in filtered) {
-          items.add((isHeader: false, status: null, label: null, count: null, entry: e, isCustom: false));
+          items.add((isHeader: false, status: status, label: null, count: null, entry: e, isCustom: false));
         }
         items.add((isHeader: false, status: null, label: null, count: null, entry: null, isCustom: false)); // spacer
       }
@@ -687,7 +717,7 @@ class _MediaListState extends State<_MediaList>
       items.add((isHeader: true, status: key, label: name, count: filtered.length, entry: null, isCustom: true));
       if (!_collapsedSections.contains(key)) {
         for (final e in filtered) {
-          items.add((isHeader: false, status: null, label: null, count: null, entry: e, isCustom: false));
+          items.add((isHeader: false, status: key, label: null, count: null, entry: e, isCustom: false));
         }
         items.add((isHeader: false, status: null, label: null, count: null, entry: null, isCustom: false));
       }
@@ -695,6 +725,7 @@ class _MediaListState extends State<_MediaList>
 
     if (items.isEmpty) {
       return Center(
+        key: const ValueKey('list-no-match'),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -713,74 +744,95 @@ class _MediaListState extends State<_MediaList>
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView.builder(
-        padding: const EdgeInsets.only(bottom: 16),
-        itemCount: items.length,
-        itemBuilder: (_, i) {
-          final item = items[i];
-          if (item.isHeader) {
-            final collapsed = _collapsedSections.contains(item.status);
-            return InkWell(
-              onTap: () => setState(() {
-                if (collapsed) {
-                  _collapsedSections.remove(item.status);
-                } else {
-                  _collapsedSections.add(item.status!);
-                }
-              }),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: Row(
-                  children: [
-                    if (item.isCustom) ...[
-                      const Icon(Icons.playlist_add_check, size: 16, color: Colors.grey),
-                      const SizedBox(width: 6),
-                    ],
-                    Text(item.label!,
-                        style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey)),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${item.count}',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Theme.of(context).colorScheme.primary),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      collapsed ? Icons.chevron_right : Icons.expand_more,
-                      color: Colors.grey,
-                      size: 20,
-                    ),
-                  ],
-                ),
+    // The first rows cascade in when the list first appears; rows built
+    // later (scrolling, filtering, expanding a section) appear at once.
+    return EntranceGate(
+      key: const ValueKey('list'),
+      trigger: widget.type,
+      child: RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView.builder(
+          controller: _scrollController,
+          padding: const EdgeInsets.only(bottom: 16),
+          itemCount: items.length,
+          itemBuilder: (_, i) {
+            final item = items[i];
+            if (item.isHeader) {
+              return StaggeredEntrance(
+                index: i,
+                child: _sectionHeader(context, item.status!, item.label!, item.count!, isCustom: item.isCustom),
+              );
+            }
+            final entry = item.entry;
+            if (entry == null) return const SizedBox(height: 4);
+            final mediaId = entry['media']?['id'] as int?;
+            final entryId = entry['id'] as int?;
+            return StaggeredEntrance(
+              index: i,
+              child: _SwipeableRow(
+                key: ValueKey(mediaId ?? entryId ?? i),
+                entry: entry,
+                type: widget.type,
+                heroScope: 'mylist-${widget.type}-${item.status}',
+                onAddEpisode: () => _changeProgress(entry, 1),
+                onRemove: () => _changeProgress(entry, -1),
+                onEdit: () => _openEditor(entry),
               ),
             );
-          }
-          if (item.entry == null) return const SizedBox(height: 4);
-          final mediaId = item.entry!['media']?['id'] as int?;
-          final entryId = item.entry!['id'] as int?;
-          return _SwipeableRow(
-            key: ValueKey(mediaId ?? entryId ?? i),
-            entry: item.entry!,
-            type: widget.type,
-            onAddEpisode: () => _changeProgress(item.entry!, 1),
-            onRemove: () => _changeProgress(item.entry!, -1),
-            onEdit: () => _openEditor(item.entry!),
-          );
-        },
+          },
+        ),
+      ),
+    );
+  }
+
+  /// A section's title and size; tapping it collapses or expands it.
+  Widget _sectionHeader(BuildContext context, String section, String label, int count, {required bool isCustom}) {
+    final collapsed = _collapsedSections.contains(section);
+    final primary = Theme.of(context).colorScheme.primary;
+    return InkWell(
+      onTap: () => setState(() {
+        if (collapsed) {
+          _collapsedSections.remove(section);
+        } else {
+          _collapsedSections.add(section);
+        }
+      }),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            if (isCustom) ...[
+              const Icon(Icons.playlist_add_check, size: 16, color: Colors.grey),
+              const SizedBox(width: 6),
+            ],
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: primary),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              collapsed ? Icons.chevron_right : Icons.expand_more,
+              color: Colors.grey,
+              size: 20,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -790,7 +842,7 @@ class _ListMessage extends StatelessWidget {
   final IconData icon;
   final String message;
   final Widget? action;
-  const _ListMessage({required this.icon, required this.message, this.action});
+  const _ListMessage({super.key, required this.icon, required this.message, this.action});
 
   @override
   Widget build(BuildContext context) => Center(
@@ -814,6 +866,10 @@ class _ListMessage extends StatelessWidget {
 class _SwipeableRow extends StatefulWidget {
   final Map<String, dynamic> entry;
   final String type;
+
+  /// The list section the row is in, for its cover's hero tag: unique on
+  /// the screen even when a media is also in custom lists.
+  final String heroScope;
   final VoidCallback onAddEpisode;
   final VoidCallback onRemove;
   /// Opens the full entry editor (long-press).
@@ -822,6 +878,7 @@ class _SwipeableRow extends StatefulWidget {
     super.key,
     required this.entry,
     required this.type,
+    required this.heroScope,
     required this.onAddEpisode,
     required this.onRemove,
     required this.onEdit,
@@ -834,6 +891,10 @@ class _SwipeableRow extends StatefulWidget {
 class _SwipeableRowState extends State<_SwipeableRow> {
   late int _progress;
 
+  // Press feedback lives on the cover only: the row itself must stay still
+  // under the swipe and long-press gestures.
+  final _pressed = ValueNotifier(false);
+
   @override
   void initState() {
     super.initState();
@@ -841,10 +902,41 @@ class _SwipeableRowState extends State<_SwipeableRow> {
   }
 
   @override
+  void dispose() {
+    _pressed.dispose();
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(_SwipeableRow old) {
     super.didUpdateWidget(old);
     final next = (widget.entry['progress'] as num?)?.toInt() ?? 0;
     if (next != _progress) setState(() => _progress = next);
+  }
+
+  /// The cover, which flies to the detail page and dips while the row is
+  /// pressed (a transform only, so the row never re-lays out).
+  Widget _cover(BuildContext context, String? image, String? heroTag) {
+    final placeholder = Container(
+        width: 80,
+        height: 115,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final cover = RoundedHero(
+      tag: heroTag,
+      borderRadius: BorderRadius.circular(6),
+      child: image != null
+          ? CachedNetworkImage(
+              imageUrl: image,
+              width: 80,
+              height: 115,
+              fit: BoxFit.cover,
+              memCacheWidth: 160,
+              placeholder: (_, _) => placeholder,
+              errorWidget: (_, _, _) => placeholder,
+            )
+          : placeholder,
+    );
+    return PressScale(pressed: _pressed, child: cover);
   }
 
   String? _timeUntilAiring(int airingAt, String lang) {
@@ -872,8 +964,11 @@ class _SwipeableRowState extends State<_SwipeableRow> {
         ? media['episodes'] as int?
         : media['chapters'] as int?;
     final id = media['id'] as int?;
+    final heroTag = id == null ? null : coverHeroTag(widget.heroScope, id);
     final nextAiring = media['nextAiringEpisode'] as Map<String, dynamic>?;
     final unitLabel = widget.type == 'ANIME' ? tr('episode', lang) : tr('chapter', lang);
+    final progressSuffix =
+        '${total != null ? ' / $total' : ''} ${widget.type == 'ANIME' ? tr('episodes', lang) : tr('chapters', lang)}';
 
     return Dismissible(
       key: widget.key ?? ValueKey(id),
@@ -954,38 +1049,21 @@ class _SwipeableRowState extends State<_SwipeableRow> {
             ? () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => DetailScreen(animeId: id)),
+                      builder: (_) => DetailScreen(
+                            animeId: id,
+                            heroTag: heroTag,
+                            initialCoverUrl: image,
+                          )),
                 )
             : null,
         onLongPress: widget.onEdit,
+        onHighlightChanged: (pressed) => _pressed.value = pressed,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        width: 80,
-                        height: 115,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 160,
-                        placeholder: (_, _) => Container(
-                            width: 80,
-                            height: 115,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                        errorWidget: (_, _, _) => Container(
-                            width: 80,
-                            height: 115,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                      )
-                    : Container(
-                        width: 80,
-                        height: 115,
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest),
-              ),
+              _cover(context, image, heroTag),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1000,12 +1078,22 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                           fontSize: 14, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 6),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      child: Text(
-                        '$_progress${total != null ? ' / $total' : ''} ${widget.type == 'ANIME' ? tr('episodes', lang) : tr('chapters', lang)}',
-                        key: ValueKey(_progress),
+                    // Only the number rolls when a swipe or edit changes it;
+                    // screen readers still hear one phrase.
+                    Semantics(
+                      label: '$_progress$progressSuffix',
+                      excludeSemantics: true,
+                      child: DefaultTextStyle.merge(
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            AnimatedCount(value: _progress),
+                            Flexible(child: Text(progressSuffix)),
+                          ],
+                        ),
                       ),
                     ),
                     if (score > 0) ...[
@@ -1111,6 +1199,7 @@ class _CompletionDialog extends StatefulWidget {
 
 class _CompletionDialogState extends State<_CompletionDialog> {
   late final ConfettiController _confetti;
+  bool _confettiStarted = false;
   double _score = 0;
   bool _completing = false;
 
@@ -1128,7 +1217,15 @@ class _CompletionDialogState extends State<_CompletionDialog> {
     super.initState();
     _score = widget.initialScore;
     _confetti = ConfettiController(duration: const Duration(milliseconds: 2500));
-    _confetti.play();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // One burst when the dialog opens, skipped when animations are reduced.
+    if (_confettiStarted) return;
+    _confettiStarted = true;
+    if (!AppMotion.reduced(context)) _confetti.play();
   }
 
   @override

@@ -1,7 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../theme/app_motion.dart';
 import '../../utils/translations.dart';
+import '../motion/animated_count.dart';
+import '../motion/pop_on_change.dart';
 import 'entry_draft.dart';
 import 'score_scale.dart';
 
@@ -60,7 +65,9 @@ class UnknownValue extends StatelessWidget {
 }
 
 /// A number with − and + buttons that can also be typed. Values are kept
-/// between 0 and [max] (when known); [decimals] is 0 or 1.
+/// between 0 and [max] (when known); [decimals] is 0 or 1. A value changed
+/// from outside the field (the buttons, a status change) rolls in like an
+/// [AnimatedCount]; typed values just appear.
 class NumberStepper extends StatefulWidget {
   const NumberStepper({
     super.key,
@@ -86,8 +93,20 @@ class NumberStepper extends StatefulWidget {
 }
 
 class _NumberStepperState extends State<NumberStepper> {
+  static const _valueStyle = TextStyle(fontSize: 15, fontWeight: FontWeight.bold);
+
+  // The end of a single-line field's text keeps room for the caret (its
+  // 2px width plus a 1px gap), so centred text sits half of this left of
+  // the middle; the rolling copy is laid out the same way.
+  static const _caretRoom = 3.0;
+
   late final TextEditingController _controller = TextEditingController(text: _format(widget.value));
   final _focusNode = FocusNode();
+
+  // While a new value rolls in, the field's own text is hidden and a twin
+  // decorator draws the rolling number in exactly the same place.
+  bool _rolling = false;
+  Timer? _rollEnd;
 
   num get _max => widget.max ?? _noTotalMax;
 
@@ -102,15 +121,35 @@ class _NumberStepperState extends State<NumberStepper> {
     super.didUpdateWidget(oldWidget);
     // An empty field stands for 0 while the user is typing.
     if ((_parse(_controller.text) ?? 0) != widget.value) _setText(_format(widget.value));
+    // Typing already shows the new value; anything else rolls it in.
+    if (widget.value != oldWidget.value && !_focusNode.hasFocus) _roll();
   }
 
   @override
   void dispose() {
+    _rollEnd?.cancel();
     _focusNode.removeListener(_onFocusChange);
     _focusNode.dispose();
     _controller.dispose();
     super.dispose();
   }
+
+  /// Shows the rolling copy for as long as [AnimatedCount] rolls (called
+  /// from [didUpdateWidget], so the build that follows picks it up).
+  void _roll() {
+    final duration = AppMotion.of(context, AppMotion.short);
+    if (duration == Duration.zero) return;
+    _rollEnd?.cancel();
+    _rolling = true;
+    _rollEnd = Timer(duration, () {
+      if (mounted) setState(() => _rolling = false);
+    });
+  }
+
+  /// The value in the steps [AnimatedCount] counts (tenths with a decimal).
+  int get _units => widget.decimals == 0 ? widget.value.round() : (widget.value * 10).round();
+
+  String _formatUnits(int units) => _format(widget.decimals == 0 ? units : units / 10);
 
   void _onFocusChange() {
     if (!_focusNode.hasFocus) _setText(_format(widget.value));
@@ -149,6 +188,46 @@ class _NumberStepperState extends State<NumberStepper> {
     if (value != widget.value) widget.onChanged(value);
   }
 
+  InputDecoration _decoration(ColorScheme cs, {required bool forRollingCopy}) => InputDecoration(
+        isDense: true,
+        // The copy only draws the number: the field below paints the rest.
+        filled: !forRollingCopy,
+        fillColor: cs.surfaceContainerHighest,
+        suffixText: widget.suffix,
+        suffixStyle: TextStyle(color: forRollingCopy ? Colors.transparent : Colors.grey, fontSize: 13),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(_fieldRadius),
+          borderSide: BorderSide.none,
+        ),
+      );
+
+  /// The number rolling in, laid out by a decorator configured like the
+  /// field's so it lands exactly on the field's own text.
+  Widget _rollingCopy(ColorScheme cs) {
+    // A TextField draws its text in bodyLarge merged with its style.
+    final style = Theme.of(context).textTheme.bodyLarge!.merge(_valueStyle);
+    return IgnorePointer(
+      child: ExcludeSemantics(
+        child: Visibility.maintain(
+          visible: _rolling,
+          child: InputDecorator(
+            decoration: _decoration(cs, forRollingCopy: true),
+            baseStyle: _valueStyle,
+            textAlign: TextAlign.center,
+            child: Padding(
+              padding: const EdgeInsets.only(right: _caretRoom),
+              child: Center(
+                heightFactor: 1,
+                child: AnimatedCount(value: _units, format: _formatUnits, style: style),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -161,29 +240,23 @@ class _NumberStepperState extends State<NumberStepper> {
         ),
         const SizedBox(width: 8),
         Expanded(
-          child: TextField(
-            controller: _controller,
-            focusNode: _focusNode,
-            textAlign: TextAlign.center,
-            keyboardType: TextInputType.numberWithOptions(decimal: widget.decimals > 0),
-            inputFormatters: [
-              if (widget.decimals > 0) const _OneDecimalFormatter() else FilteringTextInputFormatter.digitsOnly,
-              LengthLimitingTextInputFormatter(5),
-            ],
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
-            decoration: InputDecoration(
-              isDense: true,
-              filled: true,
-              fillColor: cs.surfaceContainerHighest,
-              suffixText: widget.suffix,
-              suffixStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(_fieldRadius),
-                borderSide: BorderSide.none,
+          child: Stack(
+            children: [
+              TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                textAlign: TextAlign.center,
+                keyboardType: TextInputType.numberWithOptions(decimal: widget.decimals > 0),
+                inputFormatters: [
+                  if (widget.decimals > 0) const _OneDecimalFormatter() else FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(5),
+                ],
+                style: _rolling ? _valueStyle.copyWith(color: Colors.transparent) : _valueStyle,
+                decoration: _decoration(cs, forRollingCopy: false),
+                onChanged: _onTextChanged,
               ),
-            ),
-            onChanged: _onTextChanged,
+              Positioned.fill(child: _rollingCopy(cs)),
+            ],
           ),
         ),
         const SizedBox(width: 8),
@@ -253,6 +326,8 @@ class ScoreInput extends StatelessWidget {
   ];
   static const _faceKeys = ['editor_face_sad', 'editor_face_neutral', 'editor_face_happy'];
 
+  static bool _isTrue(Object? selected) => selected == true;
+
   @override
   Widget build(BuildContext context) {
     final units = scale.toUnits(score);
@@ -277,10 +352,15 @@ class ScoreInput extends StatelessWidget {
                 isSelected: star <= units,
                 constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
                 onPressed: () => toggle(star),
-                icon: Icon(
-                  star <= units ? Icons.star_rounded : Icons.star_outline_rounded,
-                  size: 32,
-                  color: star <= units ? const Color(0xFFFFC107) : Colors.grey,
+                // The star that becomes the score pops.
+                icon: PopOnChange(
+                  value: star == units,
+                  when: _isTrue,
+                  child: Icon(
+                    star <= units ? Icons.star_rounded : Icons.star_outline_rounded,
+                    size: 32,
+                    color: star <= units ? const Color(0xFFFFC107) : Colors.grey,
+                  ),
                 ),
               ),
           ],
@@ -297,7 +377,11 @@ class ScoreInput extends StatelessWidget {
                   backgroundColor: face == units ? cs.primary.withValues(alpha: 0.15) : null,
                 ),
                 onPressed: () => toggle(face),
-                icon: Icon(_faces[face - 1], size: 32, color: face == units ? cs.primary : Colors.grey),
+                icon: PopOnChange(
+                  value: face == units,
+                  when: _isTrue,
+                  child: Icon(_faces[face - 1], size: 32, color: face == units ? cs.primary : Colors.grey),
+                ),
               ),
               const SizedBox(width: 8),
             ],

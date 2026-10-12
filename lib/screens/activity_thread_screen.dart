@@ -12,6 +12,9 @@ import '../services/social_api.dart';
 import '../utils/activity_status.dart';
 import '../utils/activity_text.dart';
 import '../utils/translations.dart' show tr;
+import '../widgets/motion/animated_count.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
 import '../widgets/social/social_widgets.dart';
@@ -62,6 +65,9 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
   bool _likingActivity = false;
   final Set<int> _likingReplies = {};
   int _page = 1;
+  // Replies the viewer sent from this screen; they slide in when they
+  // arrive (and only then: the gate stops replays on scroll).
+  final Set<int> _sentReplyIds = {};
 
   @override
   void initState() {
@@ -279,6 +285,7 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
       _sending = false;
       _replies = _merged([..._replies, reply]);
       _activity = updated;
+      if (reply['id'] case final int id) _sentReplyIds.add(id);
     });
     _replyController.clear();
     if (updated != null) widget.onActivityChanged?.call(updated);
@@ -303,7 +310,7 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
       appBar: AppBar(title: Text(tr('social_thread_title', lang))),
       body: Column(
         children: [
-          Expanded(child: _content(activity, lang)),
+          Expanded(child: FadeSwitcher(child: _content(activity, lang))),
           if (activity != null && loggedIn)
             isLocked
                 ? _LockedNotice(lang: lang)
@@ -318,13 +325,20 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
     );
   }
 
+  /// The thread or a placeholder; each is keyed so switching between them
+  /// cross-fades.
   Widget _content(Map<String, dynamic>? activity, String lang) {
     if (_notFound) {
-      return _CenteredMessage(icon: Icons.speaker_notes_off_outlined, text: tr('social_activity_not_found', lang));
+      return _CenteredMessage(
+        key: const ValueKey('thread-not-found'),
+        icon: Icons.speaker_notes_off_outlined,
+        text: tr('social_activity_not_found', lang),
+      );
     }
     if (activity == null) {
-      if (_loading) return const FeedSkeleton(cards: 3);
+      if (_loading) return const FeedSkeleton(key: ValueKey('thread-skeleton'), cards: 3);
       return _CenteredMessage(
+        key: const ValueKey('thread-error'),
         icon: Icons.wifi_off_rounded,
         text: tr('load_error', lang),
         onRetry: _load,
@@ -333,40 +347,48 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
     }
     // Header, replies status row, the replies and a paging indicator.
     final itemCount = 2 + _replies.length + (_hasMore ? 1 : 0);
-    return NotificationListener<ScrollNotification>(
-      onNotification: _onScrollNotification,
-      child: RefreshIndicator(
-        onRefresh: () => _load(force: true),
-        child: ListView.builder(
-          controller: _scrollController,
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          itemCount: itemCount,
-          itemBuilder: (context, i) {
-            if (i == 0) {
-              return _ActivityHeader(
-                activity: activity,
+    // A newly sent reply opens the gate so it (and only it) slides in.
+    return EntranceGate(
+      key: const ValueKey('thread'),
+      trigger: _sentReplyIds.length,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScrollNotification,
+        child: RefreshIndicator(
+          onRefresh: () => _load(force: true),
+          child: ListView.builder(
+            controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            itemCount: itemCount,
+            itemBuilder: (context, i) {
+              if (i == 0) {
+                return _ActivityHeader(
+                  activity: activity,
+                  lang: lang,
+                  onToggleLike: _toggleActivityLike,
+                );
+              }
+              if (i == 1) return _repliesStatus(lang);
+              final index = i - 2;
+              if (index == _replies.length) {
+                return LoadMoreFooter(
+                  key: _moreFailed ? const Key('load-more-retry') : null,
+                  hasMore: true,
+                  failed: _moreFailed,
+                  onRetry: () => _loadMore(retry: true),
+                );
+              }
+              final reply = _replies[index];
+              final tile = _ReplyTile(
+                reply: reply,
                 lang: lang,
-                onToggleLike: _toggleActivityLike,
+                onToggleLike: () => _toggleReplyLike(reply),
               );
-            }
-            if (i == 1) return _repliesStatus(lang);
-            final index = i - 2;
-            if (index == _replies.length) {
-              return LoadMoreFooter(
-                key: _moreFailed ? const Key('load-more-retry') : null,
-                hasMore: true,
-                failed: _moreFailed,
-                onRetry: () => _loadMore(retry: true),
-              );
-            }
-            final reply = _replies[index];
-            return _ReplyTile(
-              reply: reply,
-              lang: lang,
-              onToggleLike: () => _toggleReplyLike(reply),
-            );
-          },
+              return _sentReplyIds.contains(reply['id'])
+                  ? StaggeredEntrance(key: ValueKey('sent-${reply['id']}'), index: 0, child: tile)
+                  : tile;
+            },
+          ),
         ),
       ),
     );
@@ -454,7 +476,10 @@ class _ActivityHeader extends StatelessWidget {
               const SizedBox(width: 8),
               const Icon(Icons.chat_bubble_outline, size: 16, color: Colors.grey),
               const SizedBox(width: 4),
-              Text('${activity['replyCount'] as int? ?? 0}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              AnimatedCount(
+                value: activity['replyCount'] as int? ?? 0,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
             ],
           ),
         ],
@@ -670,7 +695,7 @@ class _LockedNotice extends StatelessWidget {
 
 /// Full-screen message, with a retry button when [retryLabel] is given.
 class _CenteredMessage extends StatelessWidget {
-  const _CenteredMessage({required this.icon, required this.text, this.onRetry, this.retryLabel});
+  const _CenteredMessage({super.key, required this.icon, required this.text, this.onRetry, this.retryLabel});
 
   final IconData icon;
   final String text;

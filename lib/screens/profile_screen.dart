@@ -6,11 +6,14 @@ import '../services/auth_service.dart';
 import '../services/anilist_service.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
+import '../utils/tab_reselect.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pressable.dart';
 import '../widgets/overlay_button.dart';
+import '../widgets/profile/count_up_text.dart';
+import '../widgets/profile/favourite_cards.dart';
 import 'settings_screen.dart';
 import 'user_profile_screen.dart';
-import 'detail_screen.dart';
-import 'character_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({super.key});
@@ -118,7 +121,15 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   // refreshed automatically once they are this old (pull-to-refresh forces).
   static const _statsMaxAge = Duration(minutes: 30);
 
+  /// The profile's index in the bottom navigation.
+  static const _profileTab = 4;
+
+  /// Hero scope of the favourite covers.
+  static const _favsHeroScope = 'profile-favs';
+
   final _service = AniListService();
+  final _scrollController = ScrollController();
+  late final VoidCallback _stopReselectListener;
   int _followersCount = 0;
   int _followingCount = 0;
   List<dynamic> _favoriteAnime = [];
@@ -148,6 +159,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       if (age == null || age.isNegative || age > _statsMaxAge) _fetchStats();
     });
     profileRefreshNotifier.addListener(_onRefresh);
+    _stopReselectListener = scrollToTopOnReselect(
+      tabReselectedNotifier,
+      tab: _profileTab,
+      onReselected: () => scrollToTop(_scrollController),
+    );
   }
 
   void _loadFromCache(Map<String, dynamic> cached) {
@@ -168,6 +184,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   @override
   void dispose() {
     profileRefreshNotifier.removeListener(_onRefresh);
+    _stopReselectListener();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -250,7 +268,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final name = user['name'] as String? ?? tr('feed_unknown', lang);
 
     final minutesWatched = (animeStats?['minutesWatched'] as num?)?.toInt() ?? 0;
-    final daysWatched = (minutesWatched / 1440).toStringAsFixed(1);
+    final daysWatched = minutesWatched / 1440;
     final episodesWatched = (animeStats?['episodesWatched'] as num?)?.toInt() ?? 0;
     final totalAnime = (animeStats?['count'] as num?)?.toInt() ?? 0;
     final chaptersRead = (mangaStats?['chaptersRead'] as num?)?.toInt() ?? 0;
@@ -263,6 +281,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           RefreshIndicator(
         onRefresh: _fetchStats,
         child: CustomScrollView(
+          controller: _scrollController,
           slivers: [
             // ── Banner + Avatar Header + Stats bar (single sliver to avoid seam) ──
             SliverToBoxAdapter(
@@ -297,24 +316,36 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                         letterSpacing: 0.5)),
               ),
             ),
+            // The favourites fade in once the stats arrive.
             SliverToBoxAdapter(
-              child: _favoriteAnime.isEmpty && _statsLoaded
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(tr('no_favourites', lang),
-                          style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                    )
-                  : SizedBox(
-                      height: 170,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _favoriteAnime.length,
-                        itemBuilder: (_, i) =>
-                            _animeFavCard(_favoriteAnime[i]),
-                      ),
-                    ),
+              child: FadeSwitcher(
+                child: !_statsLoaded
+                    ? const SizedBox(key: ValueKey('fav-anime-pending'), height: 170)
+                    : _favoriteAnime.isEmpty
+                        ? Container(
+                            key: const ValueKey('fav-anime-none'),
+                            // Full width, so the message stays left-aligned.
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(tr('no_favourites', lang),
+                                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                          )
+                        : SizedBox(
+                            key: const ValueKey('fav-anime'),
+                            width: double.infinity,
+                            height: 170,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: _favoriteAnime.length,
+                              itemBuilder: (_, i) => FavouriteMediaCard(
+                                media: _favoriteAnime[i] as Map<String, dynamic>,
+                                heroScope: _favsHeroScope,
+                              ),
+                            ),
+                          ),
+              ),
             ),
 
             // ── Favorite Characters ─────────────────────────────────────
@@ -330,23 +361,33 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               ),
             ),
             SliverToBoxAdapter(
-              child: _favoriteCharacters.isEmpty && _statsLoaded
-                  ? Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(tr('no_favourites', lang),
-                          style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                    )
-                  : SizedBox(
-                      height: 120,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _favoriteCharacters.length,
-                        itemBuilder: (_, i) =>
-                            _charFavCard(_favoriteCharacters[i]),
-                      ),
-                    ),
+              child: FadeSwitcher(
+                child: !_statsLoaded
+                    ? const SizedBox(key: ValueKey('fav-chars-pending'), height: 120)
+                    : _favoriteCharacters.isEmpty
+                        ? Container(
+                            key: const ValueKey('fav-chars-none'),
+                            // Full width, so the message stays left-aligned.
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(tr('no_favourites', lang),
+                                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                          )
+                        : SizedBox(
+                            key: const ValueKey('fav-chars'),
+                            width: double.infinity,
+                            height: 120,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: _favoriteCharacters.length,
+                              itemBuilder: (_, i) => FavouriteCharacterCard(
+                                character: _favoriteCharacters[i] as Map<String, dynamic>,
+                              ),
+                            ),
+                          ),
+              ),
             ),
 
             // ── Activity Graph ──────────────────────────────────────────
@@ -391,7 +432,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     String lang, {
     required int totalAnime,
     required int episodesWatched,
-    required String daysWatched,
+    required double daysWatched,
     required int totalManga,
     required int chaptersRead,
     required int volumesRead,
@@ -501,11 +542,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                       IntrinsicHeight(
                         child: Row(
                           children: [
-                            _statItem('$totalAnime', tr('nav_anime', lang)),
+                            _statItem(totalAnime, tr('nav_anime', lang)),
                             _statDividerV(outline),
-                            _statItem('$episodesWatched', tr('profile_episodes', lang)),
+                            _statItem(episodesWatched, tr('profile_episodes', lang)),
                             _statDividerV(outline),
-                            _statItem(daysWatched, tr('days_watched', lang)),
+                            _statItem(daysWatched, tr('days_watched', lang), fractionDigits: 1),
                           ],
                         ),
                       ),
@@ -513,11 +554,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                       IntrinsicHeight(
                         child: Row(
                           children: [
-                            _statItem('$totalManga', tr('nav_manga', lang)),
+                            _statItem(totalManga, tr('nav_manga', lang)),
                             _statDividerV(outline),
-                            _statItem('$chaptersRead', tr('profile_chapters', lang)),
+                            _statItem(chaptersRead, tr('profile_chapters', lang)),
                             _statDividerV(outline),
-                            _statItem('$volumesRead', tr('profile_volumes_read', lang)),
+                            _statItem(volumesRead, tr('profile_volumes_read', lang)),
                           ],
                         ),
                       ),
@@ -530,98 +571,15 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  Widget _animeFavCard(dynamic anime) {
-    final a = anime as Map<String, dynamic>;
-    final id = a['id'] as int?;
-    final image = a['coverImage']?['large'] as String?;
-    final title = context.read<SettingsProvider>().resolveTitle(a['title'] as Map<String, dynamic>?);
-    return Padding(
-      padding: const EdgeInsets.only(right: 10),
-      child: GestureDetector(
-        onTap: id != null
-            ? () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)))
-            : null,
-        child: SizedBox(
-          width: 100,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        width: 100,
-                        height: 140,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 200,
-                      )
-                    : Container(
-                        width: 100, height: 140, color: Theme.of(context).colorScheme.surfaceContainerHighest),
-              ),
-              const SizedBox(height: 4),
-              Text(title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _charFavCard(dynamic char) {
-    final c = char as Map<String, dynamic>;
-    final id = c['id'] as int?;
-    final image = c['image']?['medium'] as String?;
-    final name = c['name']?['full'] as String? ?? '';
-    return Padding(
-      padding: const EdgeInsets.only(right: 10),
-      child: GestureDetector(
-        onTap: id != null
-            ? () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => CharacterScreen(
-                    characterId: id, name: name, imageUrl: image)))
-            : null,
-        child: SizedBox(
-          width: 80,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 160,
-                      )
-                    : Container(
-                        width: 80, height: 80, color: Theme.of(context).colorScheme.surfaceContainerHighest),
-              ),
-              const SizedBox(height: 4),
-              Text(name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 10)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _statItem(String value, String label) => Expanded(
+  /// A stat that counts up to [value] when the profile first shows it.
+  Widget _statItem(num value, String label, {int fractionDigits = 0}) => Expanded(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(value,
+              CountUpText(value,
+                  fractionDigits: fractionDigits,
                   style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.bold)),
@@ -688,7 +646,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     required VoidCallback onTap,
   }) {
     return Expanded(
-      child: GestureDetector(
+      child: Pressable(
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),

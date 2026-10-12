@@ -5,6 +5,7 @@ import 'package:anispark/screens/feed_screen.dart';
 import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/services/social_api.dart';
+import 'package:anispark/utils/tab_reselect.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -71,6 +72,8 @@ void main() {
     for (var i = 0; i < 4; i++) {
       await tester.pump();
     }
+    // The skeleton cross-fades into the cards.
+    await tester.pumpAndSettle();
   }
 
   bool isFeedPage(RecordedRequest r, int page) => r.variables['page'] == page && r.query.contains('activities');
@@ -127,5 +130,71 @@ void main() {
     });
 
     expect(find.textContaining('did a backflip', findRichText: true), findsOneWidget);
+  });
+
+  Future<void> pumpLongFeed(WidgetTester tester, {Map<String, dynamic>? posted}) => pumpFeed(tester, (request) {
+        if (isFeedPage(request, 1)) {
+          return jsonResponse(_feedPage([for (var i = 1; i <= 30; i++) _textActivity(i)]));
+        }
+        if (posted != null && request.query.contains('SaveTextActivity')) {
+          return jsonResponse({'data': {'SaveTextActivity': posted}});
+        }
+        return jsonResponse({'data': {'Viewer': {'id': 1, 'unreadNotificationCount': 0}}});
+      });
+
+  double feedOffset(WidgetTester tester) => tester
+      .state<ScrollableState>(find.descendant(of: find.byType(ListView), matching: find.byType(Scrollable)))
+      .position
+      .pixels;
+
+  double opacityOf(WidgetTester tester, String text) => tester
+      .widget<FadeTransition>(find.ancestor(of: find.text(text), matching: find.byType(FadeTransition)).first)
+      .opacity
+      .value;
+
+  testWidgets('re-selecting the feed tab scrolls it back to the top', (tester) async {
+    await pumpLongFeed(tester);
+    await tester.drag(find.byType(ListView), const Offset(0, -800));
+    await tester.pumpAndSettle();
+    final scrolled = feedOffset(tester);
+    expect(scrolled, greaterThan(0));
+
+    // The profile tab's reselection leaves the feed alone.
+    tabReselectedNotifier.reselect(4);
+    await tester.pumpAndSettle();
+    expect(feedOffset(tester), scrolled);
+
+    tabReselectedNotifier.reselect(3);
+    await tester.pumpAndSettle();
+    expect(feedOffset(tester), 0);
+  });
+
+  testWidgets('a posted status fades in at the top while the other cards stay put', (tester) async {
+    await pumpLongFeed(tester, posted: _textActivity(99));
+    expect(opacityOf(tester, 'post 1'), 1);
+
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'post 99');
+    await tester.pump();
+    await tester.tap(find.text('Post'));
+    final card = find.descendant(of: find.byType(ListView), matching: find.text('post 99'));
+    for (var i = 0; i < 30 && card.evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(card, findsOneWidget);
+    expect(
+      tester.widget<FadeTransition>(find.ancestor(of: card, matching: find.byType(FadeTransition)).first).opacity.value,
+      lessThan(1),
+      reason: 'the new card is still fading in',
+    );
+    expect(opacityOf(tester, 'post 1'), 1, reason: "cards already shown don't replay their entrance");
+
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<FadeTransition>(find.ancestor(of: card, matching: find.byType(FadeTransition)).first).opacity.value,
+      1,
+    );
+    expect(tester.getTopLeft(card).dy, lessThan(tester.getTopLeft(find.text('post 1')).dy));
   });
 }

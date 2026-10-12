@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 
 import '../../providers/media_list_store.dart';
@@ -9,8 +10,10 @@ import '../../providers/settings_provider.dart';
 import '../../services/anilist_service.dart';
 import '../../services/api_cache.dart';
 import '../../services/auth_service.dart';
+import '../../theme/app_motion.dart';
 import '../../utils/score_utils.dart';
 import '../../utils/translations.dart';
+import '../motion/pop_on_change.dart';
 import 'entry_draft.dart';
 import 'entry_editor_api.dart';
 import 'entry_editor_fields.dart';
@@ -265,6 +268,7 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
       }
       return;
     }
+    HapticFeedback.lightImpact();
     widget.onChanged?.call(EntryEditorResult.saved);
     if (mounted) navigator.pop();
     messenger.showSnackBar(SnackBar(content: Text(trf('detail_saved', lang, {'title': title}))));
@@ -382,13 +386,24 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
                   minimumSize: const Size.fromHeight(48),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: _busy
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                      )
-                    : Text(tr('save', lang), style: const TextStyle(fontWeight: FontWeight.bold)),
+                // The label cross-fades to a spinner while saving.
+                child: AnimatedSwitcher(
+                  duration: AppMotion.of(context, AppMotion.short),
+                  switchInCurve: AppMotion.enter,
+                  switchOutCurve: AppMotion.exit,
+                  child: _busy
+                      ? const SizedBox(
+                          key: ValueKey('entry-editor-saving'),
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : Text(
+                          tr('save', lang),
+                          key: const ValueKey('entry-editor-save-label'),
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                ),
               ),
             ),
             if (!_isNew) ...[
@@ -434,14 +449,12 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
             runSpacing: 4,
             children: [
               for (final status in entryStatuses)
-                ChoiceChip(
-                  key: ValueKey('entry-editor-status-$status'),
-                  label: Text(tr(entryStatusKey(status, manga: manga), lang)),
+                _StatusChip(
+                  chipKey: ValueKey('entry-editor-status-$status'),
+                  label: tr(entryStatusKey(status, manga: manga), lang),
                   selected: draft.status == status,
-                  showCheckmark: false,
                   selectedColor: cs.primary,
-                  labelStyle: TextStyle(fontSize: 12, color: draft.status == status ? Colors.white : null),
-                  onSelected: draft.isKnown(EntryField.status) ? (_) => _changeStatus(status) : null,
+                  onSelected: draft.isKnown(EntryField.status) ? () => _changeStatus(status) : null,
                 ),
             ],
           ),
@@ -585,6 +598,61 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
                 : null,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A status choice. Selecting it fades in its colour and gives it a small
+/// pop, both quick.
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.chipKey,
+    required this.label,
+    required this.selected,
+    required this.selectedColor,
+    required this.onSelected,
+  });
+
+  /// The key of the [ChoiceChip] itself.
+  final Key chipKey;
+  final String label;
+  final bool selected;
+  final Color selectedColor;
+  final VoidCallback? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final onSelected = this.onSelected;
+    final duration = AppMotion.of(context, AppMotion.short);
+    return PopOnChange(
+      value: selected,
+      when: (isSelected) => isSelected == true,
+      scale: 1.08,
+      child: ChoiceChip(
+        key: chipKey,
+        label: Builder(
+          // The label's colour follows the chip's own colour animation.
+          builder: (context) {
+            final base = DefaultTextStyle.of(context).style;
+            final unselected = base.color ?? Theme.of(context).colorScheme.onSurface;
+            return AnimatedDefaultTextStyle(
+              duration: duration,
+              curve: AppMotion.standard,
+              style: base.copyWith(color: selected ? Colors.white : unselected),
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.fade,
+              child: Text(label),
+            );
+          },
+        ),
+        selected: selected,
+        showCheckmark: false,
+        selectedColor: selectedColor,
+        labelStyle: const TextStyle(fontSize: 12),
+        chipAnimationStyle: ChipAnimationStyle(selectAnimation: AnimationStyle(duration: duration)),
+        onSelected: onSelected == null ? null : (_) => onSelected(),
       ),
     );
   }

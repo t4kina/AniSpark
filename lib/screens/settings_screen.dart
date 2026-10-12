@@ -1,5 +1,6 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../utils/external_url.dart';
@@ -284,25 +285,33 @@ class SettingsScreen extends StatelessWidget {
                 fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
       );
 
+  /// A setting switched on or off, by the switch or the whole row, with a
+  /// selection tick.
   static Widget _switchTile({
     required IconData icon,
     required String label,
     required bool value,
     required ValueChanged<bool> onChanged,
-  }) =>
-      ListTile(
-        leading: Icon(icon, color: Colors.grey, size: 22),
-        title: Text(label, style: const TextStyle(fontSize: 14)),
-        trailing: Builder(builder: (ctx) => Transform.scale(
-          scale: 0.75,
-          child: CupertinoSwitch(
-            value: value,
-            onChanged: onChanged,
-            activeTrackColor: Theme.of(ctx).colorScheme.primary,
-          ),
-        )),
-        onTap: () => onChanged(!value),
-      );
+  }) {
+    void toggle(bool on) {
+      HapticFeedback.selectionClick();
+      onChanged(on);
+    }
+
+    return ListTile(
+      leading: Icon(icon, color: Colors.grey, size: 22),
+      title: Text(label, style: const TextStyle(fontSize: 14)),
+      trailing: Builder(builder: (ctx) => Transform.scale(
+        scale: 0.75,
+        child: CupertinoSwitch(
+          value: value,
+          onChanged: toggle,
+          activeTrackColor: Theme.of(ctx).colorScheme.primary,
+        ),
+      )),
+      onTap: () => toggle(!value),
+    );
+  }
 
   static Widget _tile({
     required IconData icon,
@@ -359,6 +368,7 @@ class SettingsScreen extends StatelessWidget {
                             color: current == opt ? Theme.of(ctx).colorScheme.primary : null,
                             fontSize: 14)),
                     onTap: () {
+                      HapticFeedback.selectionClick();
                       onSelected(opt);
                       Navigator.pop(context);
                     },
@@ -404,6 +414,7 @@ class SettingsScreen extends StatelessWidget {
                   final isSelected = settings.accentColorName == e.key;
                   return GestureDetector(
                     onTap: () {
+                      HapticFeedback.selectionClick();
                       context.read<SettingsProvider>().setAccentColor(e.key);
                       Navigator.pop(context);
                     },

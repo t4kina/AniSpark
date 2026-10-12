@@ -122,6 +122,8 @@ void main() {
     // The thread loads from a post-frame callback.
     await tester.pump();
     await tester.pump();
+    // The skeleton cross-fades into the thread.
+    await tester.pumpAndSettle();
   }
 
   bool isMutation(RecordedRequest request, String name) => request.query.contains(name);
@@ -152,6 +154,8 @@ void main() {
     likeResponse.complete(jsonResponse({'errors': []}, status: 500));
     await tester.pump();
     await tester.pump();
+    // The count rolls back; let the outgoing numbers finish leaving.
+    await tester.pumpAndSettle();
 
     final likeRequest = log.firstWhere((r) => isMutation(r, 'ToggleLikeV2'));
     expect(likeRequest.variables, {'id': 100, 'type': 'ACTIVITY_REPLY'});
@@ -223,6 +227,42 @@ void main() {
     expect(changes.last['replyCount'], 2);
     final field = tester.widget<TextField>(find.byType(TextField));
     expect(field.controller?.text, isEmpty);
+  });
+
+  testWidgets('a sent reply fades in while the replies already shown stay put', (tester) async {
+    await pumpThread(tester, (request) {
+      if (isMutation(request, 'SaveActivityReply')) {
+        return jsonResponse({
+          'data': {
+            'SaveActivityReply': {
+              'id': 101,
+              'text': 'Brand new',
+              'createdAt': _minutesAgo(0),
+              'isLiked': false,
+              'likeCount': 0,
+              'user': _user(1),
+            },
+          },
+        });
+      }
+      return jsonResponse(_threadResponse());
+    });
+    double opacityOf(Finder text) => tester
+        .widget<FadeTransition>(find.ancestor(of: text, matching: find.byType(FadeTransition)).first)
+        .opacity
+        .value;
+
+    await tester.enterText(find.byType(TextField), 'Brand new');
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(opacityOf(find.textContaining('Brand new')), lessThan(1), reason: 'still fading in');
+    expect(opacityOf(find.textContaining('First\nreply')), 1);
+    await tester.pumpAndSettle();
+    expect(opacityOf(find.textContaining('Brand new')), 1);
   });
 
   testWidgets('keeps the text when sending a reply fails', (tester) async {

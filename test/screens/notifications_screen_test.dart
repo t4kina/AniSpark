@@ -76,6 +76,8 @@ void main() {
     // The inbox loads from a post-frame callback.
     await tester.pump();
     await tester.pump();
+    // The skeleton cross-fades into the loaded state.
+    await tester.pumpAndSettle();
   }
 
   testWidgets('loads the first page marking it read and shows supported kinds', (tester) async {

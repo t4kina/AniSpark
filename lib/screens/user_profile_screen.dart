@@ -1,17 +1,21 @@
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
+import '../theme/app_motion.dart';
 import '../utils/external_url.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/motion/fade_switcher.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/profile/affinity_card.dart';
+import '../widgets/profile/count_up_text.dart';
+import '../widgets/profile/favourite_cards.dart';
 import 'detail_screen.dart';
-import 'character_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final int userId;
@@ -139,6 +143,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       return;
     }
     final nowFollowing = result;
+    if (nowFollowing) HapticFeedback.lightImpact();
     final profile = _profile;
     final updated =
         profile == null ? null : {...profile, 'isFollowing': nowFollowing};
@@ -170,7 +175,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          _loading ? _buildShimmer() : _buildContent(lang),
+          FadeSwitcher(
+            child: _loading
+                ? KeyedSubtree(key: const ValueKey('uprof-loading'), child: _buildShimmer())
+                : _buildContent(lang),
+          ),
           // 44px touch target around a 36px circle, so the offset is 4px smaller.
           Positioned(
             top: MediaQuery.of(context).padding.top + 2,
@@ -192,7 +201,33 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
+  /// Follow or Following, cross-fading (with a slight zoom) when it flips.
   Widget _followButton(BuildContext context, String lang) {
+    return AnimatedSwitcher(
+      duration: AppMotion.of(context, AppMotion.short),
+      switchInCurve: AppMotion.enter,
+      switchOutCurve: AppMotion.exit,
+      // Both pills hang from the right edge, where the button sits.
+      layoutBuilder: (current, previous) => Stack(
+        alignment: Alignment.centerRight,
+        children: [...previous, ?current],
+      ),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(
+          scale: Tween(begin: 0.9, end: 1.0).animate(animation),
+          alignment: Alignment.centerRight,
+          child: child,
+        ),
+      ),
+      child: KeyedSubtree(
+        key: ValueKey(_isFollowing),
+        child: _followButtonFor(context, lang),
+      ),
+    );
+  }
+
+  Widget _followButtonFor(BuildContext context, String lang) {
     if (_isFollowing) {
       return PopupMenuButton<String>(
         padding: EdgeInsets.zero,
@@ -305,7 +340,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   Widget _buildContent(String lang) {
     final p = _profile;
-    if (p == null) return _LoadErrorView(onRetry: _retry);
+    if (p == null) return _LoadErrorView(key: const ValueKey('uprof-error'), onRetry: _retry);
 
     final banner = p['bannerImage'] as String?;
     final avatar = p['avatar']?['large'] as String? ?? widget.avatarUrl;
@@ -316,7 +351,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final totalAnime = (animeStats?['count'] as num?)?.toInt() ?? 0;
     final episodesWatched = (animeStats?['episodesWatched'] as num?)?.toInt() ?? 0;
     final minutesWatched = (animeStats?['minutesWatched'] as num?)?.toInt() ?? 0;
-    final daysWatched = (minutesWatched / 1440).toStringAsFixed(1);
+    final daysWatched = minutesWatched / 1440;
     final totalManga = (mangaStats?['count'] as num?)?.toInt() ?? 0;
     final chaptersRead = (mangaStats?['chaptersRead'] as num?)?.toInt() ?? 0;
     final volumesRead = (mangaStats?['volumesRead'] as num?)?.toInt() ?? 0;
@@ -340,6 +375,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final topPadding = MediaQuery.of(context).padding.top;
 
     return CustomScrollView(
+      key: const ValueKey('uprof-content'),
       slivers: [
         // ── Header card ───────────────────────────────────────────────
         SliverToBoxAdapter(
@@ -460,23 +496,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       children: [
                         IntrinsicHeight(
                           child: Row(children: [
-                            _tappableStat('$totalAnime', tr('nav_anime', lang), totalAnime > 0
+                            _tappableStat(totalAnime, tr('nav_anime', lang), totalAnime > 0
                                 ? () => _showListSheet(context, 'ANIME') : null),
                             _vDiv(outline),
-                            _stat('$episodesWatched', tr('profile_episodes', lang)),
+                            _stat(episodesWatched, tr('profile_episodes', lang)),
                             _vDiv(outline),
-                            _stat(daysWatched, tr('days_watched', lang)),
+                            _stat(daysWatched, tr('days_watched', lang), fractionDigits: 1),
                           ]),
                         ),
                         Divider(height: 1, color: outline),
                         IntrinsicHeight(
                           child: Row(children: [
-                            _tappableStat('$totalManga', tr('nav_manga', lang), totalManga > 0
+                            _tappableStat(totalManga, tr('nav_manga', lang), totalManga > 0
                                 ? () => _showListSheet(context, 'MANGA') : null),
                             _vDiv(outline),
-                            _stat('$chaptersRead', tr('profile_chapters', lang)),
+                            _stat(chaptersRead, tr('profile_chapters', lang)),
                             _vDiv(outline),
-                            _stat('$volumesRead', tr('profile_volumes_read', lang)),
+                            _stat(volumesRead, tr('profile_volumes_read', lang)),
                           ]),
                         ),
                       ],
@@ -519,7 +555,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: favAnime.length,
-                itemBuilder: (_, i) => _animeFavCard(favAnime[i]),
+                itemBuilder: (_, i) => FavouriteMediaCard(
+                  media: favAnime[i] as Map<String, dynamic>,
+                  heroScope: 'uprof-favs-anime',
+                ),
               ),
             ),
           ),
@@ -545,7 +584,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: favManga.length,
-                itemBuilder: (_, i) => _animeFavCard(favManga[i]),
+                itemBuilder: (_, i) => FavouriteMediaCard(
+                  media: favManga[i] as Map<String, dynamic>,
+                  heroScope: 'uprof-favs-manga',
+                ),
               ),
             ),
           ),
@@ -571,7 +613,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: favChars.length,
-                itemBuilder: (_, i) => _charFavCard(favChars[i]),
+                itemBuilder: (_, i) => FavouriteCharacterCard(
+                  character: favChars[i] as Map<String, dynamic>,
+                ),
               ),
             ),
           ),
@@ -765,13 +809,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _stat(String value, String label) => Expanded(
+  /// A stat that counts up to [value] when the profile first shows it.
+  Widget _stat(num value, String label, {int fractionDigits = 0}) => Expanded(
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 12),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(value,
+              CountUpText(value,
+                  fractionDigits: fractionDigits,
                   style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
               const SizedBox(height: 2),
               Text(label,
@@ -783,7 +829,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ),
       );
 
-  Widget _tappableStat(String value, String label, VoidCallback? onTap) {
+  Widget _tappableStat(int value, String label, VoidCallback? onTap) {
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Expanded(
@@ -812,7 +858,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(value,
+                    CountUpText(value,
                         style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
@@ -852,95 +898,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         userId: widget.userId,
         type: type,
         service: _service,
-      ),
-    );
-  }
-
-  Widget _animeFavCard(dynamic anime) {
-    final a = anime as Map<String, dynamic>;
-    final id = a['id'] as int?;
-    final image = a['coverImage']?['large'] as String?;
-    final title = context.read<SettingsProvider>().resolveTitle(a['title'] as Map<String, dynamic>?);
-    return Padding(
-      padding: const EdgeInsets.only(right: 10),
-      child: GestureDetector(
-        onTap: id != null
-            ? () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)))
-            : null,
-        child: SizedBox(
-          width: 100,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        width: 100,
-                        height: 140,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 200,
-                      )
-                    : Container(
-                        width: 100,
-                        height: 140,
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest),
-              ),
-              const SizedBox(height: 4),
-              Text(title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _charFavCard(dynamic char) {
-    final c = char as Map<String, dynamic>;
-    final id = c['id'] as int?;
-    final image = c['image']?['medium'] as String?;
-    final name = c['name']?['full'] as String? ?? '';
-    return Padding(
-      padding: const EdgeInsets.only(right: 10),
-      child: GestureDetector(
-        onTap: id != null
-            ? () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => CharacterScreen(
-                    characterId: id, name: name, imageUrl: image)))
-            : null,
-        child: SizedBox(
-          width: 80,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 160,
-                      )
-                    : Container(
-                        width: 80,
-                        height: 80,
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest),
-              ),
-              const SizedBox(height: 4),
-              Text(name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 10)),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -1148,7 +1105,7 @@ class _UserListSheetState extends State<_UserListSheet>
 class _LoadErrorView extends StatelessWidget {
   final VoidCallback onRetry;
 
-  const _LoadErrorView({required this.onRetry});
+  const _LoadErrorView({super.key, required this.onRetry});
 
   @override
   Widget build(BuildContext context) {

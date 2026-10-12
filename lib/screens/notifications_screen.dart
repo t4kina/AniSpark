@@ -8,6 +8,8 @@ import '../services/auth_service.dart';
 import '../services/social_api.dart';
 import '../utils/activity_text.dart' show relativeTime;
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
 import '../widgets/social/social_widgets.dart';
@@ -190,17 +192,23 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final loggedIn = context.watch<AuthService>().isLoggedIn;
     return Scaffold(
       appBar: AppBar(title: Text(tr('inbox_title', lang))),
-      body: _body(lang, loggedIn),
+      body: FadeSwitcher(child: _body(lang, loggedIn)),
     );
   }
 
+  /// Each state is keyed so switching between them cross-fades.
   Widget _body(String lang, bool loggedIn) {
     if (!loggedIn) {
-      return _CenteredMessage(icon: Icons.notifications_off_outlined, text: tr('feed_connect_from_profile', lang));
+      return _CenteredMessage(
+        key: const ValueKey('inbox-logged-out'),
+        icon: Icons.notifications_off_outlined,
+        text: tr('feed_connect_from_profile', lang),
+      );
     }
-    if (_loading) return const FeedSkeleton(cards: 8);
+    if (_loading) return const FeedSkeleton(key: ValueKey('inbox-skeleton'), cards: 8);
     if (_items.isEmpty && _hasError) {
       return Center(
+        key: const ValueKey('inbox-error'),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -217,31 +225,43 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ),
       );
     }
-    return NotificationListener<ScrollNotification>(
-      onNotification: _onScrollNotification,
-      child: RefreshIndicator(
-        onRefresh: () => _load(force: true),
-        child: _items.isEmpty
-            ? ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: [
-                  const SizedBox(height: 120),
-                  _CenteredMessage(icon: Icons.notifications_none, text: tr('inbox_empty', lang)),
-                  if (_hasMore) _footer(lang),
-                ],
-              )
-            : ListView.separated(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                itemCount: _items.length + (_hasMore ? 1 : 0),
-                separatorBuilder: (_, _) => const Divider(height: 1, indent: 68),
-                itemBuilder: (_, i) {
-                  if (i == _items.length) {
-                    return _footer(lang);
-                  }
-                  return _NotificationTile(notification: _items[i], lang: lang);
-                },
-              ),
+    // The first page cascades in once; refreshes and later pages don't.
+    return EntranceGate(
+      key: const ValueKey('inbox-list'),
+      trigger: null,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScrollNotification,
+        child: RefreshIndicator(
+          onRefresh: () => _load(force: true),
+          child: _items.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    const SizedBox(height: 120),
+                    _CenteredMessage(icon: Icons.notifications_none, text: tr('inbox_empty', lang)),
+                    if (_hasMore) _footer(lang),
+                  ],
+                )
+              : ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _items.length + (_hasMore ? 1 : 0),
+                  // Dividers arrive with the tile above them.
+                  separatorBuilder: (_, i) => StaggeredEntrance(
+                    index: i,
+                    child: const Divider(height: 1, indent: 68),
+                  ),
+                  itemBuilder: (_, i) {
+                    if (i == _items.length) {
+                      return _footer(lang);
+                    }
+                    return StaggeredEntrance(
+                      index: i,
+                      child: _NotificationTile(notification: _items[i], lang: lang),
+                    );
+                  },
+                ),
+        ),
       ),
     );
   }
@@ -385,7 +405,7 @@ class _NotificationTile extends StatelessWidget {
 }
 
 class _CenteredMessage extends StatelessWidget {
-  const _CenteredMessage({required this.icon, required this.text});
+  const _CenteredMessage({super.key, required this.icon, required this.text});
 
   final IconData icon;
   final String text;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 
 import '../../providers/settings_provider.dart';
@@ -7,6 +8,8 @@ import '../../screens/user_profile_screen.dart';
 import '../../services/social_api.dart' show asJsonMap;
 import '../../utils/activity_text.dart';
 import '../../utils/translations.dart' show tr;
+import '../motion/animated_count.dart';
+import '../motion/pop_on_change.dart';
 import '../user_avatar.dart';
 
 /// Opens the profile of an AniList `user` object (`{id, name, avatar}`).
@@ -45,7 +48,9 @@ ButtonStyle _countButtonStyle(Color color) => TextButton.styleFrom(
       textStyle: const TextStyle(fontSize: 12),
     );
 
-/// Heart toggle with the like count, for activities and replies.
+/// Heart toggle with the like count, for activities and replies. Liking
+/// pops the heart with a light haptic tap and the count rolls to its new
+/// value; unliking only rolls the count.
 class LikeButton extends StatelessWidget {
   const LikeButton({
     super.key,
@@ -58,22 +63,32 @@ class LikeButton extends StatelessWidget {
   final int count;
   final VoidCallback? onPressed;
 
+  void _press(VoidCallback onPressed) {
+    if (!isLiked) HapticFeedback.lightImpact();
+    onPressed();
+  }
+
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
+    final onPressed = this.onPressed;
     return Tooltip(
       message: tr(isLiked ? 'social_unlike' : 'social_like', lang),
       child: TextButton.icon(
-        onPressed: onPressed,
+        onPressed: onPressed == null ? null : () => _press(onPressed),
         style: _countButtonStyle(isLiked ? Colors.redAccent : Colors.grey),
-        icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border, size: 16),
-        label: Text('$count'),
+        icon: PopOnChange(
+          value: isLiked,
+          when: (liked) => liked == true,
+          child: Icon(isLiked ? Icons.favorite : Icons.favorite_border, size: 16),
+        ),
+        label: AnimatedCount(value: count),
       ),
     );
   }
 }
 
-/// Reply count that opens the thread.
+/// Reply count that opens the thread; the count rolls when it changes.
 class ReplyCountButton extends StatelessWidget {
   const ReplyCountButton({super.key, required this.count, required this.onPressed});
 
@@ -89,7 +104,7 @@ class ReplyCountButton extends StatelessWidget {
         onPressed: onPressed,
         style: _countButtonStyle(Colors.grey),
         icon: const Icon(Icons.chat_bubble_outline, size: 16),
-        label: Text('$count'),
+        label: AnimatedCount(value: count),
       ),
     );
   }

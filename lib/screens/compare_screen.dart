@@ -7,6 +7,10 @@ import '../services/auth_service.dart';
 import '../utils/affinity.dart';
 import '../utils/score_utils.dart';
 import '../utils/translations.dart';
+import '../widgets/motion/cover_hero.dart';
+import '../widgets/motion/press_scale.dart';
+import '../widgets/motion/rounded_hero.dart';
+import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/profile/affinity_ring.dart';
 import 'detail_screen.dart';
 
@@ -94,40 +98,48 @@ class _CompareScreenState extends State<CompareScreen> {
           ],
         ),
       ),
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: _Summary(
-              affinity: widget.affinity,
-              userName: widget.userName,
-              scoreFormat: scoreFormat,
-            ),
-          ),
-          SliverToBoxAdapter(child: _SortBar(selected: _sort, onSelected: _sortBy)),
-          SliverToBoxAdapter(child: _ColumnLabels(userName: widget.userName)),
-          if (titles.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Text(tr('affinity_no_titles_in_common', lang), style: const TextStyle(color: Colors.grey)),
+      // The first rows cascade in once; re-sorting just reorders them.
+      body: EntranceGate(
+        trigger: null,
+        child: CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: _Summary(
+                affinity: widget.affinity,
+                userName: widget.userName,
+                scoreFormat: scoreFormat,
               ),
-            )
-          else
-            SliverPadding(
-              padding: const EdgeInsets.only(bottom: 24),
-              sliver: SliverFixedExtentList(
-                itemExtent: _rowHeight,
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) => _CompareRow(
-                    title: titles[i],
-                    userName: widget.userName,
-                    scoreFormat: scoreFormat,
+            ),
+            SliverToBoxAdapter(child: _SortBar(selected: _sort, onSelected: _sortBy)),
+            SliverToBoxAdapter(child: _ColumnLabels(userName: widget.userName)),
+            if (titles.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Text(tr('affinity_no_titles_in_common', lang), style: const TextStyle(color: Colors.grey)),
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.only(bottom: 24),
+                sliver: SliverFixedExtentList(
+                  itemExtent: _rowHeight,
+                  delegate: SliverChildBuilderDelegate(
+                    (context, i) => StaggeredEntrance(
+                      index: i,
+                      child: _CompareRow(
+                        title: titles[i],
+                        userName: widget.userName,
+                        scoreFormat: scoreFormat,
+                        heroScope: 'compare-${widget.type}',
+                      ),
+                    ),
+                    childCount: titles.length,
                   ),
-                  childCount: titles.length,
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -325,17 +337,41 @@ class _ColumnLabels extends StatelessWidget {
   }
 }
 
-class _CompareRow extends StatelessWidget {
-  const _CompareRow({required this.title, required this.userName, required this.scoreFormat});
+class _CompareRow extends StatefulWidget {
+  const _CompareRow({
+    required this.title,
+    required this.userName,
+    required this.scoreFormat,
+    required this.heroScope,
+  });
 
   final SharedTitle title;
   final String userName;
   final String? scoreFormat;
 
-  String? _score(double score) => score > 0 ? formatScore(score / 10, scoreFormat) : null;
+  /// Scope of the cover's hero tag, see `coverHeroTag`.
+  final String heroScope;
+
+  @override
+  State<_CompareRow> createState() => _CompareRowState();
+}
+
+class _CompareRowState extends State<_CompareRow> {
+  // The row's press dips its cover, like My List rows.
+  final _pressed = ValueNotifier(false);
+
+  @override
+  void dispose() {
+    _pressed.dispose();
+    super.dispose();
+  }
+
+  String? _score(double score) => score > 0 ? formatScore(score / 10, widget.scoreFormat) : null;
 
   @override
   Widget build(BuildContext context) {
+    final title = widget.title;
+    final userName = widget.userName;
     final settings = context.watch<SettingsProvider>();
     final lang = settings.language;
     final cs = Theme.of(context).colorScheme;
@@ -346,9 +382,12 @@ class _CompareRow extends StatelessWidget {
     final gap = title.gap;
     final tint = gap == null ? null : scoreGapColor(gap);
     final notScored = tr('list_not_scored', lang);
+    final heroTag = coverHeroTag(widget.heroScope, title.mediaId);
     void open() => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => DetailScreen(animeId: title.mediaId)),
+          MaterialPageRoute(
+            builder: (_) => DetailScreen(animeId: title.mediaId, heroTag: heroTag, initialCoverUrl: cover),
+          ),
         );
 
     return Semantics(
@@ -358,23 +397,28 @@ class _CompareRow extends StatelessWidget {
       onTap: open,
       child: InkWell(
         onTap: open,
+        onHighlightChanged: (pressed) => _pressed.value = pressed,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           child: Row(
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: cover != null
-                    ? CachedNetworkImage(
-                        imageUrl: cover,
-                        width: 46,
-                        height: 64,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 92,
-                        placeholder: (_, _) => Container(color: cs.surfaceContainerHighest),
-                        errorWidget: (_, _, _) => Container(color: cs.surfaceContainerHighest),
-                      )
-                    : Container(width: 46, height: 64, color: cs.surfaceContainerHighest),
+              PressScale(
+                pressed: _pressed,
+                child: RoundedHero(
+                  tag: heroTag,
+                  borderRadius: BorderRadius.circular(6),
+                  child: cover != null
+                      ? CachedNetworkImage(
+                          imageUrl: cover,
+                          width: 46,
+                          height: 64,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 92,
+                          placeholder: (_, _) => Container(color: cs.surfaceContainerHighest),
+                          errorWidget: (_, _, _) => Container(color: cs.surfaceContainerHighest),
+                        )
+                      : Container(width: 46, height: 64, color: cs.surfaceContainerHighest),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(

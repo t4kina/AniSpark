@@ -10,7 +10,11 @@ import '../providers/settings_provider.dart';
 import '../utils/activity_status.dart';
 import '../utils/activity_text.dart' show relativeTime;
 import '../utils/refresh_notifier.dart';
+import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pop_on_change.dart';
+import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
 import '../widgets/social/social_widgets.dart';
@@ -18,6 +22,9 @@ import 'activity_thread_screen.dart';
 import 'notifications_screen.dart';
 
 enum _FeedType { following, global, personal }
+
+/// The feed's index in the bottom navigation.
+const _feedTab = 3;
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key, this.api});
@@ -47,6 +54,11 @@ class _FeedScreenState extends State<FeedScreen>
   final Set<int> _pendingLikes = {};
   _FeedType _feedType = _FeedType.following;
   AuthService? _auth;
+  final _scrollController = ScrollController();
+  late final VoidCallback _stopReselectListener;
+  // Bumped when the user posts a status, so its card slides in while the
+  // cards already shown stay put.
+  int _postedCount = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -60,12 +72,19 @@ class _FeedScreenState extends State<FeedScreen>
       _load();
     });
     feedRefreshNotifier.addListener(_onFeedRefresh);
+    _stopReselectListener = scrollToTopOnReselect(
+      tabReselectedNotifier,
+      tab: _feedTab,
+      onReselected: () => scrollToTop(_scrollController),
+    );
   }
 
   @override
   void dispose() {
     _auth?.removeListener(_onAuthChanged);
     feedRefreshNotifier.removeListener(_onFeedRefresh);
+    _stopReselectListener();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -287,6 +306,7 @@ class _FeedScreenState extends State<FeedScreen>
           ..._activities.where((a) => a['id'] != activity['id']),
         ];
         _hasError = false;
+        _postedCount++;
       });
     }
     return true;
@@ -373,10 +393,15 @@ class _FeedScreenState extends State<FeedScreen>
           tooltip: _unreadCount > 0
               ? trf('inbox_unread_tooltip', lang, {'n': _unreadCount})
               : tr('inbox_title', lang),
-          icon: Badge.count(
-            count: _unreadCount,
-            isLabelVisible: _unreadCount > 0,
-            child: const Icon(Icons.notifications_outlined),
+          // The bell pops when new notifications arrive, not when read.
+          icon: PopOnChange(
+            value: _unreadCount,
+            when: (count) => count is int && count > 0,
+            child: Badge.count(
+              count: _unreadCount,
+              isLabelVisible: _unreadCount > 0,
+              child: const Icon(Icons.notifications_outlined),
+            ),
           ),
           onPressed: _openNotifications,
         ),
@@ -424,59 +449,93 @@ class _FeedScreenState extends State<FeedScreen>
         ),
         actions: _appBarActions(lang),
       ),
-      body: _loading
-          ? const FeedSkeleton()
-          : _hasError
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-                      const SizedBox(height: 12),
-                      Text(tr('feed_load_error', lang),
-                          style: const TextStyle(color: Colors.grey)),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: _load,
-                        icon: const Icon(Icons.refresh),
-                        label: Text(tr('retry', lang)),
-                      ),
-                    ],
-                  ),
-                )
-              : _activities.isEmpty
-                  ? Center(
-                      child: Text(tr('no_activity', lang),
-                          style: const TextStyle(color: Colors.grey)))
-                  : NotificationListener<ScrollNotification>(
-                      onNotification: _onScrollNotification,
-                      child: RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: _activities.length + (_hasMore ? 1 : 0),
-                          itemBuilder: (_, i) {
-                            if (i == _activities.length) {
-                              return LoadMoreFooter(
-                                key: _moreFailed ? const Key('load-more-retry') : null,
-                                hasMore: true,
-                                failed: _moreFailed,
-                                onRetry: () => _loadMore(retry: true),
-                              );
-                            }
-                            final activity = _activities[i];
-                            return _ActivityCard(
-                              activity: activity,
-                              lang: lang,
-                              onToggleLike: () => _toggleLike(activity),
-                              onOpenThread: () => _openThread(activity),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
+      body: FadeSwitcher(child: _body(lang)),
     );
   }
+
+  /// The skeleton, error, empty message or cards, each keyed so the switch
+  /// between them cross-fades.
+  Widget _body(String lang) {
+    if (_loading) return const FeedSkeleton(key: ValueKey('feed-skeleton'));
+    if (_hasError) {
+      return Center(
+        key: const ValueKey('feed-error'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(tr('feed_load_error', lang),
+                style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              label: Text(tr('retry', lang)),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_activities.isEmpty) {
+      return Center(
+          key: const ValueKey('feed-empty'),
+          child: Text(tr('no_activity', lang),
+              style: const TextStyle(color: Colors.grey)));
+    }
+    // A fresh list cascades in; afterwards only a newly posted status does.
+    return EntranceGate(
+      key: const ValueKey('feed-list'),
+      trigger: _postedCount,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScrollNotification,
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(12),
+            itemCount: _activities.length + (_hasMore ? 1 : 0),
+            // Cards keep their state when a post is inserted above them, so
+            // they don't replay their entrance.
+            findChildIndexCallback: _indexOfCard,
+            itemBuilder: (_, i) {
+              if (i == _activities.length) {
+                return LoadMoreFooter(
+                  key: _moreFailed ? const Key('load-more-retry') : null,
+                  hasMore: true,
+                  failed: _moreFailed,
+                  onRetry: () => _loadMore(retry: true),
+                );
+              }
+              final activity = _activities[i];
+              final card = StaggeredEntrance(
+                index: i,
+                child: _ActivityCard(
+                  activity: activity,
+                  lang: lang,
+                  onToggleLike: () => _toggleLike(activity),
+                  onOpenThread: () => _openThread(activity),
+                ),
+              );
+              final id = activity['id'];
+              return id is int ? KeyedSubtree(key: _CardKey(id), child: card) : card;
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  int? _indexOfCard(Key key) {
+    if (key is! _CardKey) return null;
+    final index = _activities.indexWhere((activity) => activity['id'] == key.value);
+    return index < 0 ? null : index;
+  }
+}
+
+/// Identifies a feed card by its activity id.
+class _CardKey extends ValueKey<int> {
+  const _CardKey(super.value);
 }
 
 class _ActivityCard extends StatelessWidget {
