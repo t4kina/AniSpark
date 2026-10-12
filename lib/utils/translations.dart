@@ -562,6 +562,7 @@ const _en = {
   'activity_status_reading': 'is reading',
   'social_load_more': 'Load more',
   'quick_add_action': 'Add to list or edit entry',
+  'rate_limit_banner': 'Too many requests, retrying in a moment',
 };
 
 // ─── Spanish ─────────────────────────────────────────────────────────────────
@@ -1079,6 +1080,7 @@ const _es = {
   'activity_status_reading': 'está leyendo',
   'social_load_more': 'Cargar más',
   'quick_add_action': 'Añadir a la lista o editar entrada',
+  'rate_limit_banner': 'Demasiadas peticiones, reintentando en un momento',
 };
 
 // ─── Japanese ────────────────────────────────────────────────────────────────
@@ -1596,6 +1598,7 @@ const _ja = {
   'activity_status_reading': 'を読書中です:',
   'social_load_more': 'さらに読み込む',
   'quick_add_action': 'リストに追加・編集',
+  'rate_limit_banner': 'リクエストが多すぎます。まもなく再試行します',
 };
 
 // ─── French ──────────────────────────────────────────────────────────────────
@@ -2113,6 +2116,7 @@ const _fr = {
   'activity_status_reading': 'lit',
   'social_load_more': 'Charger plus',
   'quick_add_action': 'Ajouter à la liste ou modifier l\'entrée',
+  'rate_limit_banner': 'Trop de requêtes, nouvel essai dans un instant',
 };
 
 // ─── German ──────────────────────────────────────────────────────────────────
@@ -2630,6 +2634,7 @@ const _de = {
   'activity_status_reading': 'liest gerade',
   'social_load_more': 'Mehr laden',
   'quick_add_action': 'Zur Liste hinzufügen oder Eintrag bearbeiten',
+  'rate_limit_banner': 'Zu viele Anfragen, gleich neuer Versuch',
 };
 
 // ─── Portuguese ──────────────────────────────────────────────────────────────
@@ -3147,6 +3152,7 @@ const _pt = {
   'activity_status_reading': 'está lendo',
   'social_load_more': 'Carregar mais',
   'quick_add_action': 'Adicionar à lista ou editar entrada',
+  'rate_limit_banner': 'Muitos pedidos, tentando de novo em instantes',
 };
 
 // ─── Italian ─────────────────────────────────────────────────────────────────
@@ -3664,6 +3670,7 @@ const _it = {
   'activity_status_reading': 'sta leggendo',
   'social_load_more': 'Carica altro',
   'quick_add_action': 'Aggiungi alla lista o modifica voce',
+  'rate_limit_banner': 'Troppe richieste, nuovo tentativo tra poco',
 };
 
 // ─── Korean ──────────────────────────────────────────────────────────────────
@@ -4181,4 +4188,5 @@ const _ko = {
   'activity_status_reading': '을(를) 읽는 중이에요:',
   'social_load_more': '더 불러오기',
   'quick_add_action': '목록에 추가 또는 항목 편집',
+  'rate_limit_banner': '요청이 너무 많아 잠시 후 다시 시도합니다',
 };
