@@ -43,6 +43,20 @@ void main() {
     expect(controller.offset, 0);
   });
 
+  testWidgets('scrollToTop jumps straight to the top when told not to animate', (tester) async {
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(Directionality(
+      textDirection: TextDirection.ltr,
+      child: ListView(controller: controller, children: [for (var i = 0; i < 50; i++) SizedBox(height: 100, child: Text('$i'))]),
+    ));
+    controller.jumpTo(2000);
+
+    scrollToTop(controller, animate: false);
+
+    expect(controller.offset, 0);
+  });
+
   test('scrollToTop ignores controllers without a scroll view', () {
     final controller = ScrollController();
     addTearDown(controller.dispose);

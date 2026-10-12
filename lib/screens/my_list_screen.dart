@@ -359,7 +359,7 @@ class _MediaListState extends State<_MediaList>
     _stopReselectListener = scrollToTopOnReselect(
       tabReselectedNotifier,
       tab: _tab,
-      onReselected: () => scrollToTop(_scrollController),
+      onReselected: () => scrollToTop(_scrollController, animate: !AppMotion.reduced(context)),
     );
   }
 

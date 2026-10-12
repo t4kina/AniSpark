@@ -75,11 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// Tapping Discover again while it's open goes back to the top.
   void _scrollToTop() {
     if (!mounted) return;
-    if (AppMotion.reduced(context)) {
-      if (_scroll.hasClients) _scroll.jumpTo(0);
-    } else {
-      scrollToTop(_scroll);
-    }
+    scrollToTop(_scroll, animate: !AppMotion.reduced(context));
   }
 
   Future<void> _refresh() async {

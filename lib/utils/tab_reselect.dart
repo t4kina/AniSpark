@@ -33,10 +33,15 @@ VoidCallback scrollToTopOnReselect(
   return () => notifier.removeListener(listener);
 }
 
-/// Smoothly scrolls [controller]'s scroll view back to the top; does
-/// nothing when no scroll view uses it.
-void scrollToTop(ScrollController controller) {
+/// Scrolls [controller]'s scroll view back to the top, smoothly unless
+/// [animate] is false (pass `!AppMotion.reduced(context)`); does nothing
+/// when no scroll view uses it.
+void scrollToTop(ScrollController controller, {bool animate = true}) {
   if (!controller.hasClients) return;
+  if (!animate) {
+    controller.jumpTo(0);
+    return;
+  }
   controller.animateTo(
     0,
     duration: const Duration(milliseconds: 400),

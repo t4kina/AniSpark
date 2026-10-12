@@ -6,6 +6,7 @@ import '../services/auth_service.dart';
 import '../services/anilist_service.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
+import '../theme/app_motion.dart';
 import '../utils/tab_reselect.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
@@ -162,7 +163,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     _stopReselectListener = scrollToTopOnReselect(
       tabReselectedNotifier,
       tab: _profileTab,
-      onReselected: () => scrollToTop(_scrollController),
+      onReselected: () => scrollToTop(_scrollController, animate: !AppMotion.reduced(context)),
     );
   }
 

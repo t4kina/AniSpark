@@ -95,6 +95,42 @@ void main() {
       expect(find.text('content'), findsOneWidget);
     });
 
+    testWidgets('turns off the heroes of the child that is leaving', (tester) async {
+      Widget withHero(String label) => Hero(key: ValueKey(label), tag: 'cover', child: Text(label));
+      await tester.pumpWidget(_app(FadeSwitcher(child: withHero('old'))));
+      await tester.pumpWidget(_app(FadeSwitcher(child: withHero('new'))));
+      await tester.pump(AppMotion.medium ~/ 2);
+
+      bool heroesOn(String label) => tester
+          .widget<HeroMode>(find.ancestor(of: find.text(label), matching: find.byType(HeroMode)).first)
+          .enabled;
+      expect(heroesOn('old'), isFalse);
+      expect(heroesOn('new'), isTrue);
+    });
+
+    testWidgets('lets a page open mid cross-fade without a hero tag clash', (tester) async {
+      Widget page(String label) => FadeSwitcher(
+            child: Builder(
+              key: ValueKey(label),
+              builder: (context) => GestureDetector(
+                onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
+                  builder: (_) => const Scaffold(body: Hero(tag: 'cover', child: Text('detail'))),
+                )),
+                child: Hero(tag: 'cover', child: Text(label)),
+              ),
+            ),
+          );
+      await tester.pumpWidget(_app(page('list')));
+      await tester.pumpWidget(_app(page('list again')));
+      await tester.pump(AppMotion.medium ~/ 2);
+
+      await tester.tap(find.text('list again'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('detail'), findsOneWidget);
+    });
+
     testWidgets('swaps at once when motion is reduced', (tester) async {
       await tester.pumpWidget(_app(const FadeSwitcher(child: Text('skeleton', key: ValueKey('a'))), reduceMotion: true));
       await tester.pumpWidget(_app(const FadeSwitcher(child: Text('content', key: ValueKey('b'))), reduceMotion: true));

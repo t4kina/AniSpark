@@ -10,6 +10,7 @@ import '../providers/settings_provider.dart';
 import '../utils/activity_status.dart';
 import '../utils/activity_text.dart' show relativeTime;
 import '../utils/refresh_notifier.dart';
+import '../theme/app_motion.dart';
 import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/motion/fade_switcher.dart';
@@ -75,7 +76,7 @@ class _FeedScreenState extends State<FeedScreen>
     _stopReselectListener = scrollToTopOnReselect(
       tabReselectedNotifier,
       tab: _feedTab,
-      onReselected: () => scrollToTop(_scrollController),
+      onReselected: () => scrollToTop(_scrollController, animate: !AppMotion.reduced(context)),
     );
   }
 
