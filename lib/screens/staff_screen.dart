@@ -19,6 +19,7 @@ import '../widgets/people/expandable_text.dart';
 import '../widgets/people/info_pill.dart';
 import '../widgets/people/media_cover_tile.dart';
 import '../widgets/people/paged_items.dart';
+import '../utils/fuzzy_date.dart' show fuzzyDateLabel;
 import '../widgets/people/people_labels.dart';
 import '../widgets/people/people_routes.dart';
 import '../widgets/people/voiced_character_tile.dart';

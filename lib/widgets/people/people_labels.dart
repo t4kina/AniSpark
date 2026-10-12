@@ -19,26 +19,6 @@ String genderLabel(String gender, String lang) => switch (gender.toLowerCase()) 
       _ => gender,
     };
 
-/// A [date] as "17 Jun 1961", "Jun 17" (without the year, or when
-/// [withYear] is false), "Jun 1961" or "1961"; null when there's nothing
-/// to show.
-String? fuzzyDateLabel(FuzzyDate? date, String lang, {bool withYear = true}) {
-  if (date == null) return null;
-  final year = withYear ? date.year : null;
-  final month = date.month;
-  final day = date.day;
-  final monthName = month == null ? '' : tr('detail_month_$month', lang);
-  if (year == null) {
-    if (month == null && day == null) return null;
-    if (day == null) return monthName;
-    // Trimmed so a birthday without a month doesn't keep the separator.
-    return trf('char_birthday_date', lang, {'month': monthName, 'day': day}).trim();
-  }
-  if (month == null) return '$year';
-  if (day == null) return trf('detail_date_month_year', lang, {'month': monthName, 'year': year});
-  return trf('detail_date_full', lang, {'day': day, 'month': monthName, 'year': year});
-}
-
 /// "main" / "supporting" / "background" for an AniList CharacterRole.
 String? characterRoleLabel(String? role, String lang) => switch (role) {
       'MAIN' => tr('detail_role_main', lang),

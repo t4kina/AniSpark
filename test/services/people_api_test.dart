@@ -439,9 +439,9 @@ void main() {
     expect(StudioRef.listFromJson({'nodes': []}), isEmpty);
   });
 
-  test('FuzzyDate drops impossible months and days', () {
-    expect(FuzzyDate.fromJson({'year': 2000, 'month': 13, 'day': 0})?.toJson(), {'year': 2000, 'month': null, 'day': null});
-    expect(FuzzyDate.fromJson({'month': 0}), isNull);
-    expect(FuzzyDate.fromJson('2000-01-01'), isNull);
+  test('people dates drop impossible parts and are null when nothing is known', () {
+    expect(FuzzyDate.maybeFromJson({'year': 2000, 'month': 13, 'day': 0})?.toJson(), {'year': 2000, 'month': null, 'day': null});
+    expect(FuzzyDate.maybeFromJson({'month': 0}), isNull);
+    expect(FuzzyDate.maybeFromJson('2000-01-01'), isNull);
   });
 }

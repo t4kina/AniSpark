@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 
+import '../../utils/fuzzy_date.dart';
 import '../../utils/score_utils.dart';
+
+export '../../utils/fuzzy_date.dart' show FuzzyDate;
 
 /// AniList list statuses, in the order the editor offers them.
 const entryStatuses = ['CURRENT', 'COMPLETED', 'PLANNING', 'PAUSED', 'DROPPED', 'REPEATING'];
@@ -14,50 +17,6 @@ String entryStatusKey(String status, {required bool manga}) => switch (status) {
       'DROPPED' => 'dropped',
       _ => manga ? 'plan_to_read' : 'plan_to_watch',
     };
-
-/// An AniList date where any part may be missing (`FuzzyDate`).
-@immutable
-class FuzzyDate {
-  const FuzzyDate({this.year, this.month, this.day});
-
-  factory FuzzyDate.fromJson(Object? json) => json is Map
-      ? FuzzyDate(
-          year: (json['year'] as num?)?.toInt(),
-          month: (json['month'] as num?)?.toInt(),
-          day: (json['day'] as num?)?.toInt(),
-        )
-      : empty;
-
-  factory FuzzyDate.fromDateTime(DateTime date) =>
-      FuzzyDate(year: date.year, month: date.month, day: date.day);
-
-  static const empty = FuzzyDate();
-
-  final int? year;
-  final int? month;
-  final int? day;
-
-  bool get isEmpty => year == null && month == null && day == null;
-
-  /// The `FuzzyDateInput` for this date; an empty date clears it on AniList.
-  Map<String, int?> toInput() => {'year': year, 'month': month, 'day': day};
-
-  /// The day to open a date picker on, or null without a year.
-  DateTime? toDateTime() {
-    final y = year;
-    return y == null ? null : DateTime(y, month ?? 1, day ?? 1);
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      other is FuzzyDate && other.year == year && other.month == month && other.day == day;
-
-  @override
-  int get hashCode => Object.hash(year, month, day);
-
-  @override
-  String toString() => 'FuzzyDate($year-$month-$day)';
-}
 
 /// The editable fields of a list entry, named as in AniList's `MediaList`.
 enum EntryField {

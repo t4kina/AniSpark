@@ -7,6 +7,7 @@ import '../../theme/app_motion.dart';
 import '../../utils/translations.dart';
 import '../motion/animated_count.dart';
 import '../motion/pop_on_change.dart';
+import '../../utils/fuzzy_date.dart' show formatFuzzyDate;
 import 'entry_draft.dart';
 import 'score_scale.dart';
 
@@ -16,19 +17,6 @@ const _fieldRadius = 10.0;
 // Counts without a known total (episodes of an airing show, rewatches…)
 // still need an upper bound for typed values.
 const _noTotalMax = 99999;
-
-/// Formats an AniList date like the detail page ("9 Mar 2024", "Mar 2024"
-/// or "2024"); empty without a year.
-String formatFuzzyDate(FuzzyDate date, String lang) {
-  final year = date.year;
-  if (year == null) return '';
-  final month = date.month;
-  if (month == null) return '$year';
-  final monthName = month >= 1 && month <= 12 ? tr('detail_month_$month', lang) : '$month';
-  final day = date.day;
-  if (day == null) return trf('detail_date_month_year', lang, {'month': monthName, 'year': year});
-  return trf('detail_date_full', lang, {'day': day, 'month': monthName, 'year': year});
-}
 
 /// The small grey caption above each editor field.
 class EditorLabel extends StatelessWidget {

@@ -13,17 +13,6 @@ void main() {
     expect(compactCount(1234567), '1.2M');
   });
 
-  test('fuzzyDateLabel shows whatever part of the date is known', () {
-    const full = FuzzyDate(year: 1961, month: 6, day: 17);
-    expect(fuzzyDateLabel(full, 'English'), '17 Jun 1961');
-    expect(fuzzyDateLabel(full, 'English', withYear: false), 'Jun 17');
-    expect(fuzzyDateLabel(const FuzzyDate(year: 1961, month: 6), 'English'), 'Jun 1961');
-    expect(fuzzyDateLabel(const FuzzyDate(year: 1961), 'English'), '1961');
-    expect(fuzzyDateLabel(const FuzzyDate(year: 1961), 'English', withYear: false), isNull);
-    expect(fuzzyDateLabel(const FuzzyDate(day: 5), 'English'), '5');
-    expect(fuzzyDateLabel(null, 'English'), isNull);
-  });
-
   test('genderLabel translates the usual values and keeps the rest', () {
     expect(genderLabel('Female', 'English'), 'Female');
     expect(genderLabel('male', 'Spanish'), tr('char_gender_male', 'Spanish'));

@@ -19,6 +19,7 @@ import '../widgets/motion/rounded_hero.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/people/expandable_text.dart';
 import '../widgets/people/info_pill.dart';
+import '../utils/fuzzy_date.dart' show fuzzyDateLabel;
 import '../widgets/people/people_labels.dart';
 import '../widgets/people/people_routes.dart';
 import '../widgets/people/person_card.dart';

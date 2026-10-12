@@ -1,5 +1,9 @@
 import 'package:flutter/foundation.dart' show immutable;
 
+import '../utils/fuzzy_date.dart';
+
+export '../utils/fuzzy_date.dart' show FuzzyDate;
+
 // Models behind PeopleApi; each mirrors one of its queries and doubles as
 // its cache format.
 
@@ -28,34 +32,6 @@ Map<String, dynamic> _pageInfoJson({required bool hasNextPage, required bool has
       'hasNextPage': hasNextPage,
       if (hasNextPage && !hasItems) 'moreAfterFiltered': true,
     };
-
-/// A date AniList may only know part of (its `FuzzyDate`).
-@immutable
-class FuzzyDate {
-  const FuzzyDate({this.year, this.month, this.day});
-
-  final int? year;
-
-  /// 1–12.
-  final int? month;
-
-  /// 1–31.
-  final int? day;
-
-  /// Null when nothing is known; out-of-range months and days are dropped.
-  static FuzzyDate? fromJson(Object? json) {
-    if (json is! Map) return null;
-    final year = _as<int>(json['year']);
-    final month = _as<int>(json['month']);
-    final day = _as<int>(json['day']);
-    final validMonth = month != null && month >= 1 && month <= 12 ? month : null;
-    final validDay = day != null && day >= 1 && day <= 31 ? day : null;
-    if (year == null && validMonth == null && validDay == null) return null;
-    return FuzzyDate(year: year, month: validMonth, day: validDay);
-  }
-
-  Map<String, dynamic> toJson() => {'year': year, 'month': month, 'day': day};
-}
 
 /// A media as listed on staff, studio and character pages.
 @immutable
@@ -407,8 +383,8 @@ class StaffDetail {
       ]),
       gender: _text(json['gender']),
       age: _as<int>(json['age']),
-      dateOfBirth: FuzzyDate.fromJson(json['dateOfBirth']),
-      dateOfDeath: FuzzyDate.fromJson(json['dateOfDeath']),
+      dateOfBirth: FuzzyDate.maybeFromJson(json['dateOfBirth']),
+      dateOfDeath: FuzzyDate.maybeFromJson(json['dateOfDeath']),
       yearsActive: List.unmodifiable([
         if (yearsActive is List)
           for (final year in yearsActive) ?_as<int>(year),
@@ -634,7 +610,7 @@ class CharacterDetail {
       gender: _text(json['gender']),
       age: _text(json['age']),
       bloodType: _text(json['bloodType']),
-      dateOfBirth: FuzzyDate.fromJson(json['dateOfBirth']),
+      dateOfBirth: FuzzyDate.maybeFromJson(json['dateOfBirth']),
       media: List.unmodifiable(media),
       voiceActors: sortVoiceActors([
         for (final actor in actors)
