@@ -280,6 +280,8 @@ class _DetailScreenState extends State<DetailScreen> {
           : CachedNetworkImage(
               imageUrl: url,
               fit: BoxFit.cover,
+              // Banners are ~1900 px wide; decode them at the screen's width.
+              memCacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round(),
               fadeInDuration: AppMotion.of(context, AppMotion.short),
               fadeOutDuration: Duration.zero,
               placeholder: (_, _) => placeholder,

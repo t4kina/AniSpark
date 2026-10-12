@@ -214,6 +214,40 @@ void main() {
       expect(find.text('5'), findsOneWidget);
     });
 
+    testWidgets('is a plain text while idle, before and after a roll', (tester) async {
+      Finder machinery() => find.descendant(of: find.byType(AnimatedCount), matching: find.byType(ClipRect));
+      await tester.pumpWidget(_app(const AnimatedCount(value: 4)));
+      expect(machinery(), findsNothing);
+
+      await tester.pumpWidget(_app(const AnimatedCount(value: 5)));
+      await tester.pump(AppMotion.short ~/ 2);
+      expect(machinery(), findsOneWidget);
+
+      await tester.pumpAndSettle();
+      expect(machinery(), findsNothing);
+      expect(find.text('5'), findsOneWidget);
+    });
+
+    testWidgets('rolls downwards when the value falls', (tester) async {
+      await tester.pumpWidget(_app(const Center(child: AnimatedCount(value: 5))));
+      final restY = tester.getTopLeft(find.text('5')).dy;
+      await tester.pumpWidget(_app(const Center(child: AnimatedCount(value: 4))));
+      await tester.pump(AppMotion.short ~/ 3);
+
+      // The new value comes from above, the old one leaves downwards.
+      expect(tester.getTopLeft(find.text('4')).dy, lessThan(restY));
+      expect(tester.getTopLeft(find.text('5')).dy, greaterThan(restY));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('jumps to the new value when motion is reduced', (tester) async {
+      await tester.pumpWidget(_app(const AnimatedCount(value: 4), reduceMotion: true));
+      await tester.pumpWidget(_app(const AnimatedCount(value: 5), reduceMotion: true));
+
+      expect(find.text('4'), findsNothing);
+      expect(find.text('5'), findsOneWidget);
+    });
+
     testWidgets('uses the given format', (tester) async {
       await tester.pumpWidget(_app(AnimatedCount(value: 12, format: (v) => '$v / 24')));
 
@@ -275,6 +309,24 @@ void main() {
       expect(_opacityOf(tester, find.text('feed')), lessThan(1));
       await tester.pumpAndSettle();
       expect(_opacityOf(tester, find.text('feed')), 1);
+    });
+
+    testWidgets('pauses the animations of a tab while it is hidden', (tester) async {
+      late bool tickersOn;
+      Widget tab(bool active) => _app(TabFadeThrough(
+            active: active,
+            child: Builder(builder: (context) {
+              tickersOn = TickerMode.valuesOf(context).enabled;
+              return const Text('feed');
+            }),
+          ));
+
+      await tester.pumpWidget(tab(false));
+      expect(tickersOn, isFalse);
+
+      await tester.pumpWidget(tab(true));
+      expect(tickersOn, isTrue);
+      await tester.pumpAndSettle();
     });
 
     testWidgets('shows the first active tab without animating', (tester) async {

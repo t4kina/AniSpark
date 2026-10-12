@@ -6,6 +6,7 @@ import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/utils/tab_reselect.dart';
 import 'package:anispark/widgets/motion/animated_count.dart';
+import 'package:anispark/widgets/motion/staggered_entrance.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -114,6 +115,27 @@ void main() {
     expect(tags, hasLength(3), reason: 'one cover per row');
     expect(tags.toSet(), hasLength(tags.length));
     expect(tags, containsAll(['cover:mylist-MANGA-CURRENT:30', 'cover:mylist-MANGA-custom:Favs:30']));
+  });
+
+  testWidgets('searching between results and no match neither cross-fades nor replays the cascade', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30), _entry(31)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+    // A person starts typing well after the list's first cascade.
+    await tester.pump(EntranceGate.window);
+
+    await tester.enterText(find.byType(TextField), 'zzz');
+    await tester.pump();
+    // The list is swapped for the no-match message at once, not faded out.
+    expect(find.byType(ListView), findsNothing);
+
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+    final row = find.text('Manga 30');
+    expect(row, findsOneWidget);
+    final fades = tester.widgetList<FadeTransition>(find.ancestor(of: row, matching: find.byType(FadeTransition)));
+    expect(fades.every((fade) => fade.opacity.value == 1), isTrue, reason: 'rows reappear without replaying the cascade');
   });
 
   testWidgets('re-selecting the tab scrolls the list back to the top', (tester) async {

@@ -5,7 +5,8 @@ import '../../theme/app_motion.dart';
 /// Fades a tab's content in, with a barely noticeable zoom, when it becomes
 /// the [active] tab (Material's "fade through"). Meant for the children of
 /// an IndexedStack, which keeps every tab's state; the tab shown first
-/// appears at once.
+/// appears at once. A hidden tab's animations (e.g. a loading shimmer) are
+/// paused, since an IndexedStack keeps them ticking for nobody.
 class TabFadeThrough extends StatefulWidget {
   const TabFadeThrough({super.key, required this.active, required this.child});
 
@@ -46,7 +47,11 @@ class _TabFadeThroughState extends State<TabFadeThrough> with SingleTickerProvid
   Widget build(BuildContext context) {
     return FadeTransition(
       opacity: _progress,
-      child: ScaleTransition(scale: _scale, child: widget.child),
+      child: ScaleTransition(
+        scale: _scale,
+        // Inside the transitions, so the fade-in itself is never paused.
+        child: TickerMode(enabled: widget.active, child: widget.child),
+      ),
     );
   }
 }

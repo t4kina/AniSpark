@@ -723,9 +723,12 @@ class _MediaListState extends State<_MediaList>
       }
     }
 
-    if (items.isEmpty) {
-      return Center(
-        key: const ValueKey('list-no-match'),
+    // "No match" shares the list's gate and key, so typing between results
+    // and none swaps them at once instead of cross-fading the whole list
+    // and replaying its cascade on every keystroke.
+    final noMatch = items.isNotEmpty
+        ? null
+        : Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -742,14 +745,13 @@ class _MediaListState extends State<_MediaList>
           ],
         ),
       );
-    }
 
     // The first rows cascade in when the list first appears; rows built
     // later (scrolling, filtering, expanding a section) appear at once.
     return EntranceGate(
       key: const ValueKey('list'),
       trigger: widget.type,
-      child: RefreshIndicator(
+      child: noMatch ?? RefreshIndicator(
         onRefresh: _refresh,
         child: ListView.builder(
           controller: _scrollController,
@@ -1290,6 +1292,8 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                     fit: BoxFit.cover,
                     width: double.infinity,
                     height: double.infinity,
+                    // A darkened backdrop: a small decode is plenty.
+                    memCacheWidth: 300,
                   ),
                   Container(color: Colors.black.withValues(alpha: 0.78)),
                 ],

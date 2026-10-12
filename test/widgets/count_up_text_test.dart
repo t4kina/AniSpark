@@ -61,4 +61,17 @@ void main() {
 
     expect(_shown(tester), '1234');
   });
+
+  _tabularFiguresTest();
+}
+
+void _tabularFiguresTest() {
+  testWidgets('counts with equal-width digits so the number does not wobble', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: CountUpText(1234, style: TextStyle(fontSize: 20))));
+
+    final text = tester.widget<Text>(find.byType(Text));
+    expect(text.style?.fontFeatures, contains(const FontFeature.tabularFigures()));
+    expect(text.style?.fontSize, 20);
+    await tester.pumpAndSettle();
+  });
 }

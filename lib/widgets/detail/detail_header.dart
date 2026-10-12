@@ -103,7 +103,9 @@ class DetailCoverImage extends StatelessWidget {
             imageUrl: preview,
             fit: BoxFit.cover,
             memCacheWidth: previewCacheWidth,
-            fadeInDuration: fadeIn,
+            // Lists decode covers at other widths too; when this one isn't
+            // cached it appears without a fade, so landing never flickers.
+            fadeInDuration: Duration.zero,
             fadeOutDuration: Duration.zero,
             placeholder: (_, _) => placeholder,
             errorWidget: (_, _, _) => placeholder,

@@ -21,6 +21,10 @@ class CountUpText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final target = value.toDouble();
+    // Equal-width digits, so a centred number doesn't wobble while counting.
+    final digits = (style ?? const TextStyle()).copyWith(
+      fontFeatures: [...?style?.fontFeatures, const FontFeature.tabularFigures()],
+    );
     return Semantics(
       // Screen readers get the real value, never an in-between one.
       label: _format(target),
@@ -29,7 +33,7 @@ class CountUpText extends StatelessWidget {
         tween: Tween(begin: 0, end: target),
         duration: AppMotion.of(context, AppMotion.long),
         curve: AppMotion.enter,
-        builder: (context, shown, _) => Text(_format(shown), style: style),
+        builder: (context, shown, _) => Text(_format(shown), style: digits),
       ),
     );
   }
