@@ -7,6 +7,7 @@ import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
 import '../theme/app_motion.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/genre_filter_sheet.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
@@ -17,33 +18,7 @@ import 'detail_screen.dart';
 /// SharedPreferences key of the recent searches; cleared on logout.
 const recentSearchesPrefsKey = 'recent_searches';
 
-/// AniList genre names (sent to the API as is) and their display keys.
-const _genreKeys = {
-  'Action': 'search_genre_action',
-  'Adventure': 'search_genre_adventure',
-  'Comedy': 'search_genre_comedy',
-  'Drama': 'search_genre_drama',
-  'Ecchi': 'search_genre_ecchi',
-  'Fantasy': 'search_genre_fantasy',
-  'Horror': 'search_genre_horror',
-  'Mahou Shoujo': 'search_genre_mahou_shoujo',
-  'Mecha': 'search_genre_mecha',
-  'Music': 'search_genre_music',
-  'Mystery': 'search_genre_mystery',
-  'Psychological': 'search_genre_psychological',
-  'Romance': 'search_genre_romance',
-  'Sci-Fi': 'search_genre_sci_fi',
-  'Slice of Life': 'search_genre_slice_of_life',
-  'Sports': 'search_genre_sports',
-  'Supernatural': 'search_genre_supernatural',
-  'Thriller': 'search_genre_thriller',
-};
-
-/// Translated name of an AniList [genre]; unknown genres are shown as is.
-String _genreLabel(String genre, String lang) {
-  final key = _genreKeys[genre];
-  return key == null ? genre : tr(key, lang);
-}
+/// Selected genres in the filters sheet, as search has always shown them.
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -223,7 +198,7 @@ class _SearchScreenState extends State<SearchScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _FilterSheet(
+      builder: (_) => GenreFilterSheet(
         selected: draft,
         onApply: (genres) {
           if (genres == _selectedGenres) return;
@@ -670,7 +645,7 @@ class _ResultCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                _genreLabel(g, lang),
+                                genreLabel(g, lang),
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 10,
@@ -687,137 +662,6 @@ class _ResultCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ── Filter sheet ─────────────────────────────────────────────────────────────
-
-class _FilterSheet extends StatefulWidget {
-  final Set<String> selected;
-  final void Function(Set<String>) onApply;
-
-  const _FilterSheet({required this.selected, required this.onApply});
-
-  @override
-  State<_FilterSheet> createState() => _FilterSheetState();
-}
-
-class _FilterSheetState extends State<_FilterSheet> {
-  late Set<String> _draft;
-
-  @override
-  void initState() {
-    super.initState();
-    _draft = Set<String>.from(widget.selected);
-  }
-
-  void _close() {
-    Navigator.pop(context);
-    widget.onApply(_draft);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final lang = context.watch<SettingsProvider>().language;
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.7,
-      maxChildSize: 0.95,
-      builder: (_, scrollCtrl) => Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
-            child: Row(
-              children: [
-                TextButton(
-                  onPressed: () => setState(() => _draft.clear()),
-                  child: Text(tr('search_reset', lang),
-                      style: const TextStyle(color: Colors.grey)),
-                ),
-                Expanded(
-                  child: Center(
-                    child: Text(tr('filters', lang),
-                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: _close,
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: ListView(
-              controller: scrollCtrl,
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-              children: [
-                Text(
-                  tr('genre', lang).toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _genreKeys.keys.map((g) {
-                    final selected = _draft.contains(g);
-                    return GestureDetector(
-                      onTap: () => setState(() {
-                        if (selected) {
-                          _draft.remove(g);
-                        } else {
-                          _draft.add(g);
-                        }
-                      }),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? const Color(0xFF2ECC71).withValues(alpha: 0.2)
-                              : Theme.of(context).colorScheme.surfaceContainerHighest,
-                          border: Border.all(
-                            color: selected
-                                ? const Color(0xFF2ECC71)
-                                : Colors.transparent,
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (selected) ...[
-                              const Icon(Icons.check, size: 14, color: Color(0xFF2ECC71)),
-                              const SizedBox(width: 4),
-                            ],
-                            Text(
-                              _genreLabel(g, lang),
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: selected ? const Color(0xFF2ECC71) : null,
-                                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

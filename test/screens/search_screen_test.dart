@@ -43,6 +43,20 @@ void main() {
     expect(find.text(loadErrorText), findsOneWidget);
   });
 
+  testWidgets('picking a genre in the filters searches again', (tester) async {
+    await searchFor(tester, 'cowboy');
+    expect(offline.requests, 1);
+
+    await tester.tap(find.byTooltip('Filters'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Action'));
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+
+    expect(offline.requests, 2);
+  });
+
   testWidgets('clearing the query dismisses the error', (tester) async {
     await searchFor(tester, 'cowboy');
 

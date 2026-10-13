@@ -563,6 +563,13 @@ const _en = {
   'social_load_more': 'Load more',
   'quick_add_action': 'Add to list or edit entry',
   'rate_limit_banner': 'Too many requests, retrying in a moment',
+  'browse_rating': 'Rating',
+  'browse_any': 'Any',
+  'browse_score_at_least': '★ {n}+',
+  'browse_genres': 'Genres',
+  'browse_empty': 'Nothing matches these filters',
+  'browse_empty_hint': 'Try removing a filter or two.',
+  'browse_clear_filters': 'Clear filters',
 };
 
 // ─── Spanish ─────────────────────────────────────────────────────────────────
@@ -1081,6 +1088,13 @@ const _es = {
   'social_load_more': 'Cargar más',
   'quick_add_action': 'Añadir a la lista o editar entrada',
   'rate_limit_banner': 'Demasiadas peticiones, reintentando en un momento',
+  'browse_rating': 'Valoración',
+  'browse_any': 'Cualquiera',
+  'browse_score_at_least': '★ {n}+',
+  'browse_genres': 'Géneros',
+  'browse_empty': 'Nada coincide con estos filtros',
+  'browse_empty_hint': 'Prueba a quitar algún filtro.',
+  'browse_clear_filters': 'Quitar filtros',
 };
 
 // ─── Japanese ────────────────────────────────────────────────────────────────
@@ -1599,6 +1613,13 @@ const _ja = {
   'social_load_more': 'さらに読み込む',
   'quick_add_action': 'リストに追加・編集',
   'rate_limit_banner': 'リクエストが多すぎます。まもなく再試行します',
+  'browse_rating': '評価',
+  'browse_any': '指定なし',
+  'browse_score_at_least': '★ {n}+',
+  'browse_genres': 'ジャンル',
+  'browse_empty': '条件に一致する作品はありません',
+  'browse_empty_hint': 'フィルターを減らしてみましょう。',
+  'browse_clear_filters': 'フィルターをクリア',
 };
 
 // ─── French ──────────────────────────────────────────────────────────────────
@@ -2117,6 +2138,13 @@ const _fr = {
   'social_load_more': 'Charger plus',
   'quick_add_action': 'Ajouter à la liste ou modifier l\'entrée',
   'rate_limit_banner': 'Trop de requêtes, nouvel essai dans un instant',
+  'browse_rating': 'Évaluation',
+  'browse_any': 'Toutes',
+  'browse_score_at_least': '★ {n}+',
+  'browse_genres': 'Genres',
+  'browse_empty': 'Aucun titre ne correspond à ces filtres',
+  'browse_empty_hint': 'Essayez de retirer un ou deux filtres.',
+  'browse_clear_filters': 'Effacer les filtres',
 };
 
 // ─── German ──────────────────────────────────────────────────────────────────
@@ -2635,6 +2663,13 @@ const _de = {
   'social_load_more': 'Mehr laden',
   'quick_add_action': 'Zur Liste hinzufügen oder Eintrag bearbeiten',
   'rate_limit_banner': 'Zu viele Anfragen, gleich neuer Versuch',
+  'browse_rating': 'Wertung',
+  'browse_any': 'Alle',
+  'browse_score_at_least': '★ {n}+',
+  'browse_genres': 'Genres',
+  'browse_empty': 'Nichts passt zu diesen Filtern',
+  'browse_empty_hint': 'Entferne am besten einen oder zwei Filter.',
+  'browse_clear_filters': 'Filter zurücksetzen',
 };
 
 // ─── Portuguese ──────────────────────────────────────────────────────────────
@@ -3153,6 +3188,13 @@ const _pt = {
   'social_load_more': 'Carregar mais',
   'quick_add_action': 'Adicionar à lista ou editar entrada',
   'rate_limit_banner': 'Muitos pedidos, tentando de novo em instantes',
+  'browse_rating': 'Avaliação',
+  'browse_any': 'Qualquer',
+  'browse_score_at_least': '★ {n}+',
+  'browse_genres': 'Gêneros',
+  'browse_empty': 'Nada corresponde a estes filtros',
+  'browse_empty_hint': 'Tente remover um ou dois filtros.',
+  'browse_clear_filters': 'Limpar filtros',
 };
 
 // ─── Italian ─────────────────────────────────────────────────────────────────
@@ -3671,6 +3713,13 @@ const _it = {
   'social_load_more': 'Carica altro',
   'quick_add_action': 'Aggiungi alla lista o modifica voce',
   'rate_limit_banner': 'Troppe richieste, nuovo tentativo tra poco',
+  'browse_rating': 'Valutazione',
+  'browse_any': 'Qualsiasi',
+  'browse_score_at_least': '★ {n}+',
+  'browse_genres': 'Generi',
+  'browse_empty': 'Nessun titolo corrisponde a questi filtri',
+  'browse_empty_hint': 'Prova a togliere qualche filtro.',
+  'browse_clear_filters': 'Cancella filtri',
 };
 
 // ─── Korean ──────────────────────────────────────────────────────────────────
@@ -4189,4 +4238,11 @@ const _ko = {
   'social_load_more': '더 불러오기',
   'quick_add_action': '목록에 추가 또는 항목 편집',
   'rate_limit_banner': '요청이 너무 많아 잠시 후 다시 시도합니다',
+  'browse_rating': '평점',
+  'browse_any': '전체',
+  'browse_score_at_least': '★ {n}+',
+  'browse_genres': '장르',
+  'browse_empty': '필터에 맞는 작품이 없습니다',
+  'browse_empty_hint': '필터를 한두 개 해제해 보세요.',
+  'browse_clear_filters': '필터 초기화',
 };
