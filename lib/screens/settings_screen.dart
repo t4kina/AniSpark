@@ -105,6 +105,7 @@ class SettingsScreen extends StatelessWidget {
               onSelected: (v) => context.read<SettingsProvider>().setLanguage(v),
             ),
           ),
+          const SizedBox(height: 4),
           _tile(
             icon: Icons.palette_outlined,
             label: tr('appearance', lang),
@@ -119,6 +120,7 @@ class SettingsScreen extends StatelessWidget {
               onSelected: (v) => context.read<SettingsProvider>().setAppearance(v),
             ),
           ),
+          const SizedBox(height: 4),
           _tile(
             icon: Icons.color_lens_outlined,
             label: tr('accent_color', lang),
@@ -140,6 +142,7 @@ class SettingsScreen extends StatelessWidget {
             ),
             onTap: () => _showAccentColorPicker(context, settings, lang),
           ),
+          const SizedBox(height: 4),
           _tile(
             icon: Icons.title,
             label: tr('title_language', lang),
@@ -155,7 +158,7 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           const Divider(height: 1),
 
           // ── Notifications ──
@@ -181,6 +184,7 @@ class SettingsScreen extends StatelessWidget {
               }
             },
           ),
+          const SizedBox(height: 4),
           _switchTile(
             icon: Icons.new_releases_outlined,
             label: tr('new_episode_alerts', lang),
@@ -204,6 +208,7 @@ class SettingsScreen extends StatelessWidget {
               }
             },
           ),
+          const SizedBox(height: 4),
           _switchTile(
             icon: Icons.group_outlined,
             label: tr('friend_activity_alerts', lang),
@@ -213,7 +218,7 @@ class SettingsScreen extends StatelessWidget {
             },
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           const Divider(height: 1),
 
           // ── Data ──
@@ -223,13 +228,14 @@ class SettingsScreen extends StatelessWidget {
             label: tr('clear_cache', lang),
             onTap: () => _clearImageCache(context, lang),
           ),
+          const SizedBox(height: 4),
           _tile(
             icon: Icons.sync,
             label: tr('sync_anilist', lang),
             onTap: () => _syncWithAniList(context, auth, lang),
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           const Divider(height: 1),
 
           // ── Account ──
@@ -243,6 +249,7 @@ class SettingsScreen extends StatelessWidget {
               }
             },
           ),
+          const SizedBox(height: 4),
           _tile(
             icon: Icons.logout,
             label: tr('logout', lang),
@@ -250,7 +257,7 @@ class SettingsScreen extends StatelessWidget {
             onTap: () => _confirmLogout(context, auth, lang),
           ),
 
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           const Divider(height: 1),
 
           // ── About ──
@@ -260,6 +267,7 @@ class SettingsScreen extends StatelessWidget {
             label: tr('about_anispark', lang),
             onTap: () => _showAbout(context, lang),
           ),
+          const SizedBox(height: 4),
           _tile(
             icon: Icons.description_outlined,
             label: tr('terms', lang),
