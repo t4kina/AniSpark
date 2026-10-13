@@ -8,7 +8,9 @@ import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../theme/app_motion.dart';
 import '../utils/tab_reselect.dart';
+import '../widgets/blurred_backdrop.dart';
 import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/stretchy_banner.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/profile/count_up_text.dart';
@@ -462,21 +464,28 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           // ── Banner + Avatar + Name ──────────────────────────────
           Stack(
                 alignment: Alignment.bottomCenter,
+                // The banner stretches up into the gap when the page is pulled down.
+                clipBehavior: Clip.none,
                 children: [
                   SizedBox(
                     height: 200 + topPadding,
                     width: double.infinity,
-                    child: _bannerImage != null
-                        ? CachedNetworkImage(
-                            imageUrl: _bannerImage!,
-                            fit: BoxFit.cover,
-                            memCacheWidth: 800,
-                            placeholder: (ctx, _) => Container(
-                                color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
-                            errorWidget: (_, _, _) => Container(
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                          )
-                        : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                    child: StretchyBanner(
+                      controller: _scrollController,
+                      child: _bannerImage != null
+                          ? CachedNetworkImage(
+                              imageUrl: _bannerImage!,
+                              fit: BoxFit.cover,
+                              memCacheWidth: 800,
+                              placeholder: (ctx, _) => Container(
+                                  color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
+                              errorWidget: (_, _, _) => Container(
+                                  color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                            )
+                          : avatar != null
+                              ? BlurredBackdrop(url: avatar)
+                              : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                    ),
                   ),
                   Positioned.fill(
                     child: DecoratedBox(

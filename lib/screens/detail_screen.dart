@@ -27,6 +27,8 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pop_on_change.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
+import '../widgets/motion/stretchy_banner.dart';
+import '../widgets/blurred_backdrop.dart';
 import '../utils/translations.dart';
 import '../providers/settings_provider.dart';
 import 'character_screen.dart';
@@ -50,6 +52,15 @@ class DetailScreen extends StatefulWidget {
 
 class _DetailScreenState extends State<DetailScreen> {
   final _service = AniListService();
+
+  /// Drives the banner's stretch and parallax.
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   /// The cover's hero tag: the opening list's, so its cover flies in.
   String get _coverTag => widget.heroTag ?? 'cover_${widget.animeId}';
@@ -241,16 +252,24 @@ class _DetailScreenState extends State<DetailScreen> {
         body: Stack(
           children: [
             CustomScrollView(
+              controller: _scroll,
               slivers: [
                 SliverToBoxAdapter(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       DetailHeader(
-                        banner: FadeSwitcher(
-                          child: d == null
-                              ? const Skeleton(child: SkeletonBox(height: DetailHeader.bannerHeight, radius: 0))
-                              : _buildBanner(context, d['bannerImage'] as String?),
+                        banner: StretchyBanner(
+                          controller: _scroll,
+                          child: FadeSwitcher(
+                            child: d == null
+                                ? const Skeleton(child: SkeletonBox(height: DetailHeader.bannerHeight, radius: 0))
+                                : _buildBanner(
+                                    context,
+                                    d['bannerImage'] as String?,
+                                    fallback: (d['coverImage']?['large'] as String?) ?? widget.initialCoverUrl,
+                                  ),
+                          ),
                         ),
                         cover: _buildCover(context, d),
                         info: FadeSwitcher(
@@ -272,11 +291,13 @@ class _DetailScreenState extends State<DetailScreen> {
     );
   }
 
-  Widget _buildBanner(BuildContext context, String? url) {
+  /// The banner, or without one the [fallback] image (the cover) blurred,
+  /// rather than a flat colour.
+  Widget _buildBanner(BuildContext context, String? url, {String? fallback}) {
     final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
     return SizedBox.expand(
       child: url == null
-          ? placeholder
+          ? (fallback == null ? placeholder : BlurredBackdrop(url: fallback))
           : CachedNetworkImage(
               imageUrl: url,
               fit: BoxFit.cover,

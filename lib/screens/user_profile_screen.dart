@@ -10,7 +10,9 @@ import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/blurred_backdrop.dart';
 import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/stretchy_banner.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/profile/affinity_card.dart';
 import '../widgets/profile/count_up_text.dart';
@@ -35,6 +37,15 @@ class UserProfileScreen extends StatefulWidget {
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
   final _service = AniListService();
+
+  /// Drives the banner's stretch and parallax.
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
   Map<String, dynamic>? _profile;
   List<dynamic> _recentActivity = [];
   bool _loading = true;
@@ -376,6 +387,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
     return CustomScrollView(
       key: const ValueKey('uprof-content'),
+      controller: _scroll,
       slivers: [
         // ── Header card ───────────────────────────────────────────────
         SliverToBoxAdapter(
@@ -398,22 +410,28 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               children: [
                 Stack(
                   alignment: Alignment.bottomCenter,
+                  // The banner stretches up into the gap when the page is pulled down.
+                  clipBehavior: Clip.none,
                   children: [
                     SizedBox(
                       height: 200 + topPadding,
                       width: double.infinity,
-                      child: banner != null
-                          ? CachedNetworkImage(
-                              imageUrl: banner,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 800,
-                              placeholder: (ctx, _) => Container(
-                                  color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
-                              errorWidget: (_, _, _) => Container(
-                                  color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                            )
-                          : Container(
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                      child: StretchyBanner(
+                        controller: _scroll,
+                        child: banner != null
+                            ? CachedNetworkImage(
+                                imageUrl: banner,
+                                fit: BoxFit.cover,
+                                memCacheWidth: 800,
+                                placeholder: (ctx, _) => Container(
+                                    color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
+                                errorWidget: (_, _, _) => Container(
+                                    color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                              )
+                            : avatar != null
+                                ? BlurredBackdrop(url: avatar)
+                                : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                      ),
                     ),
                     Positioned.fill(
                       child: DecoratedBox(
