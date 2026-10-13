@@ -29,6 +29,9 @@ class AnimeCard extends StatelessWidget {
   });
 
   static const _coverRadius = BorderRadius.all(Radius.circular(8));
+  static const _titleSize = 12.0;
+  static const _scoreSize = 11.0;
+  static const _lineHeight = 1.3;
 
   /// Long-press quick add: opens the entry editor, which looks the media up
   /// in the user's list (a new entry starts as Planning). Does nothing when
@@ -56,6 +59,7 @@ class AnimeCard extends StatelessWidget {
     final scope = heroScope;
     final heroTag = id != null && scope != null ? coverHeroTag(scope, id) : null;
     final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final textScaler = MediaQuery.textScalerOf(context);
 
     final card = Pressable(
       onTap: id == null
@@ -91,22 +95,33 @@ class AnimeCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Text(
-            title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          // Always two title lines (and a score line) tall, so covers in a
+          // row or grid line up whatever the title's length or a missing score.
+          SizedBox(
+            height: textScaler.scale(_titleSize) * _lineHeight * 2,
+            child: Text(
+              title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              strutStyle: const StrutStyle(fontSize: _titleSize, height: _lineHeight, forceStrutHeight: true),
+              style: const TextStyle(fontSize: _titleSize, height: _lineHeight, fontWeight: FontWeight.w600),
+            ),
           ),
-          if (showScore && score != null)
-            Row(
-              children: [
-                const Icon(Icons.star, size: 12, color: Color(0xFFFFC107)),
-                const SizedBox(width: 2),
-                Text(
-                  '${(score / 10).toStringAsFixed(1)}',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
-                ),
-              ],
+          if (showScore)
+            SizedBox(
+              height: textScaler.scale(_scoreSize) * _lineHeight,
+              child: score == null
+                  ? null
+                  : Row(
+                      children: [
+                        const Icon(Icons.star, size: 12, color: Color(0xFFFFC107)),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${(score / 10).toStringAsFixed(1)}',
+                          style: const TextStyle(fontSize: _scoreSize, color: Colors.grey),
+                        ),
+                      ],
+                    ),
             ),
         ],
       ),
