@@ -184,4 +184,20 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
   });
+
+  testWidgets('the undo snack bar goes away on its own after a few seconds', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30, progress: 42)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+
+    await tester.drag(find.text('Manga 30'), const Offset(500, 0));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsOneWidget, reason: 'undo is offered');
+
+    // A snack bar with an action would stay until dismissed unless told not to.
+    await tester.pump(const Duration(seconds: 3));
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
+  });
 }

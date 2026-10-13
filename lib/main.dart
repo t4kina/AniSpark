@@ -22,7 +22,7 @@ import 'screens/profile_screen.dart';
 import 'screens/feed_screen.dart';
 import 'theme/app_theme.dart';
 import 'utils/translations.dart' show tr;
-import 'utils/refresh_notifier.dart' show rateLimitActiveNotifier;
+import 'widgets/rate_limit_notice.dart';
 import 'utils/tab_reselect.dart';
 import 'widgets/motion/pop_in.dart';
 import 'widgets/motion/tab_fade_through.dart';
@@ -133,7 +133,7 @@ class MyAnimeApp extends StatelessWidget {
       builder: (context, child) {
         return ScrollConfiguration(
           behavior: const _SmoothScrollBehavior(),
-          child: _RateLimitBannerWrapper(child: child!),
+          child: RateLimitNotice(child: child!),
         );
       },
       home: const SplashScreen(),
@@ -301,83 +301,4 @@ class _SmoothScrollBehavior extends ScrollBehavior {
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) =>
       const BouncingScrollPhysics();
-}
-
-class _RateLimitBannerWrapper extends StatefulWidget {
-  final Widget child;
-  const _RateLimitBannerWrapper({required this.child});
-
-  @override
-  State<_RateLimitBannerWrapper> createState() => _RateLimitBannerWrapperState();
-}
-
-class _RateLimitBannerWrapperState extends State<_RateLimitBannerWrapper>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<Offset> _slide;
-  late final Animation<double> _fade;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    _slide = Tween(begin: const Offset(0, 1.5), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
-    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
-    rateLimitActiveNotifier.addListener(_onRateLimitChanged);
-  }
-
-  @override
-  void dispose() {
-    rateLimitActiveNotifier.removeListener(_onRateLimitChanged);
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _onRateLimitChanged() {
-    if (!mounted) return;
-    if (rateLimitActiveNotifier.value) {
-      if (!_ctrl.isCompleted) _ctrl.forward();
-    } else {
-      if (!_ctrl.isDismissed) _ctrl.reverse();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        widget.child,
-        Positioned(
-          bottom: MediaQuery.of(context).padding.bottom + 64 + 12,
-          left: 0,
-          right: 0,
-          child: FadeTransition(
-            opacity: _fade,
-            child: SlideTransition(
-              position: _slide,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    tr('rate_limit_banner', context.select<SettingsProvider, String>((s) => s.language)),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }

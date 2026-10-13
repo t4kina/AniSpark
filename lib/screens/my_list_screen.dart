@@ -415,6 +415,9 @@ class _MediaListState extends State<_MediaList>
       ..showSnackBar(SnackBar(
         content: Text(message, maxLines: 1, overflow: TextOverflow.ellipsis),
         duration: const Duration(seconds: 3),
+        // Flutter keeps a snack bar with an action (Undo) until it's
+        // dismissed; this one should still go away after [duration].
+        persist: false,
         action: action,
       ));
   }
