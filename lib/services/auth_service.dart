@@ -117,18 +117,7 @@ class AuthService extends ChangeNotifier {
   // Mobile: implicit flow by default (token in the redirect's fragment), or
   // the authorization-code flow when built with ANILIST_OAUTH_FLOW=code.
   Future<void> _loginMobile() async {
-    final state = generateOAuthState();
-    final authUrl = Uri(
-      scheme: 'https',
-      host: 'anilist.co',
-      path: '/api/v2/oauth/authorize',
-      queryParameters: {
-        'client_id': _clientId,
-        'redirect_uri': oauthRedirectUri,
-        'response_type': _oauthFlow == 'code' ? 'code' : 'token',
-        'state': state,
-      },
-    ).toString();
+    final authUrl = anilistAuthorizeUri(clientId: _clientId, implicit: _oauthFlow != 'code').toString();
 
     final String callback;
     try {
@@ -142,19 +131,10 @@ class AuthService extends ChangeNotifier {
       rethrow;
     }
 
-    // AniList doesn't document echoing `state`; once it has been seen doing
-    // so, callbacks without it are rejected (trust on first use).
-    final result = parseOAuthCallback(
-      callback,
-      expectedState: state,
-      requireState: _storage.stateEchoSeen,
-    );
-    switch (result) {
-      case OAuthTokenReceived(:final accessToken, :final stateEchoed):
-        if (stateEchoed) await _storage.rememberStateEcho();
+    switch (parseOAuthCallback(callback)) {
+      case OAuthTokenReceived(:final accessToken):
         await _startSession(accessToken);
-      case OAuthCodeReceived(:final code, :final stateEchoed):
-        if (stateEchoed) await _storage.rememberStateEcho();
+      case OAuthCodeReceived(:final code):
         await _exchangeCodeForToken(code);
       case OAuthCancelled():
         return;

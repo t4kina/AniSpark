@@ -1,11 +1,25 @@
-import 'dart:convert';
-import 'dart:math';
-
 /// URL scheme AniList redirects back to after the login page.
 const oauthCallbackScheme = 'anispark';
 const oauthRedirectUri = '$oauthCallbackScheme://callback';
 const _callbackHost = 'callback';
 const _maxTokenLength = 8192;
+
+/// AniList's login page for [clientId].
+///
+/// The implicit grant (the token comes back in the URL fragment) carries
+/// only `client_id` and `response_type`, exactly as AniList documents it:
+/// adding `redirect_uri` makes AniList answer `unsupported_grant_type`, and
+/// `state` breaks its approval page. AniList then redirects to the URL
+/// registered for the client ([oauthRedirectUri]). The authorization-code
+/// grant sends the redirect URI, which AniList requires there.
+Uri anilistAuthorizeUri({required String clientId, required bool implicit}) => Uri(
+      scheme: 'https',
+      host: 'anilist.co',
+      path: '/api/v2/oauth/authorize',
+      queryParameters: implicit
+          ? {'client_id': clientId, 'response_type': 'token'}
+          : {'client_id': clientId, 'redirect_uri': oauthRedirectUri, 'response_type': 'code'},
+    );
 
 /// Outcome of the redirect AniList sends back after its login page.
 sealed class OAuthCallbackResult {
@@ -13,19 +27,13 @@ sealed class OAuthCallbackResult {
 }
 
 final class OAuthTokenReceived extends OAuthCallbackResult {
-  const OAuthTokenReceived(this.accessToken, {this.stateEchoed = false});
+  const OAuthTokenReceived(this.accessToken);
   final String accessToken;
-
-  /// Whether the callback carried our `state` back.
-  final bool stateEchoed;
 }
 
 final class OAuthCodeReceived extends OAuthCallbackResult {
-  const OAuthCodeReceived(this.code, {this.stateEchoed = false});
+  const OAuthCodeReceived(this.code);
   final String code;
-
-  /// Whether the callback carried our `state` back.
-  final bool stateEchoed;
 }
 
 final class OAuthCancelled extends OAuthCallbackResult {
@@ -37,36 +45,20 @@ final class OAuthFailed extends OAuthCallbackResult {
   final String reason;
 }
 
-/// A random value sent with the login request. A callback carrying a
-/// different value didn't come from this login attempt.
-String generateOAuthState() {
-  final random = Random.secure();
-  final bytes = List<int>.generate(32, (_) => random.nextInt(256));
-  return base64UrlEncode(bytes).replaceAll('=', '');
-}
-
 /// Parses AniList's OAuth redirect: an implicit-grant token in the URL
 /// fragment, or an authorization code in the query string.
 ///
-/// A `state` that doesn't match [expectedState] is rejected. AniList doesn't
-/// document echoing `state` back, so a callback without one is only rejected
-/// when [requireState] is set — i.e. once AniList has been seen echoing it.
-OAuthCallbackResult parseOAuthCallback(
-  String callbackUrl, {
-  required String expectedState,
-  bool requireState = false,
-}) {
+/// The login request never carries a `state` (AniList doesn't accept one),
+/// so a callback with one didn't come from this app's login and is
+/// rejected.
+OAuthCallbackResult parseOAuthCallback(String callbackUrl) {
   final uri = Uri.tryParse(callbackUrl);
   if (uri == null || uri.scheme != oauthCallbackScheme || uri.host != _callbackHost) {
     return const OAuthFailed('unexpected_callback');
   }
   final params = _callbackParams(uri);
   if (params == null) return const OAuthFailed('malformed_callback');
-
-  final state = params['state'];
-  if (state != null && state != expectedState) return const OAuthFailed('state_mismatch');
-  if (state == null && requireState) return const OAuthFailed('missing_state');
-  final stateEchoed = state != null;
+  if (params.containsKey('state')) return const OAuthFailed('unexpected_state');
 
   final error = params['error'];
   if (error != null) {
@@ -74,12 +66,10 @@ OAuthCallbackResult parseOAuthCallback(
   }
   final token = params['access_token'];
   if (token != null) {
-    return _isPlausibleToken(token)
-        ? OAuthTokenReceived(token, stateEchoed: stateEchoed)
-        : const OAuthFailed('invalid_token');
+    return _isPlausibleToken(token) ? OAuthTokenReceived(token) : const OAuthFailed('invalid_token');
   }
   final code = params['code'];
-  if (code != null && code.isNotEmpty) return OAuthCodeReceived(code, stateEchoed: stateEchoed);
+  if (code != null && code.isNotEmpty) return OAuthCodeReceived(code);
   return const OAuthFailed('missing_credentials');
 }
 

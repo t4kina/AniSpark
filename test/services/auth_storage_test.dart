@@ -228,18 +228,6 @@ void main() {
     });
   });
 
-  test('remembers that AniList echoes the OAuth state, across logouts', () async {
-    final storage = await AuthStorage.open(secure: secure, cipher: cipher);
-    expect(storage.stateEchoSeen, isFalse);
-
-    await storage.rememberStateEcho();
-    final next = await reopen(withCipher: cipher);
-    expect(next.stateEchoSeen, isTrue);
-
-    await next.clear();
-    expect(next.stateEchoSeen, isTrue, reason: 'it describes AniList, not the account');
-  });
-
   group('without the keystore (no cipher)', () {
     test('keeps using the plaintext box exactly as before', () async {
       await seedLegacyBox({'token': 'legacy-token', 'user': jsonEncode(_user)});

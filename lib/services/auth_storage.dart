@@ -35,7 +35,6 @@ class AuthStorage {
   // knows the session ended.
   static const _loggedOutKey = 'logged_out';
   static const _installedKey = 'installed';
-  static const _stateEchoKey = 'oauth_state_echoed';
   static const _cachedKeys = ['user', 'profileExtras'];
 
   final SecureStore _secure;
@@ -113,13 +112,6 @@ class AuthStorage {
 
   Future<void> writeMap(String key, Map<String, dynamic> value) =>
       _profileBox.put(key, jsonEncode(value));
-
-  /// Whether AniList has been seen echoing the OAuth `state`; once it has,
-  /// callbacks without one are rejected.
-  bool get stateEchoSeen => _profileBox.get(_stateEchoKey) == true;
-
-  Future<void> rememberStateEcho() =>
-      _tryHive('remembering the state echo', () => _profileBox.put(_stateEchoKey, true));
 
   /// Ends the session: removes the token and the cached profile.
   Future<void> clear() async {
