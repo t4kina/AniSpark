@@ -277,17 +277,23 @@ class _StepButton extends StatelessWidget {
   final VoidCallback? onPressed;
 
   @override
-  Widget build(BuildContext context) => IconButton(
-        tooltip: tooltip,
-        onPressed: onPressed,
-        icon: Icon(icon, size: 20),
-        constraints: const BoxConstraints.tightFor(width: _tapTarget, height: _tapTarget),
-        padding: EdgeInsets.zero,
-        style: IconButton.styleFrom(
-          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_fieldRadius)),
-        ),
-      );
+  Widget build(BuildContext context) {
+    final box = Theme.of(context).colorScheme.surfaceContainerHighest;
+    return IconButton(
+      tooltip: tooltip,
+      onPressed: onPressed,
+      icon: Icon(icon, size: 20),
+      constraints: const BoxConstraints.tightFor(width: _tapTarget, height: _tapTarget),
+      padding: EdgeInsets.zero,
+      style: IconButton.styleFrom(
+        backgroundColor: box,
+        // A button that can't step (e.g. − at 0) keeps its box, dimmed, so
+        // the row stays balanced.
+        disabledBackgroundColor: box.withValues(alpha: box.a * 0.5),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(_fieldRadius)),
+      ),
+    );
+  }
 }
 
 /// The score in the user's own format: a number (100 or 10 points, with or
