@@ -16,6 +16,7 @@ import 'services/notification_service.dart';
 import 'services/secure_store.dart';
 import 'services/session_expiry.dart';
 import 'screens/home_screen.dart';
+import 'screens/login_gate_screen.dart';
 import 'screens/search_screen.dart' show recentSearchesPrefsKey;
 import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
@@ -176,7 +177,7 @@ class _SplashScreenState extends State<SplashScreen>
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (_, _, _) => MainNavigation(key: MainNavigation.globalKey),
+          pageBuilder: (_, _, _) => const AuthGate(),
           transitionsBuilder: (_, animation, _, child) =>
               FadeTransition(opacity: animation, child: child),
           transitionDuration: const Duration(milliseconds: 500),
@@ -209,6 +210,20 @@ class _SplashScreenState extends State<SplashScreen>
         ),
       ),
     );
+  }
+}
+
+/// Shows [LoginGateScreen] (no bottom navigation) while signed out, and
+/// swaps to [MainNavigation] as soon as the session is established.
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final isLoggedIn = context.select<AuthService, bool>((a) => a.isLoggedIn);
+    return isLoggedIn
+        ? MainNavigation(key: MainNavigation.globalKey)
+        : const LoginGateScreen();
   }
 }
 
