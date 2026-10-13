@@ -9,7 +9,6 @@ import '../services/auth_service.dart';
 import '../theme/app_motion.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/external_url.dart';
-import '../utils/media_color.dart';
 import '../utils/score_utils.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/skeletons.dart';
@@ -238,17 +237,11 @@ class _DetailScreenState extends State<DetailScreen> {
   /// fills in. The cover stays the same widget throughout, so its flight in
   /// from a list is never cut short by the data arriving.
   Widget _buildPage(BuildContext context, Map<String, dynamic>? d, SettingsProvider settings) {
-    // The page picks up the cover's colour (made readable for the theme).
-    final theme = Theme.of(context);
-    final accent = d == null ? null : mediaAccentColor(d['coverImage']?['color'] as String?, theme.brightness);
-    final pageTheme = accent == null
-        ? theme
-        : theme.copyWith(colorScheme: theme.colorScheme.copyWith(primary: accent));
-
-    return Theme(
+    // Keyed so a failed load cross-fades with the whole page. The page uses
+    // the app's accent colour, like every other screen.
+    return KeyedSubtree(
       key: const ValueKey('page'),
-      data: pageTheme,
-      child: Builder(builder: (context) => Scaffold(
+      child: Scaffold(
         body: Stack(
           children: [
             CustomScrollView(
@@ -287,7 +280,7 @@ class _DetailScreenState extends State<DetailScreen> {
             _buildOverlayButtons(context, d, settings.language),
           ],
         ),
-      )),
+      ),
     );
   }
 

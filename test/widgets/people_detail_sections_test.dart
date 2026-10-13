@@ -96,6 +96,16 @@ void main() {
       expect(find.widgetWithText(Chip, 'Bandai Visual'), findsOneWidget);
     });
 
+    testWidgets('chips show the name with a small chevron, not a generic icon', (tester) async {
+      await tester.pumpWidget(app(const StudioLinks(studios: studios)));
+
+      final chips = tester.widgetList<ActionChip>(find.byType(ActionChip));
+      expect(chips.every((chip) => chip.avatar == null), isTrue);
+      expect(find.byIcon(Icons.chevron_right_rounded), findsNWidgets(2), reason: 'one per tappable studio');
+      expect(find.byIcon(Icons.movie_filter_outlined), findsNothing);
+      expect(find.byIcon(Icons.business_outlined), findsNothing);
+    });
+
     testWidgets('filters animation studios or producers', (tester) async {
       await tester.pumpWidget(app(const StudioLinks(studios: studios, isAnimationStudio: true)));
       expect(find.text('Sunrise'), findsOneWidget);

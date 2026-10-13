@@ -60,13 +60,17 @@ class _StudioChip extends StatelessWidget {
     }
     final cs = Theme.of(context).colorScheme;
     return ActionChip(
-      label: Text(studio.name),
-      labelStyle: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.primary),
-      avatar: Icon(
-        studio.isAnimationStudio ? Icons.movie_filter_outlined : Icons.business_outlined,
-        size: 14,
-        color: cs.primary,
+      // The name with a small chevron reads as a link, like a developer
+      // link in an app store, without a generic icon.
+      label: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(studio.name),
+          const SizedBox(width: 2),
+          Icon(Icons.chevron_right_rounded, size: 16, color: cs.primary.withValues(alpha: 0.7)),
+        ],
       ),
+      labelStyle: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: cs.primary),
       materialTapTargetSize: MaterialTapTargetSize.padded,
       visualDensity: VisualDensity.compact,
       onPressed: () => openStudio(context, id, name: studio.name),
