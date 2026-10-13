@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/external_url.dart';
 import '../providers/settings_provider.dart' show SettingsProvider, accentColorOptions;
 import '../services/auth_service.dart';
@@ -10,6 +12,7 @@ import '../utils/translations.dart';
 import '../utils/refresh_notifier.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../services/notification_service.dart';
+import 'search_screen.dart' show recentSearchesPrefsKey;
 
 // The pickers below store these maps' keys and only show their labels.
 
@@ -65,6 +68,43 @@ class _AppVersion extends StatelessWidget {
         future: _info,
         builder: (_, snapshot) => builder(snapshot.data?.version ?? ''),
       );
+}
+
+/// The avatar, name and "Signed in as" caption shown atop the Account
+/// section, so it's clear which AniList account is active.
+class _SignedInAsRow extends StatelessWidget {
+  const _SignedInAsRow({required this.auth, required this.lang});
+
+  final AuthService auth;
+  final String lang;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = auth.user?['name'] as String?;
+    final avatarUrl = (auth.user?['avatar'] as Map<String, dynamic>?)?['large'] as String?;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Row(
+        children: [
+          CircleAvatar(
+            radius: 22,
+            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+            backgroundImage: avatarUrl == null ? null : CachedNetworkImageProvider(avatarUrl),
+            child: avatarUrl == null ? const Icon(Icons.person, size: 20) : null,
+          ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(tr('signed_in_as', lang),
+                  style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              Text(name ?? '', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class SettingsScreen extends StatelessWidget {
@@ -234,12 +274,19 @@ class SettingsScreen extends StatelessWidget {
             label: tr('sync_anilist', lang),
             onTap: () => _syncWithAniList(context, auth, lang),
           ),
+          const SizedBox(height: 4),
+          _tile(
+            icon: Icons.history_toggle_off,
+            label: tr('clear_recent_searches', lang),
+            onTap: () => _clearRecentSearches(context, lang),
+          ),
 
           const SizedBox(height: 16),
           const Divider(height: 1),
 
           // ── Account ──
           _sectionHeader(tr('account', lang)),
+          if (username != null) _SignedInAsRow(auth: auth, lang: lang),
           _tile(
             icon: Icons.open_in_new,
             label: tr('view_on_anilist', lang),
@@ -272,6 +319,12 @@ class SettingsScreen extends StatelessWidget {
             icon: Icons.description_outlined,
             label: tr('terms', lang),
             onTap: () => _openUrl('https://anilist.co/terms'),
+          ),
+          const SizedBox(height: 4),
+          _tile(
+            icon: Icons.privacy_tip_outlined,
+            label: tr('privacy', lang),
+            onTap: () => _openUrl('https://anilist.co/privacy'),
           ),
 
           const SizedBox(height: 24),
@@ -513,6 +566,19 @@ class SettingsScreen extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(tr('settings_cache_cleared', lang)),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  static Future<void> _clearRecentSearches(BuildContext context, String lang) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(recentSearchesPrefsKey);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(tr('recent_searches_cleared', lang)),
           duration: const Duration(seconds: 2),
         ),
       );
