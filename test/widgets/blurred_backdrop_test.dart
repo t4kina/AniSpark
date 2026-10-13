@@ -11,7 +11,7 @@ void main() {
 
     final image = tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage));
     expect(image.imageUrl, 'https://img.example/cover.jpg');
-    expect(image.memCacheWidth, BlurredBackdrop.decodeWidth);
+    expect(image.memCacheWidth, BlurredBackdrop.defaultDecodeWidth);
     expect(find.ancestor(of: find.byType(CachedNetworkImage), matching: find.byType(ImageFiltered)), findsOneWidget);
   });
 }

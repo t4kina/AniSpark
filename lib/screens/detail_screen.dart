@@ -254,15 +254,7 @@ class _DetailScreenState extends State<DetailScreen> {
                       DetailHeader(
                         banner: StretchyBanner(
                           controller: _scroll,
-                          child: FadeSwitcher(
-                            child: d == null
-                                ? const Skeleton(child: SkeletonBox(height: DetailHeader.bannerHeight, radius: 0))
-                                : _buildBanner(
-                                    context,
-                                    d['bannerImage'] as String?,
-                                    fallback: (d['coverImage']?['large'] as String?) ?? widget.initialCoverUrl,
-                                  ),
-                          ),
+                          child: FadeSwitcher(child: _buildBanner(context, d)),
                         ),
                         cover: _buildCover(context, d),
                         info: FadeSwitcher(
@@ -284,23 +276,39 @@ class _DetailScreenState extends State<DetailScreen> {
     );
   }
 
-  /// The banner, or without one the [fallback] image (the cover) blurred,
-  /// rather than a flat colour.
-  Widget _buildBanner(BuildContext context, String? url, {String? fallback}) {
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
-    return SizedBox.expand(
-      child: url == null
-          ? (fallback == null ? placeholder : BlurredBackdrop(url: fallback))
-          : CachedNetworkImage(
-              imageUrl: url,
-              fit: BoxFit.cover,
-              // Banners are ~1900 px wide; decode them at the screen's width.
-              memCacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round(),
-              fadeInDuration: AppMotion.of(context, AppMotion.short),
-              fadeOutDuration: Duration.zero,
-              placeholder: (_, _) => placeholder,
-              errorWidget: (_, _, _) => placeholder,
-            ),
+  /// The header background. From the first frame it is the cover the page
+  /// opened with, blurred (the list already decoded it), so a cover flying
+  /// in never lands on an empty band; the real banner then fades in over it
+  /// once downloaded (at once when it's cached). It stays one widget while
+  /// loading and after, so nothing is swapped. Without any cover yet, a
+  /// shimmer.
+  Widget _buildBanner(BuildContext context, Map<String, dynamic>? d) {
+    final surface = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final cover = widget.initialCoverUrl ?? (d?['coverImage']?['large'] as String?);
+    final banner = d?['bannerImage'] as String?;
+    if (cover == null && banner == null) {
+      return d == null ? const Skeleton(child: SkeletonBox(height: DetailHeader.bannerHeight, radius: 0)) : surface;
+    }
+    return Stack(
+      key: const ValueKey('banner'),
+      fit: StackFit.expand,
+      children: [
+        if (cover != null)
+          BlurredBackdrop(url: cover, decodeWidth: DetailCoverImage.previewCacheWidth)
+        else
+          surface,
+        if (banner != null)
+          CachedNetworkImage(
+            imageUrl: banner,
+            fit: BoxFit.cover,
+            // Banners are ~1900 px wide; decode them at the screen's width.
+            memCacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round(),
+            fadeInDuration: AppMotion.of(context, AppMotion.long),
+            fadeOutDuration: Duration.zero,
+            placeholder: (_, _) => const SizedBox.shrink(),
+            errorWidget: (_, _, _) => const SizedBox.shrink(),
+          ),
+      ],
     );
   }
 
