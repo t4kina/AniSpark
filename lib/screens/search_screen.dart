@@ -279,7 +279,9 @@ class _SearchScreenState extends State<SearchScreen> {
             child: Row(
               children: [
                 // Content type pill
-                Pressable(
+                _pickerButton(
+                  name: tr('search_content_type', lang),
+                  value: tr(_contentType == 'ANIME' ? 'nav_anime' : 'nav_manga', lang),
                   onTap: () => showOptionSheet<String>(
                     context: context,
                     title: tr('search_content_type', lang),
@@ -318,7 +320,9 @@ class _SearchScreenState extends State<SearchScreen> {
                   tooltip: tr('filters', lang),
                 ),
                 // Sort button
-                Pressable(
+                _pickerButton(
+                  name: tr('search_sort', lang),
+                  value: tr(_sortLabelKeys[_sort] ?? 'search_sort', lang),
                   onTap: () => showOptionSheet<String>(
                     context: context,
                     title: tr('search_sort', lang),
@@ -351,6 +355,21 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
     );
   }
+
+  /// A control that opens an option sheet, read as a button named [name]
+  /// whose value is the current choice.
+  static Widget _pickerButton({
+    required String name,
+    required String value,
+    required VoidCallback onTap,
+    required Widget child,
+  }) =>
+      Semantics(
+        button: true,
+        label: name,
+        value: value,
+        child: Pressable(onTap: onTap, child: ExcludeSemantics(child: child)),
+      );
 
   /// The area under the controls; each state has its own key so changing
   /// state (or getting new results) cross-fades.

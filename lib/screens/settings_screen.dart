@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -12,6 +13,7 @@ import '../providers/settings_provider.dart' show SettingsProvider, accentColorO
 import '../services/auth_service.dart';
 import '../utils/translations.dart';
 import '../utils/refresh_notifier.dart';
+import '../widgets/option_sheet.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../services/notification_service.dart';
 import 'search_screen.dart' show recentSearchesPrefsKey;
@@ -49,6 +51,15 @@ const _tabLabelKeys = {
   2: 'nav_discover',
   3: 'nav_feed',
   4: 'nav_profile',
+};
+
+/// The bottom bar's icons for [_tabLabelKeys].
+const _tabIcons = {
+  0: Icons.smart_display_outlined,
+  1: Icons.collections_bookmark_outlined,
+  2: Icons.travel_explore_outlined,
+  3: Icons.article_outlined,
+  4: Icons.person_outline_rounded,
 };
 
 const _accentColorKeys = {
@@ -91,8 +102,10 @@ class _SignedInAsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final name = auth.user?['name'] as String?;
-    final avatarUrl = (auth.user?['avatar'] as Map<String, dynamic>?)?['large'] as String?;
+    final user = auth.user;
+    final name = user?['name'] as String?;
+    final avatar = user?['avatar'];
+    final avatarUrl = avatar is Map ? avatar['large'] as String? : null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: Row(
@@ -104,13 +117,18 @@ class _SignedInAsRow extends StatelessWidget {
             child: avatarUrl == null ? const Icon(Icons.person, size: 20) : null,
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(tr('signed_in_as', lang),
-                  style: const TextStyle(color: Colors.grey, fontSize: 12)),
-              Text(name ?? '', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(tr('signed_in_as', lang),
+                    style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                Text(name ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+              ],
+            ),
           ),
         ],
       ),
@@ -118,21 +136,43 @@ class _SignedInAsRow extends StatelessWidget {
   }
 }
 
-/// The on-disk size of flutter_cache_manager's default image cache
-/// (`<temp>/libCachedImageData`), refreshed after a clear via
-/// [cacheSizeRefreshNotifier].
-class _CacheSizeLabel extends StatelessWidget {
+/// How much disk the downloaded images take (flutter_cache_manager's
+/// default cache), measured when shown and again after a clear. Nothing
+/// on the web, where that cache isn't on a file system.
+class _CacheSizeLabel extends StatefulWidget {
   const _CacheSizeLabel({required this.lang});
 
   final String lang;
 
-  static Future<int> _directorySize(Directory dir) async {
-    if (!dir.existsSync()) return 0;
+  @override
+  State<_CacheSizeLabel> createState() => _CacheSizeLabelState();
+}
+
+class _CacheSizeLabelState extends State<_CacheSizeLabel> {
+  Future<int> _bytes = _measure();
+
+  @override
+  void initState() {
+    super.initState();
+    cacheSizeRefreshNotifier.addListener(_remeasure);
+  }
+
+  @override
+  void dispose() {
+    cacheSizeRefreshNotifier.removeListener(_remeasure);
+    super.dispose();
+  }
+
+  void _remeasure() => setState(() => _bytes = _measure());
+
+  static Future<int> _measure() async {
+    if (kIsWeb) return 0;
+    final temp = await getTemporaryDirectory();
+    final dir = Directory('${temp.path}/${DefaultCacheManager.key}');
+    if (!await dir.exists()) return 0;
     var total = 0;
     await for (final entity in dir.list(recursive: true, followLinks: false)) {
-      if (entity is File) {
-        total += await entity.length().catchError((_) => 0);
-      }
+      if (entity is File) total += await entity.length().catchError((_) => 0);
     }
     return total;
   }
@@ -144,22 +184,16 @@ class _CacheSizeLabel extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: cacheSizeRefreshNotifier,
-      builder: (_, _, _) => FutureBuilder<int>(
-        future: getTemporaryDirectory()
-            .then((dir) => _directorySize(Directory('${dir.path}/libCachedImageData'))),
+  Widget build(BuildContext context) => FutureBuilder<int>(
+        future: _bytes,
         builder: (_, snapshot) {
           final bytes = snapshot.data;
           return Text(
-            bytes == null ? '' : trf('cache_size', lang, {'size': _format(bytes)}),
+            kIsWeb || bytes == null ? '' : trf('cache_size', widget.lang, {'size': _format(bytes)}),
             style: const TextStyle(color: Colors.grey, fontSize: 13),
           );
         },
-      ),
-    );
-  }
+      );
 }
 
 class SettingsScreen extends StatelessWidget {
@@ -191,7 +225,7 @@ class SettingsScreen extends StatelessWidget {
             label: tr('language', lang),
             trailing: Text(_languageNames[lang] ?? lang,
                 style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            onTap: () => _showPicker(
+            onTap: () => showOptionSheet<String>(
               context: context,
               title: tr('language', lang),
               options: _languageNames.keys.toList(),
@@ -206,7 +240,7 @@ class SettingsScreen extends StatelessWidget {
             label: tr('appearance', lang),
             trailing: Text(_labelOf(_appearanceKeys, settings.appearance, lang),
                 style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            onTap: () => _showPicker(
+            onTap: () => showOptionSheet<String>(
               context: context,
               title: tr('appearance', lang),
               options: _appearanceKeys.keys.toList(),
@@ -243,7 +277,7 @@ class SettingsScreen extends StatelessWidget {
             label: tr('title_language', lang),
             trailing: Text(_labelOf(_titleLanguageKeys, settings.titleLanguage, lang),
                 style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            onTap: () => _showPicker(
+            onTap: () => showOptionSheet<String>(
               context: context,
               title: tr('title_language', lang),
               options: _titleLanguageKeys.keys.toList(),
@@ -256,9 +290,17 @@ class SettingsScreen extends StatelessWidget {
           _tile(
             icon: Icons.tab_outlined,
             label: tr('default_tab', lang),
-            trailing: Text(tr(_tabLabelKeys[settings.defaultTab] ?? 'nav_discover', lang),
+            trailing: Text(tr(_tabLabelKeys[settings.defaultTab] ?? 'nav_anime', lang),
                 style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            onTap: () => _pickDefaultTab(context, settings, lang),
+            onTap: () => showOptionSheet<int>(
+              context: context,
+              title: tr('default_tab', lang),
+              options: _tabLabelKeys.keys.toList(),
+              labelOf: (tab) => tr(_tabLabelKeys[tab]!, lang),
+              iconOf: (tab) => _tabIcons[tab]!,
+              current: settings.defaultTab,
+              onSelected: (tab) => context.read<SettingsProvider>().setDefaultTab(tab),
+            ),
           ),
           const SizedBox(height: 4),
           _switchTile(
@@ -395,7 +437,7 @@ class SettingsScreen extends StatelessWidget {
           _tile(
             icon: Icons.privacy_tip_outlined,
             label: tr('privacy', lang),
-            onTap: () => _openUrl('https://anilist.co/privacy'),
+            onTap: () => _showPrivacy(context, lang),
           ),
           const SizedBox(height: 4),
           _tile(
@@ -432,8 +474,9 @@ class SettingsScreen extends StatelessWidget {
     required ValueChanged<bool> onChanged,
   }) {
     void toggle(bool on) {
-      selectionHaptic();
       onChanged(on);
+      // After the change, so switching haptics on ticks and off doesn't.
+      selectionHaptic();
     }
 
     return ListTile(
@@ -464,61 +507,6 @@ class SettingsScreen extends StatelessWidget {
         trailing: trailing ?? const Icon(Icons.chevron_right, color: Colors.grey, size: 18),
         onTap: onTap,
       );
-
-  static void _showPicker({
-    required BuildContext context,
-    required String title,
-    required List<String> options,
-    required String Function(String option) labelOf,
-    required String current,
-    required ValueChanged<String> onSelected,
-  }) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40, height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
-              ),
-              Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: options.map((opt) => Builder(builder: (ctx) => ListTile(
-                    leading: Icon(
-                      current == opt ? Icons.radio_button_checked : Icons.radio_button_off,
-                      color: current == opt ? Theme.of(ctx).colorScheme.primary : Colors.grey,
-                      size: 20,
-                    ),
-                    title: Text(labelOf(opt),
-                        style: TextStyle(
-                            color: current == opt ? Theme.of(ctx).colorScheme.primary : null,
-                            fontSize: 14)),
-                    onTap: () {
-                      selectionHaptic();
-                      onSelected(opt);
-                      Navigator.pop(context);
-                    },
-                  ))).toList(),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   static void _showAccentColorPicker(
       BuildContext context, SettingsProvider settings, String lang) {
@@ -595,63 +583,6 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  static const _tabIcons = {
-    0: Icons.smart_display_outlined,
-    1: Icons.collections_bookmark_outlined,
-    2: Icons.travel_explore_outlined,
-    3: Icons.article_outlined,
-    4: Icons.person_outline_rounded,
-  };
-
-  static void _pickDefaultTab(BuildContext context, SettingsProvider settings, String lang) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 40, height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
-              ),
-              Text(tr('default_tab', lang), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: _tabLabelKeys.entries.map((e) => Builder(builder: (ctx) => ListTile(
-                    leading: Icon(_tabIcons[e.key],
-                        color: settings.defaultTab == e.key ? Theme.of(ctx).colorScheme.primary : Colors.grey,
-                        size: 20),
-                    title: Text(tr(e.value, lang),
-                        style: TextStyle(
-                            color: settings.defaultTab == e.key ? Theme.of(ctx).colorScheme.primary : null,
-                            fontSize: 14)),
-                    trailing: settings.defaultTab == e.key
-                        ? Icon(Icons.check, color: Theme.of(ctx).colorScheme.primary, size: 20)
-                        : null,
-                    onTap: () {
-                      selectionHaptic();
-                      context.read<SettingsProvider>().setDefaultTab(e.key);
-                      Navigator.pop(context);
-                    },
-                  ))).toList(),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   static Future<void> _openUrl(String url) => openExternalUrl(url);
 
   static void _showAbout(BuildContext context, String lang) {
@@ -688,6 +619,29 @@ class SettingsScreen extends StatelessWidget {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Builder(builder: (ctx) => Text(tr('close', lang), style: TextStyle(color: Theme.of(ctx).colorScheme.primary))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// What AniSpark does with the user's data. It has no servers of its own,
+  /// so this is its whole privacy policy; AniList's terms cover the account.
+  static void _showPrivacy(BuildContext context, String lang) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(tr('privacy', lang), style: const TextStyle(fontSize: 18)),
+        content: SingleChildScrollView(
+          child: Text(tr('privacy_summary', lang),
+              style: const TextStyle(color: Colors.grey, height: 1.5, fontSize: 13)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(tr('close', lang),
+                style: TextStyle(color: Theme.of(dialogContext).colorScheme.primary)),
           ),
         ],
       ),
@@ -767,9 +721,11 @@ class SettingsScreen extends StatelessWidget {
               child: Text(tr('cancel', lang))),
           TextButton(
             onPressed: () {
+              // Back to the tabs first (closing this dialog and Settings);
+              // AuthGate swaps them for the login screen once the session
+              // has ended, whenever logout() reports it.
+              Navigator.of(context).popUntil((route) => route.isFirst);
               auth.logout();
-              Navigator.pop(context);
-              Navigator.pop(context);
             },
             child: Text(tr('logout', lang), style: const TextStyle(color: Colors.red)),
           ),

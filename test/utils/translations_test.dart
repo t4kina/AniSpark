@@ -47,6 +47,20 @@ void main() {
     expect(tr('nav_manga', 'Klingon'), 'Manga');
   });
 
+  test('every language defines every English key, with the same placeholders', () {
+    final english = translations['English']!;
+    final placeholder = RegExp(r'\{(\w+)\}');
+    Set<String> placeholdersOf(String text) => {for (final m in placeholder.allMatches(text)) m.group(1)!};
+
+    for (final MapEntry(key: language, value: texts) in translations.entries) {
+      expect(texts.keys.toSet().difference(english.keys.toSet()), isEmpty, reason: '$language has keys English lacks');
+      expect(english.keys.toSet().difference(texts.keys.toSet()), isEmpty, reason: '$language is missing keys');
+      for (final MapEntry(:key, :value) in english.entries) {
+        expect(placeholdersOf(texts[key]!), placeholdersOf(value), reason: "$language '$key' placeholders");
+      }
+    }
+  });
+
   test('tr resolves the same key independently per language', () {
     expect(tr('watching', 'English'), 'Watching');
     expect(tr('watching', 'Spanish'), 'Viendo');

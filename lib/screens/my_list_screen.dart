@@ -220,6 +220,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
               color: _activeGenres.isNotEmpty ? Theme.of(context).colorScheme.primary : Colors.grey,
             ),
             onPressed: () => _showGenreFilter(context),
+            tooltip: tr('filters', lang),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
           ),
@@ -227,6 +228,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
             padding: const EdgeInsets.only(right: 16),
             child: IconButton(
               icon: const Icon(Icons.swap_vert, color: Colors.grey, size: 22),
+              tooltip: tr('search_sort', lang),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
               onPressed: () => showOptionSheet<_SortMode>(
