@@ -1,7 +1,6 @@
 import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 import '../theme/app_motion.dart';
 import '../utils/external_url.dart';
@@ -9,6 +8,7 @@ import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
+import '../utils/haptics.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/blurred_backdrop.dart';
 import '../widgets/motion/fade_switcher.dart';
@@ -154,7 +154,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       return;
     }
     final nowFollowing = result;
-    if (nowFollowing) HapticFeedback.lightImpact();
+    if (nowFollowing) lightHaptic();
     final profile = _profile;
     final updated =
         profile == null ? null : {...profile, 'isFollowing': nowFollowing};

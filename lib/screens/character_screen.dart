@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
@@ -8,6 +7,7 @@ import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../services/people_api.dart';
 import '../theme/app_motion.dart';
+import '../utils/haptics.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/review_text.dart';
 import '../utils/translations.dart' show tr;
@@ -138,7 +138,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
     }
     final current = _data;
     if (current != null) {
-      if (!wasFav) HapticFeedback.lightImpact();
+      if (!wasFav) lightHaptic();
       setState(() => _data = current.copyWith(isFavourite: !wasFav));
     }
     _load(force: true);

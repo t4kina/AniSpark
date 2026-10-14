@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 
 import '../../providers/settings_provider.dart';
@@ -7,6 +6,7 @@ import '../../screens/detail_screen.dart';
 import '../../screens/user_profile_screen.dart';
 import '../../services/social_api.dart' show asJsonMap;
 import '../../utils/activity_text.dart';
+import '../../utils/haptics.dart';
 import '../../utils/translations.dart' show tr;
 import '../motion/animated_count.dart';
 import '../motion/pop_on_change.dart';
@@ -64,7 +64,7 @@ class LikeButton extends StatelessWidget {
   final VoidCallback? onPressed;
 
   void _press(VoidCallback onPressed) {
-    if (!isLiked) HapticFeedback.lightImpact();
+    if (!isLiked) lightHaptic();
     onPressed();
   }
 

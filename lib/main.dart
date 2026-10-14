@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +21,7 @@ import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/feed_screen.dart';
 import 'theme/app_theme.dart';
+import 'utils/haptics.dart';
 import 'utils/translations.dart' show tr;
 import 'widgets/rate_limit_notice.dart';
 import 'utils/tab_reselect.dart';
@@ -242,7 +242,15 @@ class MainNavigation extends StatefulWidget {
 
 class _MainNavigationState extends State<MainNavigation> {
   int _currentIndex = 0;
-  final Set<int> _visited = {0};
+  Set<int> _visited = {0};
+
+  @override
+  void initState() {
+    super.initState();
+    final start = context.read<SettingsProvider>().defaultTab;
+    _currentIndex = start;
+    _visited = {start};
+  }
 
   void _setTab(int index) => setState(() {
     _currentIndex = index;
@@ -255,7 +263,7 @@ class _MainNavigationState extends State<MainNavigation> {
       tabReselectedNotifier.reselect(index);
       return;
     }
-    HapticFeedback.selectionClick();
+    selectionHaptic();
     _setTab(index);
   }
 

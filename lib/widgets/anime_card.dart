@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
-import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../screens/detail_screen.dart';
 import '../services/auth_service.dart';
 import '../theme/app_motion.dart';
+import '../utils/haptics.dart';
 import '../utils/translations.dart' show tr;
 import 'entry_editor/entry_editor_sheet.dart';
 import 'motion/cover_hero.dart';
@@ -41,7 +41,7 @@ class AnimeCard extends StatelessWidget {
     if (data is! Map<String, dynamic> || !context.read<AuthService>().isLoggedIn) return;
     final media = EditorMedia.fromMedia(data);
     if (media == null) return;
-    HapticFeedback.mediumImpact();
+    mediumHaptic();
     showEntryEditor(context, media: media, entryKnown: false);
   }
 

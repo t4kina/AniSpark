@@ -1,7 +1,6 @@
 import 'dart:math' show pi;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
-import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:confetti/confetti.dart';
@@ -10,6 +9,7 @@ import '../services/auth_service.dart';
 import '../screens/detail_screen.dart';
 import '../main.dart';
 import '../providers/settings_provider.dart';
+import '../utils/haptics.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
@@ -441,7 +441,7 @@ class _MediaListState extends State<_MediaList>
     if (newProgress < 0 || (total != null && newProgress > total)) return;
     // An Undo for an earlier change must not stay tappable while this one saves.
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    HapticFeedback.selectionClick();
+    selectionHaptic();
 
     // For the last episode, show the completion dialog BEFORE saving.
     // If the user dismisses it, nothing is written to AniList.
@@ -477,7 +477,7 @@ class _MediaListState extends State<_MediaList>
       isManga: widget.type == 'MANGA',
     );
     if (media == null) return;
-    HapticFeedback.mediumImpact();
+    mediumHaptic();
     // Entries only know their status through the list they're in.
     final status = context
         .read<MediaListStore>()

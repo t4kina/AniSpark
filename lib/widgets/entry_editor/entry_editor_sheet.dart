@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 
 import '../../providers/media_list_store.dart';
@@ -11,6 +10,7 @@ import '../../services/anilist_service.dart';
 import '../../services/api_cache.dart';
 import '../../services/auth_service.dart';
 import '../../theme/app_motion.dart';
+import '../../utils/haptics.dart';
 import '../../utils/score_utils.dart';
 import '../../utils/translations.dart';
 import '../motion/pop_on_change.dart';
@@ -268,7 +268,7 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
       }
       return;
     }
-    HapticFeedback.lightImpact();
+    lightHaptic();
     widget.onChanged?.call(EntryEditorResult.saved);
     if (mounted) navigator.pop();
     messenger.showSnackBar(SnackBar(content: Text(trf('detail_saved', lang, {'title': title}))));

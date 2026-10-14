@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData, HapticFeedback;
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../theme/app_motion.dart';
+import '../utils/haptics.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/external_url.dart';
 import '../utils/score_utils.dart';
@@ -159,7 +160,7 @@ class _DetailScreenState extends State<DetailScreen> {
     final auth = context.read<AuthService>();
     if (!auth.isLoggedIn) return;
     final wasFav = _data!['isFavourite'] == true;
-    if (!wasFav) HapticFeedback.lightImpact();
+    if (!wasFav) lightHaptic();
     setState(() { _togglingFav = true; _data!['isFavourite'] = !wasFav; });
     final ok = await _service.toggleFavourite(
       mediaId: widget.animeId,
