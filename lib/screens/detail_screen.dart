@@ -666,46 +666,49 @@ class _DetailScreenState extends State<DetailScreen> {
       top: MediaQuery.of(context).padding.top + 2,
       left: 8,
       right: 8,
-      child: Row(
-        children: [
-          overlayBtn(
-            icon: Icons.arrow_back,
-            tooltip: tr('tooltip_back', lang),
-            onPressed: () => Navigator.pop(context),
-          ),
-          const Spacer(),
-          FadeSwitcher(
-            child: d == null
-                ? const SizedBox(key: ValueKey('loading'), height: 44)
-                : Row(
-                    key: const ValueKey('actions'),
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      overlayBtn(
-                        icon: Icons.ios_share_rounded,
-                        tooltip: tr('tooltip_share', lang),
-                        onPressed: _copyLink,
-                      ),
-                      // Pops when it becomes a favourite, not when it stops.
-                      PopOnChange(
-                        value: isFav,
-                        when: (value) => value == true,
-                        child: overlayBtn(
-                          icon: isFav ? Icons.favorite : Icons.favorite_border,
-                          color: isFav ? Colors.red : Colors.white,
-                          tooltip: tr('tooltip_favourite', lang),
-                          onPressed: _toggleFav,
+      // The buttons' blurs read the banner once, together.
+      child: BackdropGroup(
+        child: Row(
+          children: [
+            overlayBtn(
+              icon: Icons.arrow_back,
+              tooltip: tr('tooltip_back', lang),
+              onPressed: () => Navigator.pop(context),
+            ),
+            const Spacer(),
+            FadeSwitcher(
+              child: d == null
+                  ? const SizedBox(key: ValueKey('loading'), height: 44)
+                  : Row(
+                      key: const ValueKey('actions'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        overlayBtn(
+                          icon: Icons.ios_share_rounded,
+                          tooltip: tr('tooltip_share', lang),
+                          onPressed: _copyLink,
                         ),
-                      ),
-                      overlayBtn(
-                        icon: Icons.more_horiz,
-                        tooltip: tr('tooltip_edit_entry', lang),
-                        onPressed: () => _openEditor(context),
-                      ),
-                    ],
-                  ),
-          ),
-        ],
+                        // Pops when it becomes a favourite, not when it stops.
+                        PopOnChange(
+                          value: isFav,
+                          when: (value) => value == true,
+                          child: overlayBtn(
+                            icon: isFav ? Icons.favorite : Icons.favorite_border,
+                            color: isFav ? Colors.red : Colors.white,
+                            tooltip: tr('tooltip_favourite', lang),
+                            onPressed: _toggleFav,
+                          ),
+                        ),
+                        overlayBtn(
+                          icon: Icons.more_horiz,
+                          tooltip: tr('tooltip_edit_entry', lang),
+                          onPressed: () => _openEditor(context),
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -4,13 +4,12 @@ import 'package:flutter/material.dart';
 
 /// Round frosted-glass icon button drawn over banners and covers.
 ///
-/// The visible circle is 38px, inside a 44px touch target, and [tooltip]
-/// doubles as the label read by screen readers.
+/// The visible circle is 36px, inside a 44px touch target, and [tooltip]
+/// doubles as the label read by screen readers. Buttons placed side by side
+/// should share a [BackdropGroup], so their blurs read the banner once.
 ///
-/// Plain [GestureDetector] rather than [Pressable]: several call sites
-/// (e.g. the favourite heart in CharacterScreen) wrap this in their own
-/// pop animation and look up the nearest ScaleTransition ancestor of the
-/// icon, which an AnimatedScale here would shadow.
+/// No press animation of its own: callers such as the favourite hearts wrap
+/// it in their own pop, which a second scale would fight.
 Widget overlayBtn({
   required IconData icon,
   Color color = Colors.white,
@@ -29,11 +28,11 @@ Widget overlayBtn({
         height: 44,
         child: Center(
           child: ClipOval(
-            child: BackdropFilter(
+            child: BackdropFilter.grouped(
               filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
               child: Container(
-                width: 38,
-                height: 38,
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.32),
                   shape: BoxShape.circle,

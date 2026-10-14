@@ -158,26 +158,29 @@ class _CharacterScreenState extends State<CharacterScreen> {
             top: MediaQuery.of(context).padding.top + 2,
             left: 8,
             right: 8,
-            child: Row(
-              children: [
-                overlayBtn(
-                  icon: Icons.arrow_back,
-                  tooltip: tr('tooltip_back', lang),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                const Spacer(),
-                // Pops when it becomes a favourite, not when it stops.
-                PopOnChange(
-                  value: isFav,
-                  when: (value) => value == true,
-                  child: overlayBtn(
-                    icon: isFav ? Icons.favorite : Icons.favorite_border,
-                    color: isFav ? Colors.red : Colors.white,
-                    tooltip: tr('tooltip_favourite', lang),
-                    onPressed: _isFresh && !_togglingFav ? _toggleFavourite : null,
+            // The buttons' blurs read the photo once, together.
+            child: BackdropGroup(
+              child: Row(
+                children: [
+                  overlayBtn(
+                    icon: Icons.arrow_back,
+                    tooltip: tr('tooltip_back', lang),
+                    onPressed: () => Navigator.pop(context),
                   ),
-                ),
-              ],
+                  const Spacer(),
+                  // Pops when it becomes a favourite, not when it stops.
+                  PopOnChange(
+                    value: isFav,
+                    when: (value) => value == true,
+                    child: overlayBtn(
+                      icon: isFav ? Icons.favorite : Icons.favorite_border,
+                      color: isFav ? Colors.red : Colors.white,
+                      tooltip: tr('tooltip_favourite', lang),
+                      onPressed: _isFresh && !_togglingFav ? _toggleFavourite : null,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
