@@ -2,12 +2,15 @@ import 'dart:ui' show ImageFilter;
 
 import 'package:flutter/material.dart';
 
-import 'motion/pressable.dart';
-
 /// Round frosted-glass icon button drawn over banners and covers.
 ///
 /// The visible circle is 38px, inside a 44px touch target, and [tooltip]
 /// doubles as the label read by screen readers.
+///
+/// Plain [GestureDetector] rather than [Pressable]: several call sites
+/// (e.g. the favourite heart in CharacterScreen) wrap this in their own
+/// pop animation and look up the nearest ScaleTransition ancestor of the
+/// icon, which an AnimatedScale here would shadow.
 Widget overlayBtn({
   required IconData icon,
   Color color = Colors.white,
@@ -18,8 +21,9 @@ Widget overlayBtn({
     button: true,
     enabled: onPressed != null,
     label: tooltip,
-    child: Pressable(
+    child: GestureDetector(
       onTap: onPressed,
+      behavior: HitTestBehavior.opaque,
       child: SizedBox(
         width: 44,
         height: 44,
