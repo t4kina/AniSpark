@@ -13,6 +13,7 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/option_sheet.dart';
 import 'detail_screen.dart';
 
 /// SharedPreferences key of the recent searches; cleared on logout.
@@ -278,13 +279,15 @@ class _SearchScreenState extends State<SearchScreen> {
             child: Row(
               children: [
                 // Content type pill
-                PopupMenuButton<String>(
-                  onSelected: _onContentTypeChanged,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  itemBuilder: (_) => [
-                    PopupMenuItem(value: 'ANIME', child: Text(tr('nav_anime', lang))),
-                    PopupMenuItem(value: 'MANGA', child: Text(tr('nav_manga', lang))),
-                  ],
+                Pressable(
+                  onTap: () => showOptionSheet<String>(
+                    context: context,
+                    title: tr('search_content_type', lang),
+                    options: const ['ANIME', 'MANGA'],
+                    labelOf: (v) => tr(v == 'ANIME' ? 'nav_anime' : 'nav_manga', lang),
+                    current: _contentType,
+                    onSelected: _onContentTypeChanged,
+                  ),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                     decoration: BoxDecoration(
@@ -315,31 +318,27 @@ class _SearchScreenState extends State<SearchScreen> {
                   tooltip: tr('filters', lang),
                 ),
                 // Sort button
-                PopupMenuButton<String>(
-                  onSelected: _onSortChanged,
-                  tooltip: tr('search_sort', lang),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  itemBuilder: (_) => _sortLabelKeys.entries.map((e) {
-                    return PopupMenuItem(
-                      value: e.key,
-                      child: Row(
-                        children: [
-                          Expanded(child: Text(tr(e.value, lang))),
-                          if (e.key == _sort)
-                            Icon(Icons.check, size: 16, color: Theme.of(context).colorScheme.primary),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        tr(_sortLabelKeys[_sort] ?? 'search_sort', lang),
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                      const Icon(Icons.keyboard_arrow_down, size: 16),
-                    ],
+                Pressable(
+                  onTap: () => showOptionSheet<String>(
+                    context: context,
+                    title: tr('search_sort', lang),
+                    options: _sortLabelKeys.keys.toList(),
+                    labelOf: (v) => tr(_sortLabelKeys[v] ?? 'search_sort', lang),
+                    current: _sort,
+                    onSelected: _onSortChanged,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          tr(_sortLabelKeys[_sort] ?? 'search_sort', lang),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        const Icon(Icons.keyboard_arrow_down, size: 16),
+                      ],
+                    ),
                   ),
                 ),
               ],

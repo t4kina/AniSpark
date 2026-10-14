@@ -21,6 +21,7 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/press_scale.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/option_sheet.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/entry_editor/entry_editor_sheet.dart';
 import '../services/notification_service.dart';
@@ -224,20 +225,30 @@ class _ListTabScreenState extends State<_ListTabScreen> {
           ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: PopupMenuButton<_SortMode>(
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            icon: const Icon(Icons.swap_vert, color: Colors.grey, size: 22),
-            color: Theme.of(context).colorScheme.surface,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            onSelected: (mode) => setState(() => _sortMode = mode),
-            itemBuilder: (_) => [
-              _sortItem(_SortMode.lastUpdated, tr('last_updated', lang), Icons.history),
-              _sortItem(_SortMode.alphabetical, tr('alphabetical', lang), Icons.sort_by_alpha),
-              _sortItem(_SortMode.ratingHigh, tr('rating_high', lang), Icons.star),
-              _sortItem(_SortMode.ratingLow, tr('rating_low', lang), Icons.star_outline),
-            ],
-          ),
+            child: IconButton(
+              icon: const Icon(Icons.swap_vert, color: Colors.grey, size: 22),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: () => showOptionSheet<_SortMode>(
+                context: context,
+                title: tr('search_sort', lang),
+                options: _SortMode.values,
+                labelOf: (mode) => switch (mode) {
+                  _SortMode.lastUpdated => tr('last_updated', lang),
+                  _SortMode.alphabetical => tr('alphabetical', lang),
+                  _SortMode.ratingHigh => tr('rating_high', lang),
+                  _SortMode.ratingLow => tr('rating_low', lang),
+                },
+                iconOf: (mode) => switch (mode) {
+                  _SortMode.lastUpdated => Icons.history,
+                  _SortMode.alphabetical => Icons.sort_by_alpha,
+                  _SortMode.ratingHigh => Icons.star,
+                  _SortMode.ratingLow => Icons.star_outline,
+                },
+                current: _sortMode,
+                onSelected: (mode) => setState(() => _sortMode = mode),
+              ),
+            ),
           ),
         ],
       ),
@@ -275,22 +286,6 @@ class _ListTabScreenState extends State<_ListTabScreen> {
       ),
     );
   }
-
-  PopupMenuItem<_SortMode> _sortItem(_SortMode mode, String label, IconData icon) =>
-      PopupMenuItem(
-        value: mode,
-        child: Row(
-          children: [
-            Icon(icon, size: 16,
-                color: _sortMode == mode ? Theme.of(context).colorScheme.primary : Colors.grey),
-            const SizedBox(width: 10),
-            Text(label,
-                style: TextStyle(
-                    color: _sortMode == mode ? Theme.of(context).colorScheme.primary : null,
-                    fontSize: 13)),
-          ],
-        ),
-      );
 }
 
 // ─── Media List (content) ──────────────────────────────────────────────────

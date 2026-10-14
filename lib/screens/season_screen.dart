@@ -15,6 +15,7 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/option_sheet.dart';
 import '../widgets/skeletons.dart';
 import 'detail_screen.dart';
 
@@ -338,26 +339,19 @@ class _SeasonScreenState extends State<SeasonScreen> {
     );
   }
 
-  Widget _buildSortMenu(String lang) => PopupMenuButton<String>(
+  Widget _buildSortMenu(String lang) => IconButton(
         icon: const Icon(Icons.sort),
         tooltip: tr('search_sort', lang),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        onSelected: (sort) {
-          if (sort != _sort) _select(sort: sort);
-        },
-        itemBuilder: (ctx) => [
-          for (final MapEntry(key: sort, value: labelKey) in _sortLabelKeys.entries)
-            PopupMenuItem(
-              value: sort,
-              child: Row(
-                children: [
-                  Expanded(child: Text(tr(labelKey, lang))),
-                  if (sort == _sort)
-                    Icon(Icons.check, size: 16, color: Theme.of(ctx).colorScheme.primary),
-                ],
-              ),
-            ),
-        ],
+        onPressed: () => showOptionSheet<String>(
+          context: context,
+          title: tr('search_sort', lang),
+          options: _sortLabelKeys.keys.toList(),
+          labelOf: (sort) => tr(_sortLabelKeys[sort]!, lang),
+          current: _sort,
+          onSelected: (sort) {
+            if (sort != _sort) _select(sort: sort);
+          },
+        ),
       );
 
   Widget _buildSeasonRow(String lang) => SizedBox(
