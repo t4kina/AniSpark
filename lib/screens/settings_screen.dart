@@ -1,11 +1,13 @@
+import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/external_url.dart';
+import '../utils/haptics.dart';
 import '../providers/settings_provider.dart' show SettingsProvider, accentColorOptions;
 import '../services/auth_service.dart';
 import '../utils/translations.dart';
@@ -38,6 +40,15 @@ const _titleLanguageKeys = {
   'English': 'settings_title_english',
   'Romaji': 'settings_title_romaji',
   'Native': 'settings_title_native',
+};
+
+/// MainNavigation's tab order: Anime, Manga, Discover, Feed, Profile.
+const _tabLabelKeys = {
+  0: 'nav_anime',
+  1: 'nav_manga',
+  2: 'nav_discover',
+  3: 'nav_feed',
+  4: 'nav_profile',
 };
 
 const _accentColorKeys = {
@@ -102,6 +113,50 @@ class _SignedInAsRow extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The on-disk size of flutter_cache_manager's default image cache
+/// (`<temp>/libCachedImageData`), refreshed after a clear via
+/// [cacheSizeRefreshNotifier].
+class _CacheSizeLabel extends StatelessWidget {
+  const _CacheSizeLabel({required this.lang});
+
+  final String lang;
+
+  static Future<int> _directorySize(Directory dir) async {
+    if (!dir.existsSync()) return 0;
+    var total = 0;
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is File) {
+        total += await entity.length().catchError((_) => 0);
+      }
+    }
+    return total;
+  }
+
+  static String _format(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: cacheSizeRefreshNotifier,
+      builder: (_, _, _) => FutureBuilder<int>(
+        future: getTemporaryDirectory()
+            .then((dir) => _directorySize(Directory('${dir.path}/libCachedImageData'))),
+        builder: (_, snapshot) {
+          final bytes = snapshot.data;
+          return Text(
+            bytes == null ? '' : trf('cache_size', lang, {'size': _format(bytes)}),
+            style: const TextStyle(color: Colors.grey, fontSize: 13),
+          );
+        },
       ),
     );
   }
@@ -197,6 +252,21 @@ class SettingsScreen extends StatelessWidget {
               onSelected: (v) => context.read<SettingsProvider>().setTitleLanguage(v),
             ),
           ),
+          const SizedBox(height: 4),
+          _tile(
+            icon: Icons.tab_outlined,
+            label: tr('default_tab', lang),
+            trailing: Text(tr(_tabLabelKeys[settings.defaultTab] ?? 'nav_discover', lang),
+                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            onTap: () => _pickDefaultTab(context, settings, lang),
+          ),
+          const SizedBox(height: 4),
+          _switchTile(
+            icon: Icons.vibration,
+            label: tr('haptic_feedback', lang),
+            value: settings.hapticsEnabled,
+            onChanged: (v) => context.read<SettingsProvider>().setHapticsEnabled(v),
+          ),
 
           const SizedBox(height: 16),
           const Divider(height: 1),
@@ -266,6 +336,7 @@ class SettingsScreen extends StatelessWidget {
           _tile(
             icon: Icons.cached,
             label: tr('clear_cache', lang),
+            trailing: _CacheSizeLabel(lang: lang),
             onTap: () => _clearImageCache(context, lang),
           ),
           const SizedBox(height: 4),
@@ -326,6 +397,12 @@ class SettingsScreen extends StatelessWidget {
             label: tr('privacy', lang),
             onTap: () => _openUrl('https://anilist.co/privacy'),
           ),
+          const SizedBox(height: 4),
+          _tile(
+            icon: Icons.feedback_outlined,
+            label: tr('send_feedback', lang),
+            onTap: () => _openUrl('https://github.com/t4kina/AniSpark/issues/new'),
+          ),
 
           const SizedBox(height: 24),
           Center(
@@ -355,7 +432,7 @@ class SettingsScreen extends StatelessWidget {
     required ValueChanged<bool> onChanged,
   }) {
     void toggle(bool on) {
-      HapticFeedback.selectionClick();
+      selectionHaptic();
       onChanged(on);
     }
 
@@ -429,7 +506,7 @@ class SettingsScreen extends StatelessWidget {
                             color: current == opt ? Theme.of(ctx).colorScheme.primary : null,
                             fontSize: 14)),
                     onTap: () {
-                      HapticFeedback.selectionClick();
+                      selectionHaptic();
                       onSelected(opt);
                       Navigator.pop(context);
                     },
@@ -475,7 +552,7 @@ class SettingsScreen extends StatelessWidget {
                   final isSelected = settings.accentColorName == e.key;
                   return GestureDetector(
                     onTap: () {
-                      HapticFeedback.selectionClick();
+                      selectionHaptic();
                       context.read<SettingsProvider>().setAccentColor(e.key);
                       Navigator.pop(context);
                     },
@@ -511,6 +588,63 @@ class SettingsScreen extends StatelessWidget {
                 }).toList(),
               ),
               const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static const _tabIcons = {
+    0: Icons.smart_display_outlined,
+    1: Icons.collections_bookmark_outlined,
+    2: Icons.travel_explore_outlined,
+    3: Icons.article_outlined,
+    4: Icons.person_outline_rounded,
+  };
+
+  static void _pickDefaultTab(BuildContext context, SettingsProvider settings, String lang) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40, height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(color: Colors.grey[400], borderRadius: BorderRadius.circular(2)),
+              ),
+              Text(tr('default_tab', lang), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 12),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: _tabLabelKeys.entries.map((e) => Builder(builder: (ctx) => ListTile(
+                    leading: Icon(_tabIcons[e.key],
+                        color: settings.defaultTab == e.key ? Theme.of(ctx).colorScheme.primary : Colors.grey,
+                        size: 20),
+                    title: Text(tr(e.value, lang),
+                        style: TextStyle(
+                            color: settings.defaultTab == e.key ? Theme.of(ctx).colorScheme.primary : null,
+                            fontSize: 14)),
+                    trailing: settings.defaultTab == e.key
+                        ? Icon(Icons.check, color: Theme.of(ctx).colorScheme.primary, size: 20)
+                        : null,
+                    onTap: () {
+                      selectionHaptic();
+                      context.read<SettingsProvider>().setDefaultTab(e.key);
+                      Navigator.pop(context);
+                    },
+                  ))).toList(),
+                ),
+              ),
             ],
           ),
         ),
@@ -562,6 +696,7 @@ class SettingsScreen extends StatelessWidget {
 
   static Future<void> _clearImageCache(BuildContext context, String lang) async {
     await DefaultCacheManager().emptyCache();
+    cacheSizeRefreshNotifier.value++;
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

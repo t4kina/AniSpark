@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 final profileRefreshNotifier = ValueNotifier<int>(0);
 final listRefreshNotifier = ValueNotifier<int>(0);
 final feedRefreshNotifier = ValueNotifier<int>(0);
+final cacheSizeRefreshNotifier = ValueNotifier<int>(0);
 
 /// Counts the requests AniList answered with 401 and tells listeners which
 /// token it rejected, so only the session still using it is logged out —
