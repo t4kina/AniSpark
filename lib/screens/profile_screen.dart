@@ -52,13 +52,22 @@ class _LoginPrompt extends StatelessWidget {
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(50),
                 ),
-                child: Builder(builder: (ctx) => Icon(Icons.person,
-                    size: 50, color: Theme.of(ctx).colorScheme.primary)),
+                child: Builder(
+                  builder: (ctx) => Icon(
+                    Icons.person,
+                    size: 50,
+                    color: Theme.of(ctx).colorScheme.primary,
+                  ),
+                ),
               ),
               const SizedBox(height: 24),
-              Text(tr('connect_anilist', lang),
-                  style: const TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.bold)),
+              Text(
+                tr('connect_anilist', lang),
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               const SizedBox(height: 8),
               Text(
                 tr('login_description', lang),
@@ -73,7 +82,8 @@ class _LoginPrompt extends StatelessWidget {
                     backgroundColor: Theme.of(context).colorScheme.primary,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                   onPressed: () async {
                     try {
@@ -93,11 +103,14 @@ class _LoginPrompt extends StatelessWidget {
                     children: [
                       const Icon(Icons.login, color: Colors.white),
                       const SizedBox(width: 8),
-                      Text(tr('login_with_anilist', lang),
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold)),
+                      Text(
+                        tr('login_with_anilist', lang),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ],
                   ),
                 ),
@@ -158,14 +171,17 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       final savedAt = cached?['savedAt'] as int?;
       final age = savedAt == null
           ? null
-          : DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(savedAt));
+          : DateTime.now().difference(
+              DateTime.fromMillisecondsSinceEpoch(savedAt),
+            );
       if (age == null || age.isNegative || age > _statsMaxAge) _fetchStats();
     });
     profileRefreshNotifier.addListener(_onRefresh);
     _stopReselectListener = scrollToTopOnReselect(
       tabReselectedNotifier,
       tab: _profileTab,
-      onReselected: () => scrollToTop(_scrollController, animate: !AppMotion.reduced(context)),
+      onReselected: () =>
+          scrollToTop(_scrollController, animate: !AppMotion.reduced(context)),
     );
   }
 
@@ -173,8 +189,12 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     if (!mounted) return;
     setState(() {
       _bannerImage = cached['bannerImage'] as String?;
-      _favoriteAnime = List<dynamic>.from(cached['favoriteAnime'] as List? ?? []);
-      _favoriteCharacters = List<dynamic>.from(cached['favoriteCharacters'] as List? ?? []);
+      _favoriteAnime = List<dynamic>.from(
+        cached['favoriteAnime'] as List? ?? [],
+      );
+      _favoriteCharacters = List<dynamic>.from(
+        cached['favoriteCharacters'] as List? ?? [],
+      );
       _followersCount = (cached['followersCount'] as num?)?.toInt() ?? 0;
       _followingCount = (cached['followingCount'] as num?)?.toInt() ?? 0;
       _activityDays = (cached['activityDays'] as Map<String, dynamic>? ?? {})
@@ -226,8 +246,10 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
 
     final user = statsResult['user'] as Map<String, dynamic>?;
     final newBanner = (user?['bannerImage'] as String?) ?? _bannerImage;
-    final newFavAnime = (user?['favourites']?['anime']?['nodes'] as List<dynamic>?) ?? [];
-    final newFavChars = (user?['favourites']?['characters']?['nodes'] as List<dynamic>?) ?? [];
+    final newFavAnime =
+        (user?['favourites']?['anime']?['nodes'] as List<dynamic>?) ?? [];
+    final newFavChars =
+        (user?['favourites']?['characters']?['nodes'] as List<dynamic>?) ?? [];
     final newFollowers = followResult['followers'] ?? 0;
     final newFollowing = followResult['following'] ?? 0;
 
@@ -263,16 +285,16 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     if (user == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final animeStats =
-        user['statistics']?['anime'] as Map<String, dynamic>?;
-    final mangaStats =
-        user['statistics']?['manga'] as Map<String, dynamic>?;
+    final animeStats = user['statistics']?['anime'] as Map<String, dynamic>?;
+    final mangaStats = user['statistics']?['manga'] as Map<String, dynamic>?;
     final avatar = user['avatar']?['large'] as String?;
     final name = user['name'] as String? ?? tr('feed_unknown', lang);
 
-    final minutesWatched = (animeStats?['minutesWatched'] as num?)?.toInt() ?? 0;
+    final minutesWatched =
+        (animeStats?['minutesWatched'] as num?)?.toInt() ?? 0;
     final daysWatched = minutesWatched / 1440;
-    final episodesWatched = (animeStats?['episodesWatched'] as num?)?.toInt() ?? 0;
+    final episodesWatched =
+        (animeStats?['episodesWatched'] as num?)?.toInt() ?? 0;
     final totalAnime = (animeStats?['count'] as num?)?.toInt() ?? 0;
     final chaptersRead = (mangaStats?['chaptersRead'] as num?)?.toInt() ?? 0;
     final volumesRead = (mangaStats?['volumesRead'] as num?)?.toInt() ?? 0;
@@ -282,56 +304,75 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       body: Stack(
         children: [
           RefreshIndicator(
-        onRefresh: _fetchStats,
-        child: CustomScrollView(
-          controller: _scrollController,
-          slivers: [
-            // ── Banner + Avatar Header + Stats bar (single sliver to avoid seam) ──
-            SliverToBoxAdapter(
-              child: _buildHeaderAndStats(
-                avatar, name, context, lang,
-                totalAnime: totalAnime,
-                episodesWatched: episodesWatched,
-                daysWatched: daysWatched,
-                totalManga: totalManga,
-                chaptersRead: chaptersRead,
-                volumesRead: volumesRead,
-              ),
-            ),
+            onRefresh: _fetchStats,
+            child: CustomScrollView(
+              controller: _scrollController,
+              slivers: [
+                // ── Banner + Avatar Header + Stats bar (single sliver to avoid seam) ──
+                SliverToBoxAdapter(
+                  child: _buildHeaderAndStats(
+                    avatar,
+                    name,
+                    context,
+                    lang,
+                    totalAnime: totalAnime,
+                    episodesWatched: episodesWatched,
+                    daysWatched: daysWatched,
+                    totalManga: totalManga,
+                    chaptersRead: chaptersRead,
+                    volumesRead: volumesRead,
+                  ),
+                ),
 
-            // ── Follow pills ───────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildFollowPills(context, lang)),
+                // ── Follow pills ───────────────────────────────────────────
+                SliverToBoxAdapter(child: _buildFollowPills(context, lang)),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-            SliverToBoxAdapter(
-              child: Builder(builder: (ctx) => Divider(height: 1, color: Theme.of(ctx).colorScheme.outline)),
-            ),
+                const SliverToBoxAdapter(child: SizedBox(height: 16)),
+                SliverToBoxAdapter(
+                  child: Builder(
+                    builder: (ctx) => Divider(
+                      height: 1,
+                      color: Theme.of(ctx).colorScheme.outline,
+                    ),
+                  ),
+                ),
 
-            // ── Favorite Anime ─────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-                child: Text(tr('favorite_anime', lang),
-                    style: const TextStyle(
+                // ── Favorite Anime ─────────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                    child: Text(
+                      tr('favorite_anime', lang),
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey,
-                        letterSpacing: 0.5)),
-              ),
-            ),
-            // The favourites fade in once the stats arrive.
-            SliverToBoxAdapter(
-              child: FadeSwitcher(
-                child: !_statsLoaded
-                    ? const SizedBox(key: ValueKey('fav-anime-pending'), height: 170)
-                    : _favoriteAnime.isEmpty
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+                // The favourites fade in once the stats arrive.
+                SliverToBoxAdapter(
+                  child: FadeSwitcher(
+                    child: !_statsLoaded
+                        ? const SizedBox(
+                            key: ValueKey('fav-anime-pending'),
+                            height: 170,
+                          )
+                        : _favoriteAnime.isEmpty
                         ? Container(
                             key: const ValueKey('fav-anime-none'),
                             // Full width, so the message stays left-aligned.
                             width: double.infinity,
                             padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Text(tr('no_favourites', lang),
-                                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                            child: Text(
+                              tr('no_favourites', lang),
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
+                            ),
                           )
                         : SizedBox(
                             key: const ValueKey('fav-anime'),
@@ -339,42 +380,55 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                             height: 170,
                             child: ListView.builder(
                               scrollDirection: Axis.horizontal,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
                               itemCount: _favoriteAnime.length,
                               itemBuilder: (_, i) => FavouriteMediaCard(
-                                media: _favoriteAnime[i] as Map<String, dynamic>,
+                                media:
+                                    _favoriteAnime[i] as Map<String, dynamic>,
                                 heroScope: _favsHeroScope,
                               ),
                             ),
                           ),
-              ),
-            ),
+                  ),
+                ),
 
-            // ── Favorite Characters ─────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-                child: Text(tr('favorite_characters', lang),
-                    style: const TextStyle(
+                // ── Favorite Characters ─────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                    child: Text(
+                      tr('favorite_characters', lang),
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: Colors.grey,
-                        letterSpacing: 0.5)),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: FadeSwitcher(
-                child: !_statsLoaded
-                    ? const SizedBox(key: ValueKey('fav-chars-pending'), height: 120)
-                    : _favoriteCharacters.isEmpty
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+                SliverToBoxAdapter(
+                  child: FadeSwitcher(
+                    child: !_statsLoaded
+                        ? const SizedBox(
+                            key: ValueKey('fav-chars-pending'),
+                            height: 120,
+                          )
+                        : _favoriteCharacters.isEmpty
                         ? Container(
                             key: const ValueKey('fav-chars-none'),
                             // Full width, so the message stays left-aligned.
                             width: double.infinity,
                             padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Text(tr('no_favourites', lang),
-                                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                            child: Text(
+                              tr('no_favourites', lang),
+                              style: const TextStyle(
+                                color: Colors.grey,
+                                fontSize: 13,
+                              ),
+                            ),
                           )
                         : SizedBox(
                             key: const ValueKey('fav-chars'),
@@ -382,41 +436,50 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                             height: 120,
                             child: ListView.builder(
                               scrollDirection: Axis.horizontal,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                              ),
                               itemCount: _favoriteCharacters.length,
                               itemBuilder: (_, i) => FavouriteCharacterCard(
-                                character: _favoriteCharacters[i] as Map<String, dynamic>,
+                                character:
+                                    _favoriteCharacters[i]
+                                        as Map<String, dynamic>,
                               ),
                             ),
                           ),
-              ),
+                  ),
+                ),
+
+                // ── Activity Graph ──────────────────────────────────────────
+                SliverToBoxAdapter(child: _buildActivityGraph(lang)),
+
+                // ── Top Genres ─────────────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: _buildTopGenres(animeStats, mangaStats, lang),
+                ),
+
+                // ── Score Distribution ──────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: _buildScoreDistribution(animeStats, mangaStats, lang),
+                ),
+
+                // ── Release Years ───────────────────────────────────────────
+                SliverToBoxAdapter(child: _buildReleaseYears(animeStats, lang)),
+
+                const SliverToBoxAdapter(child: SizedBox(height: 40)),
+              ],
             ),
-
-            // ── Activity Graph ──────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildActivityGraph(lang)),
-
-            // ── Top Genres ─────────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildTopGenres(animeStats, mangaStats, lang)),
-
-            // ── Score Distribution ──────────────────────────────────────
-            SliverToBoxAdapter(child: _buildScoreDistribution(animeStats, mangaStats, lang)),
-
-            // ── Release Years ───────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildReleaseYears(animeStats, lang)),
-
-
-            const SliverToBoxAdapter(child: SizedBox(height: 40)),
-          ],
-        ),
-      ),
+          ),
           // 44px touch target around a 36px circle, so the offset is 4px smaller.
           Positioned(
             top: MediaQuery.of(context).padding.top + 2,
             right: 8,
             child: overlayBtn(
               icon: Icons.settings_outlined,
-              tooltip: tr('tooltip_settings', context.watch<SettingsProvider>().language),
+              tooltip: tr(
+                'tooltip_settings',
+                context.watch<SettingsProvider>().language,
+              ),
               onPressed: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SettingsScreen()),
@@ -442,7 +505,6 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   }) {
     final topPadding = MediaQuery.of(context).padding.top;
     final surface = Theme.of(context).colorScheme.surface;
-    final outline = Theme.of(context).colorScheme.outline;
     return Container(
       decoration: BoxDecoration(
         color: surface,
@@ -463,148 +525,222 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         children: [
           // ── Banner + Avatar + Name ──────────────────────────────
           Stack(
-                alignment: Alignment.bottomCenter,
-                // The banner stretches up into the gap when the page is pulled down.
-                clipBehavior: Clip.none,
-                children: [
-                  SizedBox(
-                    height: 200 + topPadding,
-                    width: double.infinity,
-                    child: StretchyBanner(
-                      controller: _scrollController,
-                      child: _bannerImage != null
-                          ? CachedNetworkImage(
-                              imageUrl: _bannerImage!,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 800,
-                              placeholder: (ctx, _) => Container(
-                                  color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
-                              errorWidget: (_, _, _) => Container(
-                                  color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                            )
-                          : avatar != null
-                              ? BlurredBackdrop(url: avatar)
-                              : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            surface.withValues(alpha: 0.6),
-                            surface,
-                          ],
-                          stops: const [0.3, 0.7, 1.0],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: surface, width: 3),
+            alignment: Alignment.bottomCenter,
+            // The banner stretches up into the gap when the page is pulled down.
+            clipBehavior: Clip.none,
+            children: [
+              SizedBox(
+                height: 200 + topPadding,
+                width: double.infinity,
+                child: StretchyBanner(
+                  controller: _scrollController,
+                  child: _bannerImage != null
+                      ? CachedNetworkImage(
+                          imageUrl: _bannerImage!,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 800,
+                          placeholder: (ctx, _) => Container(
+                            color: Theme.of(
+                              ctx,
+                            ).colorScheme.surfaceContainerHighest,
                           ),
-                          child: CircleAvatar(
-                            radius: 40,
-                            backgroundColor:
-                                Theme.of(context).colorScheme.surfaceContainerHighest,
-                            backgroundImage: avatar != null
-                                ? CachedNetworkImageProvider(avatar)
-                                : null,
-                            child: avatar == null
-                                ? const Icon(Icons.person, size: 40, color: Colors.grey)
-                                : null,
+                          errorWidget: (_, _, _) => Container(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
                           ),
+                        )
+                      : avatar != null
+                      ? BlurredBackdrop(url: avatar)
+                      : Container(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          name,
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onSurface),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+                ),
               ),
-              // ── Stats card ─────────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                child: Container(
+              Positioned.fill(
+                child: DecoratedBox(
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: outline),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        surface.withValues(alpha: 0.6),
+                        surface,
+                      ],
+                      stops: const [0.3, 0.7, 1.0],
+                    ),
                   ),
-                  child: Column(
-                    children: [
-                      IntrinsicHeight(
-                        child: Row(
-                          children: [
-                            _statItem(totalAnime, tr('nav_anime', lang)),
-                            _statDividerV(outline),
-                            _statItem(episodesWatched, tr('profile_episodes', lang)),
-                            _statDividerV(outline),
-                            _statItem(daysWatched, tr('days_watched', lang), fractionDigits: 1),
-                          ],
-                        ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: surface, width: 3),
                       ),
-                      Divider(height: 1, color: outline),
-                      IntrinsicHeight(
-                        child: Row(
-                          children: [
-                            _statItem(totalManga, tr('nav_manga', lang)),
-                            _statDividerV(outline),
-                            _statItem(chaptersRead, tr('profile_chapters', lang)),
-                            _statDividerV(outline),
-                            _statItem(volumesRead, tr('profile_volumes_read', lang)),
-                          ],
-                        ),
+                      child: CircleAvatar(
+                        radius: 40,
+                        backgroundColor: Theme.of(
+                          context,
+                        ).colorScheme.surfaceContainerHighest,
+                        backgroundImage: avatar != null
+                            ? CachedNetworkImageProvider(avatar)
+                            : null,
+                        child: avatar == null
+                            ? const Icon(
+                                Icons.person,
+                                size: 40,
+                                color: Colors.grey,
+                              )
+                            : null,
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      name,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
+          // ── Stats grid ─────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _statTile(
+                        Icons.smart_display_rounded,
+                        totalAnime,
+                        tr('nav_anime', lang),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _statTile(
+                        Icons.play_circle_rounded,
+                        episodesWatched,
+                        tr('profile_episodes', lang),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _statTile(
+                        Icons.schedule_rounded,
+                        daysWatched,
+                        tr('days_watched', lang),
+                        fractionDigits: 1,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _statTile(
+                        Icons.collections_bookmark_rounded,
+                        totalManga,
+                        tr('nav_manga', lang),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _statTile(
+                        Icons.menu_book_rounded,
+                        chaptersRead,
+                        tr('profile_chapters', lang),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _statTile(
+                        Icons.library_books_rounded,
+                        volumesRead,
+                        tr('profile_volumes_read', lang),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  /// A stat that counts up to [value] when the profile first shows it.
-  Widget _statItem(num value, String label, {int fractionDigits = 0}) => Expanded(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CountUpText(value,
-                  fractionDigits: fractionDigits,
-                  style: const TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.bold)),
-              const SizedBox(height: 2),
-              Text(label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
-            ],
+  /// A stat card with an accent-tinted icon badge that counts up to
+  /// [value] when the profile first shows it.
+  Widget _statTile(
+    IconData icon,
+    num value,
+    String label, {
+    int fractionDigits = 0,
+  }) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.16),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 16, color: accent),
           ),
-        ),
-      );
+          const SizedBox(height: 8),
+          CountUpText(
+            value,
+            fractionDigits: fractionDigits,
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.grey,
+              fontSize: 10,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  void _showFollowSheet(BuildContext context, String title,
-      {List<dynamic>? preloaded}) {
+  void _showFollowSheet(
+    BuildContext context,
+    String title, {
+    List<dynamic>? preloaded,
+  }) {
     final auth = context.read<AuthService>();
     final userId = auth.user?['id'] as int?;
     showModalBottomSheet(
@@ -630,7 +766,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       child: Row(
         children: [
           _followPill(
-            context, cs,
+            context,
+            cs,
             count: _followersCount,
             label: followersLabel,
             icon: Icons.group_outlined,
@@ -638,18 +775,25 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           ),
           const SizedBox(width: 10),
           _followPill(
-            context, cs,
+            context,
+            cs,
             count: _followingCount,
             label: followingLabel,
             icon: Icons.person_outlined,
-            onTap: () => _showFollowSheet(context, followingLabel, preloaded: _following),
+            onTap: () => _showFollowSheet(
+              context,
+              followingLabel,
+              preloaded: _following,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _followPill(BuildContext context, ColorScheme cs, {
+  Widget _followPill(
+    BuildContext context,
+    ColorScheme cs, {
     required int count,
     required String label,
     required IconData icon,
@@ -673,21 +817,23 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               Text(
                 '$count $label',
                 style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: cs.onSurface,
+                ),
               ),
               const SizedBox(width: 4),
-              Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Colors.grey),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                size: 16,
+                color: Colors.grey,
+              ),
             ],
           ),
         ),
       ),
     );
   }
-
-  Widget _statDividerV(Color color) => VerticalDivider(
-        width: 1, thickness: 1, color: color);
 
   /// A heatmap day as text, e.g. "Jan 5, 2025" in English.
   static String _heatmapDate(DateTime day, String lang) =>
@@ -698,10 +844,18 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       });
 
   static const _monthKeys = [
-    'profile_month_jan', 'profile_month_feb', 'profile_month_mar',
-    'profile_month_apr', 'profile_month_may', 'profile_month_jun',
-    'profile_month_jul', 'profile_month_aug', 'profile_month_sep',
-    'profile_month_oct', 'profile_month_nov', 'profile_month_dec',
+    'profile_month_jan',
+    'profile_month_feb',
+    'profile_month_mar',
+    'profile_month_apr',
+    'profile_month_may',
+    'profile_month_jun',
+    'profile_month_jul',
+    'profile_month_aug',
+    'profile_month_sep',
+    'profile_month_oct',
+    'profile_month_nov',
+    'profile_month_dec',
   ];
 
   Widget _buildActivityGraph(String lang) {
@@ -709,8 +863,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final today = DateTime.now();
     // Start from Monday of the week 52 weeks ago
     final startRaw = today.subtract(const Duration(days: 364));
-    final startDay =
-        startRaw.subtract(Duration(days: startRaw.weekday - 1)); // Monday
+    final startDay = startRaw.subtract(
+      Duration(days: startRaw.weekday - 1),
+    ); // Monday
 
     final totalDays = today.difference(startDay).inDays + 1;
     final totalWeeks = (totalDays / 7).ceil();
@@ -739,131 +894,245 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(tr('profile_activity', lang),
-              style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey,
-                  letterSpacing: 0.5)),
+          Text(
+            tr('profile_activity', lang),
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey,
+              letterSpacing: 0.5,
+            ),
+          ),
           const SizedBox(height: 12),
-          Builder(builder: (ctx) {
-            return StatefulBuilder(builder: (ctx, setLocal) {
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: GestureDetector(
-                      onTapUp: (details) {
-                        final x = details.localPosition.dx;
-                        final y = details.localPosition.dy;
-                        final week = (x / step).floor();
-                        final dow = (y / step).floor();
-                        if (week < 0 || week >= totalWeeks || dow < 0 || dow >= 7) return;
-                        final day = startDay.add(Duration(days: week * 7 + dow));
-                        if (day.isAfter(today)) return;
-                        final key =
-                            '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
-                        final count = _activityDays[key] ?? 0;
-                        final date = _heatmapDate(day, lang);
-                        setLocal(() => tooltip = count == 0
-                            ? trf('profile_no_activity_on', lang, {'date': date})
-                            : trf(
-                                count == 1
-                                    ? 'profile_activity_on_one'
-                                    : 'profile_activity_on_many',
-                                lang,
-                                {'n': count, 'date': date}));
-                      },
-                      child: SizedBox(
-                        width: totalWeeks * step,
-                        height: 7 * step - gap,
-                        child: CustomPaint(
-                          painter: _HeatmapPainter(
-                            startDay: startDay,
-                            today: today,
-                            totalWeeks: totalWeeks,
-                            activityDays: _activityDays,
-                            cellColor: (count) => cellColor(count, ctx),
-                            cellSize: cellSize,
-                            gap: gap,
+          Builder(
+            builder: (ctx) {
+              return StatefulBuilder(
+                builder: (ctx, setLocal) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: GestureDetector(
+                          onTapUp: (details) {
+                            final x = details.localPosition.dx;
+                            final y = details.localPosition.dy;
+                            final week = (x / step).floor();
+                            final dow = (y / step).floor();
+                            if (week < 0 ||
+                                week >= totalWeeks ||
+                                dow < 0 ||
+                                dow >= 7)
+                              return;
+                            final day = startDay.add(
+                              Duration(days: week * 7 + dow),
+                            );
+                            if (day.isAfter(today)) return;
+                            final key =
+                                '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+                            final count = _activityDays[key] ?? 0;
+                            final date = _heatmapDate(day, lang);
+                            setLocal(
+                              () => tooltip = count == 0
+                                  ? trf('profile_no_activity_on', lang, {
+                                      'date': date,
+                                    })
+                                  : trf(
+                                      count == 1
+                                          ? 'profile_activity_on_one'
+                                          : 'profile_activity_on_many',
+                                      lang,
+                                      {'n': count, 'date': date},
+                                    ),
+                            );
+                          },
+                          child: SizedBox(
+                            width: totalWeeks * step,
+                            height: 7 * step - gap,
+                            child: CustomPaint(
+                              painter: _HeatmapPainter(
+                                startDay: startDay,
+                                today: today,
+                                totalWeeks: totalWeeks,
+                                activityDays: _activityDays,
+                                cellColor: (count) => cellColor(count, ctx),
+                                cellSize: cellSize,
+                                gap: gap,
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  if (tooltip != null) ...[
-                    const SizedBox(height: 6),
-                    Text(tooltip!,
-                        style: TextStyle(
+                      if (tooltip != null) ...[
+                        const SizedBox(height: 6),
+                        Text(
+                          tooltip!,
+                          style: TextStyle(
                             fontSize: 11,
-                            color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.55))),
-                  ],
-                ],
+                            color: Theme.of(
+                              ctx,
+                            ).colorScheme.onSurface.withValues(alpha: 0.55),
+                          ),
+                        ),
+                      ],
+                    ],
+                  );
+                },
               );
-            });
-          }),
+            },
+          ),
           const SizedBox(height: 6),
-          Builder(builder: (ctx) => Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              Text(tr('profile_less', lang),
-                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
-              const SizedBox(width: 4),
-              ...List.generate(5, (i) {
-                final accent = Theme.of(ctx).colorScheme.primary;
-                final colors = [
-                  Theme.of(ctx).colorScheme.surfaceContainerHighest,
-                  accent.withValues(alpha: 0.25),
-                  accent.withValues(alpha: 0.50),
-                  accent.withValues(alpha: 0.75),
-                  accent,
-                ];
-                return Container(
-                  width: cellSize,
-                  height: cellSize,
-                  margin: const EdgeInsets.only(left: 3),
-                  decoration: BoxDecoration(
-                    color: colors[i],
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                );
-              }),
-              const SizedBox(width: 4),
-              Text(tr('profile_more', lang),
-                  style: const TextStyle(fontSize: 10, color: Colors.grey)),
-            ],
-          )),
+          Builder(
+            builder: (ctx) => Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text(
+                  tr('profile_less', lang),
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                ),
+                const SizedBox(width: 4),
+                ...List.generate(5, (i) {
+                  final accent = Theme.of(ctx).colorScheme.primary;
+                  final colors = [
+                    Theme.of(ctx).colorScheme.surfaceContainerHighest,
+                    accent.withValues(alpha: 0.25),
+                    accent.withValues(alpha: 0.50),
+                    accent.withValues(alpha: 0.75),
+                    accent,
+                  ];
+                  return Container(
+                    width: cellSize,
+                    height: cellSize,
+                    margin: const EdgeInsets.only(left: 3),
+                    decoration: BoxDecoration(
+                      color: colors[i],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  );
+                }),
+                const SizedBox(width: 4),
+                Text(
+                  tr('profile_more', lang),
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTopGenres(Map<String, dynamic>? animeStats,
-      Map<String, dynamic>? mangaStats, String lang) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+  /// A rounded card wrapping a collapsible dashboard section: a header row
+  /// with [title] and an expand/collapse chevron, [child] showing only when
+  /// [expanded]. Dashboard sections share this instead of floating as bare
+  /// rows separated by hairline dividers.
+  Widget _dashboardCard({
+    required String title,
+    required bool expanded,
+    required bool hasData,
+    VoidCallback? onToggle,
+    required Widget child,
+  }) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: accent.withValues(alpha: 0.12)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _genreSection(
-            label: tr('profile_anime_genres', lang),
-            stats: animeStats,
-            countKey: 'profile_n_anime',
-            lang: lang,
-            expanded: _animeGenresExpanded,
-            onToggle: () => setState(() => _animeGenresExpanded = !_animeGenresExpanded),
+          InkWell(
+            onTap: hasData ? onToggle : null,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (hasData)
+                    Icon(
+                      expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
+                ],
+              ),
+            ),
           ),
-          _genreSection(
-            label: tr('profile_manga_genres', lang),
-            stats: mangaStats,
-            countKey: 'profile_n_manga',
-            lang: lang,
-            expanded: _mangaGenresExpanded,
-            onToggle: () => setState(() => _mangaGenresExpanded = !_mangaGenresExpanded),
+          if (expanded && hasData) ...[child, const SizedBox(height: 14)],
+        ],
+      ),
+    );
+  }
+
+  /// A thick, rounded, gradient-filled progress bar — the mark spec shared
+  /// by the genre, score and era bars so they read as one dashboard system.
+  Widget _dashboardBar(double ratio, {double height = 8}) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(height / 2),
+      child: Stack(
+        children: [
+          Container(
+            height: height,
+            color: Theme.of(context).colorScheme.surface,
+          ),
+          FractionallySizedBox(
+            widthFactor: ratio.clamp(0.0, 1.0),
+            child: Container(
+              height: height,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [accent.withValues(alpha: 0.55), accent],
+                ),
+              ),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildTopGenres(
+    Map<String, dynamic>? animeStats,
+    Map<String, dynamic>? mangaStats,
+    String lang,
+  ) {
+    return Column(
+      children: [
+        _genreSection(
+          label: tr('profile_anime_genres', lang),
+          stats: animeStats,
+          countKey: 'profile_n_anime',
+          lang: lang,
+          expanded: _animeGenresExpanded,
+          onToggle: () =>
+              setState(() => _animeGenresExpanded = !_animeGenresExpanded),
+        ),
+        _genreSection(
+          label: tr('profile_manga_genres', lang),
+          stats: mangaStats,
+          countKey: 'profile_n_manga',
+          lang: lang,
+          expanded: _mangaGenresExpanded,
+          onToggle: () =>
+              setState(() => _mangaGenresExpanded = !_mangaGenresExpanded),
+        ),
+      ],
     );
   }
 
@@ -879,95 +1148,68 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final raw = stats?['genres'] as List<dynamic>?;
     final hasData = raw != null && raw.isNotEmpty;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: hasData ? onToggle : null,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Row(
-              children: [
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey,
-                        letterSpacing: 0.5)),
-                const Spacer(),
-                Icon(
-                  hasData
-                      ? (expanded ? Icons.expand_less : Icons.expand_more)
-                      : Icons.expand_more,
-                  size: 18,
-                  color: Colors.grey,
-                ),
-              ],
-            ),
-          ),
-        ),
-        if (expanded && hasData) ...[
-          const SizedBox(height: 4),
-          Builder(builder: (ctx) {
-            final genres = raw
-                .cast<Map<String, dynamic>>()
-                .toList()
-              ..sort((a, b) => ((b['count'] as num?) ?? 0)
-                  .compareTo((a['count'] as num?) ?? 0));
-            final top = genres.take(5).toList();
-            final maxCount = (top.first['count'] as num).toDouble();
-            return Column(
-              children: top.map((g) {
-                final genre = g['genre'] as String? ?? '';
-                final count = (g['count'] as num?)?.toInt() ?? 0;
-                final score = (g['meanScore'] as num?)?.toDouble() ?? 0.0;
-                final ratio = maxCount > 0 ? count / maxCount : 0.0;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(genre,
-                              style: const TextStyle(
-                                  fontSize: 13, fontWeight: FontWeight.w500)),
-                          Text(
-                            '${trf(countKey, lang, {'n': count})}${score > 0 ? '  ·  ${score.toStringAsFixed(1)} ★' : ''}',
-                            style: const TextStyle(
-                                fontSize: 11, color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 5),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: ratio,
-                          minHeight: 5,
-                          backgroundColor: Theme.of(ctx)
-                              .colorScheme
-                              .surfaceContainerHighest,
-                          valueColor: AlwaysStoppedAnimation(
-                              Theme.of(ctx).colorScheme.primary),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
+    return _dashboardCard(
+      title: label,
+      expanded: expanded,
+      hasData: hasData,
+      onToggle: onToggle,
+      child: Builder(
+        builder: (ctx) {
+          final genres = raw!.cast<Map<String, dynamic>>().toList()
+            ..sort(
+              (a, b) => ((b['count'] as num?) ?? 0).compareTo(
+                (a['count'] as num?) ?? 0,
+              ),
             );
-          }),
-        ],
-        Divider(height: 1, color: Colors.grey.withValues(alpha: 0.15)),
-      ],
+          final top = genres.take(5).toList();
+          final maxCount = (top.first['count'] as num).toDouble();
+          return Column(
+            children: top.map((g) {
+              final genre = g['genre'] as String? ?? '';
+              final count = (g['count'] as num?)?.toInt() ?? 0;
+              final score = (g['meanScore'] as num?)?.toDouble() ?? 0.0;
+              final ratio = maxCount > 0 ? count / maxCount : 0.0;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          genre,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        Text(
+                          '${trf(countKey, lang, {'n': count})}${score > 0 ? '  ·  ${score.toStringAsFixed(1)} ★' : ''}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    _dashboardBar(ratio),
+                  ],
+                ),
+              );
+            }).toList(),
+          );
+        },
+      ),
     );
   }
 
-  Widget _buildScoreDistribution(Map<String, dynamic>? animeStats,
-      Map<String, dynamic>? mangaStats, String lang) {
+  Widget _buildScoreDistribution(
+    Map<String, dynamic>? animeStats,
+    Map<String, dynamic>? mangaStats,
+    String lang,
+  ) {
     final animeRaw = animeStats?['scores'] as List<dynamic>?;
     final mangaRaw = mangaStats?['scores'] as List<dynamic>?;
     if ((animeRaw == null || animeRaw.isEmpty) &&
@@ -979,83 +1221,111 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       if (raw == null || raw.isEmpty) {
         return Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Text(tr('profile_no_data', lang), style: TextStyle(fontSize: 12, color: Colors.grey.withValues(alpha: 0.6))),
+          child: Text(
+            tr('profile_no_data', lang),
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.withValues(alpha: 0.6),
+            ),
+          ),
         );
       }
-      final scores = raw
-          .cast<Map<String, dynamic>>()
-          .where((e) => ((e['score'] as num?) ?? 0) > 0 && ((e['count'] as num?) ?? 0) > 0)
-          .toList()
-        ..sort((a, b) => ((a['score'] as num?) ?? 0).compareTo((b['score'] as num?) ?? 0));
+      final scores =
+          raw
+              .cast<Map<String, dynamic>>()
+              .where(
+                (e) =>
+                    ((e['score'] as num?) ?? 0) > 0 &&
+                    ((e['count'] as num?) ?? 0) > 0,
+              )
+              .toList()
+            ..sort(
+              (a, b) => ((a['score'] as num?) ?? 0).compareTo(
+                (b['score'] as num?) ?? 0,
+              ),
+            );
       if (scores.isEmpty) return const SizedBox.shrink();
       final maxAmount = scores
           .map((e) => (e['count'] as num?)?.toInt() ?? 0)
           .reduce((a, b) => a > b ? a : b);
-      return Builder(builder: (ctx) {
-        final accent = Theme.of(ctx).colorScheme.primary;
-        return Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: scores.map((e) {
-            final score = ((e['score'] as num?) ?? 0).toInt();
-            final amount = ((e['count'] as num?) ?? 0).toInt();
-            final ratio = maxAmount > 0 ? amount / maxAmount : 0.0;
-            final label = (score / 10).toStringAsFixed(0);
-            return Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 1),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      height: 60 * ratio,
-                      decoration: BoxDecoration(
-                        color: accent.withValues(alpha: 0.2 + 0.8 * ratio),
-                        borderRadius: BorderRadius.circular(3),
+      return Builder(
+        builder: (ctx) {
+          final accent = Theme.of(ctx).colorScheme.primary;
+          final track = Theme.of(ctx).colorScheme.surface;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: scores.map((e) {
+              final score = ((e['score'] as num?) ?? 0).toInt();
+              final amount = ((e['count'] as num?) ?? 0).toInt();
+              final ratio = maxAmount > 0 ? amount / maxAmount : 0.0;
+              final label = (score / 10).toStringAsFixed(0);
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        height: 60,
+                        child: Align(
+                          alignment: Alignment.bottomCenter,
+                          child: Container(
+                            height: 60 * ratio < 4 ? 4 : 60 * ratio,
+                            decoration: BoxDecoration(
+                              color: track,
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(4),
+                              ),
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  accent.withValues(alpha: 0.5 + 0.5 * ratio),
+                                  accent.withValues(alpha: 0.2 + 0.3 * ratio),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(label, style: const TextStyle(fontSize: 9, color: Colors.grey)),
-                  ],
+                      const SizedBox(height: 4),
+                      Text(
+                        label,
+                        style: const TextStyle(fontSize: 9, color: Colors.grey),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-            );
-          }).toList(),
-        );
-      });
+              );
+            }).toList(),
+          );
+        },
+      );
     }
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    return _dashboardCard(
+      title: tr('profile_score_distribution', lang),
+      expanded: _scoreDistributionExpanded,
+      hasData: true,
+      onToggle: () => setState(
+        () => _scoreDistributionExpanded = !_scoreDistributionExpanded,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          InkWell(
-            onTap: () => setState(() => _scoreDistributionExpanded = !_scoreDistributionExpanded),
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                children: [
-                  Text(tr('profile_score_distribution', lang),
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
-                  const Spacer(),
-                  Icon(_scoreDistributionExpanded ? Icons.expand_less : Icons.expand_more, color: Colors.grey, size: 18),
-                ],
-              ),
-            ),
+          Text(
+            tr('nav_anime', lang),
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
           ),
-          if (_scoreDistributionExpanded) ...[
-            const SizedBox(height: 4),
-            Text(tr('nav_anime', lang), style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 8),
-            SizedBox(height: 80, child: scoreBar(animeRaw)),
-            const SizedBox(height: 16),
-            Text(tr('nav_manga', lang), style: const TextStyle(fontSize: 12, color: Colors.grey)),
-            const SizedBox(height: 8),
-            SizedBox(height: 80, child: scoreBar(mangaRaw)),
-            const SizedBox(height: 8),
-          ],
-          Divider(height: 1, color: Colors.grey.withValues(alpha: 0.15)),
+          const SizedBox(height: 8),
+          SizedBox(height: 80, child: scoreBar(animeRaw)),
+          const SizedBox(height: 16),
+          Text(
+            tr('nav_manga', lang),
+            style: const TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(height: 80, child: scoreBar(mangaRaw)),
         ],
       ),
     );
@@ -1078,73 +1348,54 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
 
     final sortedBuckets = buckets.entries.toList()
       ..sort((a, b) => a.key.compareTo(b.key));
-    final maxCount = sortedBuckets.map((e) => e.value).reduce((a, b) => a > b ? a : b);
+    final maxCount = sortedBuckets
+        .map((e) => e.value)
+        .reduce((a, b) => a > b ? a : b);
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    return _dashboardCard(
+      title: tr('profile_titles_by_era', lang),
+      expanded: _releaseYearsExpanded,
+      hasData: true,
+      onToggle: () =>
+          setState(() => _releaseYearsExpanded = !_releaseYearsExpanded),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          InkWell(
-            onTap: () => setState(() => _releaseYearsExpanded = !_releaseYearsExpanded),
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                children: [
-                  Text(tr('profile_titles_by_era', lang),
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
-                  const Spacer(),
-                  Icon(_releaseYearsExpanded ? Icons.expand_less : Icons.expand_more, color: Colors.grey, size: 18),
-                ],
-              ),
-            ),
-          ),
-          if (_releaseYearsExpanded) ...[
-            const SizedBox(height: 4),
-            Builder(builder: (ctx) {
-              final accent = Theme.of(ctx).colorScheme.primary;
-              return Column(
-                children: sortedBuckets.map((entry) {
-                  final label = '${entry.key}–${entry.key + 4}';
-                  final count = entry.value;
-                  final ratio = maxCount > 0 ? count / maxCount : 0.0;
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 68,
-                          child: Text(label, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(3),
-                            child: LinearProgressIndicator(
-                              value: ratio,
-                              minHeight: 6,
-                              backgroundColor: Theme.of(ctx).colorScheme.surfaceContainerHighest,
-                              valueColor: AlwaysStoppedAnimation(accent),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text('$count', style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                      ],
+        children: sortedBuckets.map((entry) {
+          final label = '${entry.key}–${entry.key + 4}';
+          final count = entry.value;
+          final ratio = maxCount > 0 ? count / maxCount : 0.0;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 68,
+                  child: Text(
+                    label,
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(child: _dashboardBar(ratio)),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 28,
+                  child: Text(
+                    '$count',
+                    textAlign: TextAlign.end,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey,
+                      fontWeight: FontWeight.w600,
                     ),
-                  );
-                }).toList(),
-              );
-            }),
-            const SizedBox(height: 8),
-          ],
-          Divider(height: 1, color: Colors.grey.withValues(alpha: 0.15)),
-        ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
       ),
     );
   }
-
 }
 
 class _HeatmapPainter extends CustomPainter {
@@ -1182,12 +1433,7 @@ class _HeatmapPainter extends CustomPainter {
 
         paint.color = cellColor(count);
         final rect = RRect.fromRectAndRadius(
-          Rect.fromLTWH(
-            week * step,
-            dow * step,
-            cellSize,
-            cellSize,
-          ),
+          Rect.fromLTWH(week * step, dow * step, cellSize, cellSize),
           const Radius.circular(2),
         );
         canvas.drawRRect(rect, paint);
@@ -1241,8 +1487,15 @@ class _FollowSheetState extends State<_FollowSheet> {
       return;
     }
     setState(() => _loading = true);
-    final result = await widget.service.getFollowers(widget.userId!, widget.token!);
-    if (mounted) setState(() { _users = result; _loading = false; });
+    final result = await widget.service.getFollowers(
+      widget.userId!,
+      widget.token!,
+    );
+    if (mounted)
+      setState(() {
+        _users = result;
+        _loading = false;
+      });
   }
 
   @override
@@ -1263,7 +1516,8 @@ class _FollowSheetState extends State<_FollowSheet> {
             Padding(
               padding: const EdgeInsets.only(top: 12, bottom: 8),
               child: Container(
-                width: 36, height: 4,
+                width: 36,
+                height: 4,
                 decoration: BoxDecoration(
                   color: cs.outlineVariant,
                   borderRadius: BorderRadius.circular(2),
@@ -1272,21 +1526,32 @@ class _FollowSheetState extends State<_FollowSheet> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: Text(widget.title,
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+              child: Text(
+                widget.title,
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : (_users == null || _users!.isEmpty)
-                      ? Center(child: Text(tr('profile_nobody_here', lang),
-                          style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))))
-                      : ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                          itemCount: _users!.length,
-                          itemBuilder: (_, i) => _UserTile(user: _users![i]),
+                  ? Center(
+                      child: Text(
+                        tr('profile_nobody_here', lang),
+                        style: TextStyle(
+                          color: cs.onSurface.withValues(alpha: 0.4),
                         ),
+                      ),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      itemCount: _users!.length,
+                      itemBuilder: (_, i) => _UserTile(user: _users![i]),
+                    ),
             ),
           ],
         ),
@@ -1310,14 +1575,23 @@ class _UserTile extends StatelessWidget {
       leading: CircleAvatar(
         radius: 22,
         backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-        backgroundImage: avatar != null ? CachedNetworkImageProvider(avatar) : null,
+        backgroundImage: avatar != null
+            ? CachedNetworkImageProvider(avatar)
+            : null,
         child: avatar == null ? const Icon(Icons.person, size: 22) : null,
       ),
       title: Text(name, style: const TextStyle(fontWeight: FontWeight.w500)),
       onTap: id != null
-          ? () => Navigator.push(context, MaterialPageRoute(
+          ? () => Navigator.push(
+              context,
+              MaterialPageRoute(
                 builder: (_) => UserProfileScreen(
-                    userId: id, name: name, avatarUrl: avatar)))
+                  userId: id,
+                  name: name,
+                  avatarUrl: avatar,
+                ),
+              ),
+            )
           : null,
     );
   }
