@@ -25,7 +25,7 @@ import 'utils/haptics.dart';
 import 'utils/translations.dart' show tr;
 import 'widgets/rate_limit_notice.dart';
 import 'utils/tab_reselect.dart';
-import 'widgets/motion/liquid_tab_indicator.dart';
+import 'widgets/motion/liquid_navigation_bar.dart';
 import 'widgets/motion/pop_in.dart';
 import 'widgets/motion/tab_fade_through.dart';
 
@@ -40,44 +40,31 @@ void main() async {
   // exactly as before instead of failing. Loaded alongside the work that
   // doesn't need it, to keep startup fast.
   final (storageCipher, _, _) = await (
-    kIsWeb
-        ? Future<HiveAesCipher?>.value()
-        : loadStorageCipher(const DeviceSecureStore()),
+    kIsWeb ? Future<HiveAesCipher?>.value() : loadStorageCipher(const DeviceSecureStore()),
     NotificationService().init(),
     settingsProvider.load(),
   ).wait;
-  final apiCache = ApiCache(
-    await HiveCacheStore.openOrFallback(cipher: storageCipher),
-  );
+  final apiCache = ApiCache(await HiveCacheStore.openOrFallback(cipher: storageCipher));
   unawaited(apiCache.prune(maxAge: const Duration(days: 14), maxEntries: 300));
 
   final authService = AuthService();
   await authService.init(cipher: storageCipher);
 
-  final mediaListStore = MediaListStore(
-    service: AniListService(),
-    cache: apiCache,
-  );
+  final mediaListStore = MediaListStore(service: AniListService(), cache: apiCache);
   final messengerKey = GlobalKey<ScaffoldMessengerState>();
 
   // A 401 means AniList no longer accepts the token (expired or revoked);
   // only a rejection of the current session's token logs it out.
-  watchSessionExpiry(
-    authService,
-    onExpired: () {
-      messengerKey.currentState?.showSnackBar(
-        SnackBar(
-          content: Text(tr('session_expired', settingsProvider.language)),
-        ),
-      );
-    },
-  );
+  watchSessionExpiry(authService, onExpired: () {
+    messengerKey.currentState?.showSnackBar(
+      SnackBar(content: Text(tr('session_expired', settingsProvider.language))),
+    );
+  });
   // Everything stored for the account goes away when its session ends.
   var wasLoggedIn = authService.isLoggedIn;
   authService.addListener(() {
     final loggedIn = authService.isLoggedIn;
-    if (wasLoggedIn && !loggedIn)
-      unawaited(_clearAccountData(apiCache, mediaListStore));
+    if (wasLoggedIn && !loggedIn) unawaited(_clearAccountData(apiCache, mediaListStore));
     wasLoggedIn = loggedIn;
   });
   // Leftovers of a logout that was interrupted, e.g. by the app being killed.
@@ -100,15 +87,9 @@ void main() async {
 /// best effort and independent, so one failure doesn't skip the others.
 Future<void> _clearAccountData(ApiCache cache, MediaListStore store) async {
   store.reset();
-  await _bestEffort(
-    'clearing the affinity memo',
-    () async => AffinityApi.clearViewerMemo(),
-  );
+  await _bestEffort('clearing the affinity memo', () async => AffinityApi.clearViewerMemo());
   await _bestEffort('clearing the API cache', cache.clear);
-  await _bestEffort(
-    'resetting notifications',
-    NotificationService().resetForLogout,
-  );
+  await _bestEffort('resetting notifications', NotificationService().resetForLogout);
   await _bestEffort('clearing recent searches', () async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(recentSearchesPrefsKey);
@@ -233,18 +214,47 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-/// Shows [LoginGateScreen] (no bottom navigation) while signed out, and
-/// swaps to [MainNavigation] as soon as the session is established.
-class AuthGate extends StatelessWidget {
-  const AuthGate({super.key});
+/// The login screen (no tabs) while signed out, the app's tabs once there is
+/// a session. When a session ends (logout or expiry) the pages opened on top
+/// are closed too, so the login screen isn't left hidden under them.
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key, this.signedIn});
+
+  /// What a signed-in user sees; the app's tabs unless a test swaps them.
+  final WidgetBuilder? signedIn;
 
   @override
-  Widget build(BuildContext context) {
-    final isLoggedIn = context.select<AuthService, bool>((a) => a.isLoggedIn);
-    return isLoggedIn
-        ? MainNavigation(key: MainNavigation.globalKey)
-        : const LoginGateScreen();
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  late final AuthService _auth;
+  late bool _signedIn;
+
+  @override
+  void initState() {
+    super.initState();
+    _auth = context.read<AuthService>()..addListener(_onAuthChanged);
+    _signedIn = _auth.isLoggedIn;
   }
+
+  @override
+  void dispose() {
+    _auth.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    final signedIn = _auth.isLoggedIn;
+    if (signedIn == _signedIn) return;
+    setState(() => _signedIn = signedIn);
+    if (!signedIn) Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  @override
+  Widget build(BuildContext context) => _signedIn
+      ? widget.signedIn?.call(context) ?? MainNavigation(key: MainNavigation.globalKey)
+      : const LoginGateScreen();
 }
 
 class MainNavigation extends StatefulWidget {
@@ -261,15 +271,15 @@ class MainNavigation extends StatefulWidget {
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  int _currentIndex = 0;
-  Set<int> _visited = {0};
+  late int _currentIndex;
+  late final Set<int> _visited;
 
   @override
   void initState() {
     super.initState();
-    final start = context.read<SettingsProvider>().defaultTab;
-    _currentIndex = start;
-    _visited = {start};
+    // Opens on the tab chosen in Settings (Anime unless changed).
+    _currentIndex = context.read<SettingsProvider>().defaultTab.clamp(0, _screens.length - 1);
+    _visited = {_currentIndex};
   }
 
   void _setTab(int index) => setState(() {
@@ -308,53 +318,30 @@ class _MainNavigationState extends State<MainNavigation> {
         ),
       ),
       bottomNavigationBar: Consumer<SettingsProvider>(
-        builder: (_, settings, _) => Stack(
-          children: [
-            Container(
-              height: NavigationBarTheme.of(context).height ?? 64,
-              color:
-                  NavigationBarTheme.of(context).backgroundColor ??
-                  Theme.of(context).colorScheme.surface,
-            ),
-            LiquidTabIndicator(
-              index: _currentIndex,
-              itemCount: _screens.length,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            NavigationBar(
-              backgroundColor: Colors.transparent,
-              selectedIndex: _currentIndex,
-              onDestinationSelected: _onDestinationSelected,
-              destinations: [
-                NavigationDestination(
-                  icon: const Icon(Icons.smart_display_outlined),
-                  selectedIcon: const PopIn(child: Icon(Icons.smart_display)),
-                  label: tr('nav_anime', settings.language),
-                ),
-                NavigationDestination(
-                  icon: const Icon(Icons.collections_bookmark_outlined),
-                  selectedIcon: const PopIn(
-                    child: Icon(Icons.collections_bookmark),
-                  ),
-                  label: tr('nav_manga', settings.language),
-                ),
-                NavigationDestination(
-                  icon: const Icon(Icons.travel_explore_outlined),
-                  selectedIcon: const PopIn(child: Icon(Icons.travel_explore)),
-                  label: tr('nav_discover', settings.language),
-                ),
-                NavigationDestination(
-                  icon: const Icon(Icons.article_outlined),
-                  selectedIcon: const PopIn(child: Icon(Icons.article)),
-                  label: tr('nav_feed', settings.language),
-                ),
-                NavigationDestination(
-                  icon: const Icon(Icons.person_outline_rounded),
-                  selectedIcon: const PopIn(child: Icon(Icons.person_rounded)),
-                  label: tr('nav_profile', settings.language),
-                ),
-              ],
-            ),
+        builder: (_, settings, _) => LiquidNavigationBar(
+          selectedIndex: _currentIndex,
+          onDestinationSelected: _onDestinationSelected,
+          destinations: [
+            LiquidDestination(
+                icon: const Icon(Icons.smart_display_outlined),
+                selectedIcon: const PopIn(child: Icon(Icons.smart_display)),
+                label: tr('nav_anime', settings.language)),
+            LiquidDestination(
+                icon: const Icon(Icons.collections_bookmark_outlined),
+                selectedIcon: const PopIn(child: Icon(Icons.collections_bookmark)),
+                label: tr('nav_manga', settings.language)),
+            LiquidDestination(
+                icon: const Icon(Icons.travel_explore_outlined),
+                selectedIcon: const PopIn(child: Icon(Icons.travel_explore)),
+                label: tr('nav_discover', settings.language)),
+            LiquidDestination(
+                icon: const Icon(Icons.article_outlined),
+                selectedIcon: const PopIn(child: Icon(Icons.article)),
+                label: tr('nav_feed', settings.language)),
+            LiquidDestination(
+                icon: const Icon(Icons.person_outline_rounded),
+                selectedIcon: const PopIn(child: Icon(Icons.person_rounded)),
+                label: tr('nav_profile', settings.language)),
           ],
         ),
       ),
