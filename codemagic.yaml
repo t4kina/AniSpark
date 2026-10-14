@@ -32,12 +32,17 @@ workflows:
           flutter build ios --release --no-codesign \
             --dart-define=ANILIST_CLIENT_ID=$ANILIST_CLIENT_ID
 
-      - name: Zip app bundle
+      - name: Package .ipa for sideloading
         script: |
+          # An .ipa is a zip with the app inside a Payload folder, ready for
+          # Sideloadly (which signs it), so nothing has to be repackaged by hand.
           cd build/ios/Release-iphoneos
-          zip -r AniSpark.zip Runner.app
+          rm -rf Payload AniSpark.ipa
+          mkdir Payload
+          cp -R Runner.app Payload/
+          zip -qry AniSpark.ipa Payload
     artifacts:
-      - build/ios/Release-iphoneos/AniSpark.zip
+      - build/ios/Release-iphoneos/AniSpark.ipa
     publishing:
       email:
         recipients:
