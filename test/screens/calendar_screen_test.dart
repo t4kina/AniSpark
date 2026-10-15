@@ -2,9 +2,11 @@ import 'package:anispark/screens/calendar_screen.dart';
 import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
+import 'package:anispark/services/device_calendar.dart';
 import 'package:anispark/services/discover_api.dart';
 import 'package:anispark/utils/translations.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -14,7 +16,7 @@ import '../helpers/mock_anilist.dart';
 
 String _en(String key) => tr(key, 'English');
 
-Map<String, dynamic> _airing(int id, String title, DateTime time, {String? status}) => {
+Map<String, dynamic> _airing(int id, String title, DateTime time, {String? status, int? duration}) => {
       'id': id,
       'airingAt': time.millisecondsSinceEpoch ~/ 1000,
       'episode': 3,
@@ -22,6 +24,7 @@ Map<String, dynamic> _airing(int id, String title, DateTime time, {String? statu
         'id': id,
         'isAdult': false,
         'title': {'english': title},
+        'duration': ?duration,
         'mediaListEntry': status == null ? null : {'status': status},
       },
     };
@@ -225,5 +228,88 @@ void main() {
     expect(log, hasLength(2));
     expect(log.last.authorization, isNull);
     expect(find.text('Dandadan'), findsOneWidget);
+  });
+
+  group('swiping an episode left', () {
+    final tomorrowNoon = DateTime(today.year, today.month, today.day + 1, 12);
+    final ios = TargetPlatformVariant.only(TargetPlatform.iOS);
+    final android = TargetPlatformVariant.only(TargetPlatform.android);
+
+    Future<void> pumpAndSwipe(
+      WidgetTester tester,
+      Map<String, dynamic> schedule,
+      AddCalendarEvent addEvent,
+    ) async {
+      final title = (schedule['media']['title'] as Map)['english'] as String;
+      await tester.pumpWidget(appWith(
+        CalendarScreen(api: apiAnswering((_) => _page([schedule])), addCalendarEvent: addEvent),
+        cache: cache,
+      ));
+      // Loads, then lets the rows' entrance cascade finish.
+      for (var i = 0; i < 5; i++) {
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+      await tester.drag(find.text(title), const Offset(-500, 0));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('opens a calendar event filled in for an upcoming episode', (tester) async {
+      final added = <CalendarEvent>[];
+      await pumpAndSwipe(tester, _airing(2, 'Dandadan', tomorrowNoon, duration: 23), (event) async {
+        added.add(event);
+        return true;
+      });
+
+      final event = added.single;
+      expect(event.title, 'Dandadan · Episode 3');
+      expect(event.start, tomorrowNoon);
+      expect(event.end, tomorrowNoon.add(const Duration(minutes: 23)));
+      expect(find.text('Dandadan'), findsOneWidget, reason: 'the row springs back');
+    });
+
+    testWidgets('does nothing for an episode that already aired', (tester) async {
+      final added = <CalendarEvent>[];
+      await pumpAndSwipe(tester, _airing(1, 'Frieren', today), (event) async {
+        added.add(event);
+        return true;
+      });
+
+      expect(added, isEmpty);
+    });
+
+    testWidgets('on iOS, confirms once the event is saved', (tester) async {
+      await pumpAndSwipe(tester, _airing(2, 'Dandadan', tomorrowNoon), (_) async => true);
+
+      expect(find.text(_en('cal_event_added')), findsOneWidget);
+    }, variant: ios);
+
+    testWidgets('on iOS, cancelling the sheet says nothing', (tester) async {
+      await pumpAndSwipe(tester, _airing(2, 'Dandadan', tomorrowNoon), (_) async => false);
+
+      expect(find.byType(SnackBar), findsNothing);
+    }, variant: ios);
+
+    testWidgets('on Android, opening the calendar app says nothing more', (tester) async {
+      await pumpAndSwipe(tester, _airing(2, 'Dandadan', tomorrowNoon), (_) async => true);
+
+      expect(find.byType(SnackBar), findsNothing);
+    }, variant: android);
+
+    testWidgets('on Android, says so when no calendar app opens', (tester) async {
+      await pumpAndSwipe(tester, _airing(2, 'Dandadan', tomorrowNoon), (_) async => false);
+
+      expect(find.text(_en('cal_open_failed')), findsOneWidget);
+    }, variant: android);
+
+    testWidgets('says so when the calendar can\'t be reached', (tester) async {
+      await pumpAndSwipe(
+        tester,
+        _airing(2, 'Dandadan', tomorrowNoon),
+        (_) async => throw PlatformException(code: 'unavailable'),
+      );
+
+      expect(find.text(_en('cal_open_failed')), findsOneWidget);
+    });
   });
 }

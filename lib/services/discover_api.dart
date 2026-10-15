@@ -40,7 +40,7 @@ class DiscoverApi {
         airingSchedules(airingAt_greater: $from, airingAt_lesser: $to, sort: [TIME]) {
           id airingAt episode
           media {
-            id isAdult format
+            id isAdult format duration
             title { romaji english native }
             coverImage { large }
             mediaListEntry @include(if: $withListStatus) { status }

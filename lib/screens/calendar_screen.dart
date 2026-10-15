@@ -1,13 +1,19 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
+import 'package:flutter/services.dart' show MissingPluginException, PlatformException;
 import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
+import '../services/device_calendar.dart';
 import '../services/discover_api.dart';
 import '../theme/app_motion.dart';
 import '../utils/airing_calendar.dart';
+import '../utils/airing_event.dart';
+import '../utils/haptics.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
@@ -18,12 +24,16 @@ import '../widgets/skeletons.dart';
 import 'detail_screen.dart';
 
 /// Episodes airing today and over the next six days, grouped by local day.
-/// Logged-in users can narrow it to what they're watching or planning.
+/// Logged-in users can narrow it to what they're watching or planning, and
+/// swipe an upcoming episode left to add it to the device's calendar.
 class CalendarScreen extends StatefulWidget {
-  const CalendarScreen({super.key, this.api});
+  const CalendarScreen({super.key, this.api, this.addCalendarEvent});
 
   /// Replaces the AniList API, for tests.
   final DiscoverApi? api;
+
+  /// Replaces the platform's "new event" sheet, for tests.
+  final AddCalendarEvent? addCalendarEvent;
 
   @override
   State<CalendarScreen> createState() => _CalendarScreenState();
@@ -47,6 +57,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
   int _request = 0;
   // Who the shown data was loaded for, to reload when the session changes.
   (String?, int?)? _session;
+  // A "new event" sheet is open; iOS can only show one.
+  bool _addingEvent = false;
 
   @override
   void initState() {
@@ -137,6 +149,44 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final lang = context.read<SettingsProvider>().language;
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text(tr('load_error', lang))));
+  }
+
+  /// Opens the calendar's "new event" sheet for an upcoming episode, filled
+  /// in with the show, episode, airing time and length.
+  Future<void> _addToCalendar(Map<String, dynamic> schedule, String title) async {
+    if (_addingEvent) return;
+    final lang = context.read<SettingsProvider>().language;
+    final episode = (schedule['episode'] as num?)?.toInt();
+    final event = airingEvent(
+      schedule,
+      title: title,
+      episodeLabel: episode == null ? null : trf('list_episode_n', lang, {'n': episode}),
+    );
+    if (event == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final addEvent = widget.addCalendarEvent ?? openNewCalendarEvent;
+    _addingEvent = true;
+    bool? done;
+    try {
+      done = await addEvent(event);
+    } on PlatformException catch (e) {
+      debugPrint('[CalendarScreen] Opening the calendar failed: $e');
+    } on MissingPluginException catch (e) {
+      debugPrint('[CalendarScreen] Opening the calendar failed: $e');
+    } finally {
+      _addingEvent = false;
+    }
+    // iOS reports whether the event was saved (false: cancelled), Android
+    // only whether a calendar app opened.
+    final ios = defaultTargetPlatform == TargetPlatform.iOS;
+    final message = switch (done) {
+      null => 'cal_open_failed',
+      true when ios => 'cal_event_added',
+      false when !ios => 'cal_open_failed',
+      _ => null,
+    };
+    if (message == null) return;
+    messenger.showSnackBar(SnackBar(content: Text(tr(message, lang))));
   }
 
   @override
@@ -244,6 +294,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                             now: now,
                             lang: lang,
                             heroScope: heroScope,
+                            onAddToCalendar: (title) => _addToCalendar(day.episodes[i], title),
                           ),
                         ),
                       ),
@@ -332,12 +383,14 @@ class _DayHeader extends StatelessWidget {
 }
 
 /// One airing episode: cover, title, episode number, list badge and time.
+/// Until it airs, swiping it left adds it to the calendar.
 class _EpisodeRow extends StatelessWidget {
   const _EpisodeRow({
     required this.schedule,
     required this.now,
     required this.lang,
     required this.heroScope,
+    required this.onAddToCalendar,
   });
 
   final Map<String, dynamic> schedule;
@@ -346,6 +399,9 @@ class _EpisodeRow extends StatelessWidget {
 
   /// The list's scope for the cover's hero tag.
   final String heroScope;
+
+  /// Called with the show's title when the row is swiped left.
+  final ValueChanged<String> onAddToCalendar;
 
   /// How visible episodes that already aired are.
   static const _airedOpacity = 0.6;
@@ -380,9 +436,10 @@ class _EpisodeRow extends StatelessWidget {
       color: cs.surfaceContainerHighest.withValues(alpha: aired ? _airedOpacity : 1),
     );
     // A show can air more than once in the week shown.
-    final heroTag = id == null ? null : coverHeroTag('$heroScope-${schedule['id'] ?? schedule['airingAt']}', id);
+    final airingId = schedule['id'] ?? schedule['airingAt'];
+    final heroTag = id == null ? null : coverHeroTag('$heroScope-$airingId', id);
 
-    return Pressable(
+    final row = Pressable(
       // A full-width row only needs a hint of a press.
       pressedScale: 0.98,
       onTap: id == null
@@ -477,6 +534,94 @@ class _EpisodeRow extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+    if (time == null || aired) return row;
+    return _AddToCalendarSwipe(
+      id: '$heroScope-$airingId',
+      label: tr('cal_add_event', lang),
+      onAdd: () => onAddToCalendar(title),
+      child: row,
+    );
+  }
+}
+
+/// Swiping [child] to the left calls [onAdd], which opens the calendar's
+/// "new event" sheet; the row springs back rather than leaving the list.
+class _AddToCalendarSwipe extends StatefulWidget {
+  const _AddToCalendarSwipe({
+    required this.id,
+    required this.label,
+    required this.onAdd,
+    required this.child,
+  });
+
+  /// Unique among the rows, for the [Dismissible].
+  final String id;
+  final String label;
+  final VoidCallback onAdd;
+  final Widget child;
+
+  @override
+  State<_AddToCalendarSwipe> createState() => _AddToCalendarSwipeState();
+}
+
+class _AddToCalendarSwipeState extends State<_AddToCalendarSwipe> {
+  /// How far (of the row's width) a swipe goes before letting go adds it.
+  static const _threshold = 0.3;
+
+  /// Dragged past [_threshold], so letting go adds the event.
+  bool _armed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Semantics(
+      customSemanticsActions: {CustomSemanticsAction(label: widget.label): widget.onAdd},
+      child: Dismissible(
+        key: ValueKey(widget.id),
+        direction: DismissDirection.endToStart,
+        dismissThresholds: const {DismissDirection.endToStart: _threshold},
+        onUpdate: (details) {
+          if (details.reached == _armed) return;
+          setState(() => _armed = details.reached);
+          if (_armed) selectionHaptic();
+        },
+        confirmDismiss: (_) async {
+          widget.onAdd();
+          return false;
+        },
+        background: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [cs.primary.withValues(alpha: 0), cs.primary.withValues(alpha: 0.9)],
+              stops: const [0.2, 1],
+            ),
+          ),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 24),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.label,
+                    style: TextStyle(color: cs.onPrimary, fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  const SizedBox(width: 8),
+                  AnimatedScale(
+                    scale: _armed ? 1.2 : 1,
+                    duration: AppMotion.of(context, AppMotion.short),
+                    curve: AppMotion.standard,
+                    child: Icon(Icons.edit_calendar_rounded, color: cs.onPrimary, size: 22),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        child: widget.child,
       ),
     );
   }
