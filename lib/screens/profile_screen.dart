@@ -11,13 +11,10 @@ import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../theme/app_motion.dart';
 import '../utils/tab_reselect.dart';
-import '../widgets/blurred_backdrop.dart';
 import '../widgets/motion/fade_switcher.dart';
-import '../widgets/motion/stretchy_banner.dart';
-import '../widgets/motion/pressable.dart';
-import '../widgets/overlay_button.dart';
-import '../widgets/profile/count_up_text.dart';
 import '../widgets/profile/favourite_cards.dart';
+import '../widgets/profile/profile_card.dart';
+import '../main.dart' show MainNavigation;
 import 'settings_screen.dart';
 import 'user_profile_screen.dart';
 
@@ -194,14 +191,6 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final avatar = user['avatar']?['large'] as String?;
     final name = user['name'] as String? ?? tr('feed_unknown', lang);
 
-    final minutesWatched = (animeStats?['minutesWatched'] as num?)?.toInt() ?? 0;
-    final daysWatched = minutesWatched / 1440;
-    final episodesWatched = (animeStats?['episodesWatched'] as num?)?.toInt() ?? 0;
-    final totalAnime = (animeStats?['count'] as num?)?.toInt() ?? 0;
-    final chaptersRead = (mangaStats?['chaptersRead'] as num?)?.toInt() ?? 0;
-    final volumesRead = (mangaStats?['volumesRead'] as num?)?.toInt() ?? 0;
-    final totalManga = (mangaStats?['count'] as num?)?.toInt() ?? 0;
-
     return Scaffold(
       body: Stack(
         children: [
@@ -210,21 +199,37 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         child: CustomScrollView(
           controller: _scrollController,
           slivers: [
-            // ── Banner + Avatar Header + Stats bar (single sliver to avoid seam) ──
+            // ── Who you are and your stats, on your banner ──────────────
             SliverToBoxAdapter(
-              child: _buildHeaderAndStats(
-                avatar, name, context, lang,
-                totalAnime: totalAnime,
-                episodesWatched: episodesWatched,
-                daysWatched: daysWatched,
-                totalManga: totalManga,
-                chaptersRead: chaptersRead,
-                volumesRead: volumesRead,
+              child: ProfileCard(
+                name: name,
+                lang: lang,
+                avatarUrl: avatar,
+                bannerUrl: _bannerImage,
+                animeStats: animeStats,
+                mangaStats: mangaStats,
+                scoreFormat: scoreFormat,
+                onCountTap: (type) => MainNavigation.navigateToTab(type == 'MANGA' ? 1 : 0),
+                cornerButton: ProfileCard.roundButton(
+                  icon: Icons.settings_outlined,
+                  tooltip: tr('tooltip_settings', lang),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  ),
+                ),
+                actions: [
+                  ProfileCard.primaryButton(
+                    label: '$_followersCount ${tr('followers', lang)}',
+                    onPressed: () => _showFollowSheet(context, tr('followers', lang)),
+                  ),
+                  ProfileCard.secondaryButton(
+                    label: '$_followingCount ${tr('following', lang)}',
+                    onPressed: () => _showFollowSheet(context, tr('following', lang), preloaded: _following),
+                  ),
+                ],
               ),
             ),
-
-            // ── Follow pills ───────────────────────────────────────────
-            SliverToBoxAdapter(child: _buildFollowPills(context, lang)),
 
             const SliverToBoxAdapter(child: SizedBox(height: 16)),
             SliverToBoxAdapter(
@@ -334,199 +339,6 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           ],
         ),
       ),
-          // 44px touch target around a 36px circle, so the offset is 4px smaller.
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 2,
-            right: 8,
-            child: overlayBtn(
-              icon: Icons.settings_outlined,
-              tooltip: tr('tooltip_settings', context.watch<SettingsProvider>().language),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeaderAndStats(
-    String? avatar,
-    String name,
-    BuildContext context,
-    String lang, {
-    required int totalAnime,
-    required int episodesWatched,
-    required double daysWatched,
-    required int totalManga,
-    required int chaptersRead,
-    required int volumesRead,
-  }) {
-    final topPadding = MediaQuery.of(context).padding.top;
-    final surface = Theme.of(context).colorScheme.surface;
-    return Container(
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(24),
-          bottomRight: Radius.circular(24),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.14),
-            blurRadius: 18,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // ── Banner + Avatar + Name ──────────────────────────────
-          Stack(
-                alignment: Alignment.bottomCenter,
-                // The banner stretches up into the gap when the page is pulled down.
-                clipBehavior: Clip.none,
-                children: [
-                  SizedBox(
-                    height: 200 + topPadding,
-                    width: double.infinity,
-                    child: StretchyBanner(
-                      controller: _scrollController,
-                      child: _bannerImage != null
-                          ? CachedNetworkImage(
-                              imageUrl: _bannerImage!,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 800,
-                              placeholder: (ctx, _) => Container(
-                                  color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
-                              errorWidget: (_, _, _) => Container(
-                                  color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                            )
-                          : avatar != null
-                              ? BlurredBackdrop(url: avatar)
-                              : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [
-                            Colors.transparent,
-                            surface.withValues(alpha: 0.6),
-                            surface,
-                          ],
-                          stops: const [0.3, 0.7, 1.0],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 16),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(color: surface, width: 3),
-                          ),
-                          child: CircleAvatar(
-                            radius: 40,
-                            backgroundColor:
-                                Theme.of(context).colorScheme.surfaceContainerHighest,
-                            backgroundImage: avatar != null
-                                ? CachedNetworkImageProvider(avatar)
-                                : null,
-                            child: avatar == null
-                                ? const Icon(Icons.person, size: 40, color: Colors.grey)
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          name,
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.onSurface),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              // ── Stats grid ─────────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    _statRow([
-                      _statTile(Icons.smart_display_rounded, totalAnime, tr('nav_anime', lang)),
-                      _statTile(Icons.play_circle_rounded, episodesWatched, tr('profile_episodes', lang)),
-                      _statTile(Icons.schedule_rounded, daysWatched, tr('days_watched', lang), fractionDigits: 1),
-                    ]),
-                    const SizedBox(height: 10),
-                    _statRow([
-                      _statTile(Icons.collections_bookmark_rounded, totalManga, tr('nav_manga', lang)),
-                      _statTile(Icons.menu_book_rounded, chaptersRead, tr('profile_chapters', lang)),
-                      _statTile(Icons.library_books_rounded, volumesRead, tr('profile_volumes_read', lang)),
-                    ]),
-                  ],
-                ),
-              ),
-            ],
-          ),
-    );
-  }
-
-  /// [tiles] side by side, all as tall as the tallest.
-  static Widget _statRow(List<Widget> tiles) => IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final (i, tile) in tiles.indexed) ...[
-              if (i > 0) const SizedBox(width: 10),
-              Expanded(child: tile),
-            ],
-          ],
-        ),
-      );
-
-  /// A stat card with the accent on its icon badge, counting up to [value]
-  /// when the profile first shows it.
-  Widget _statTile(IconData icon, num value, String label, {int fractionDigits = 0}) {
-    final colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(6, 12, 6, 10),
-      decoration: BoxDecoration(
-        color: colors.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: colors.primary.withValues(alpha: 0.14)),
-      ),
-      child: Column(
-        children: [
-          Container(
-            width: 30,
-            height: 30,
-            decoration: BoxDecoration(color: colors.primary.withValues(alpha: 0.16), shape: BoxShape.circle),
-            child: Icon(icon, size: 16, color: colors.primary),
-          ),
-          const SizedBox(height: 8),
-          CountUpText(value,
-              fractionDigits: fractionDigits,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 2),
-          Text(label,
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
         ],
       ),
     );
@@ -546,71 +358,6 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         userId: userId,
         token: auth.token,
         service: _service,
-      ),
-    );
-  }
-
-  Widget _buildFollowPills(BuildContext context, String lang) {
-    final cs = Theme.of(context).colorScheme;
-    final followersLabel = tr('followers', lang);
-    final followingLabel = tr('following', lang);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-      child: Row(
-        children: [
-          _followPill(
-            context, cs,
-            count: _followersCount,
-            label: followersLabel,
-            icon: Icons.group_outlined,
-            onTap: () => _showFollowSheet(context, followersLabel),
-          ),
-          const SizedBox(width: 10),
-          _followPill(
-            context, cs,
-            count: _followingCount,
-            label: followingLabel,
-            icon: Icons.person_outlined,
-            onTap: () => _showFollowSheet(context, followingLabel, preloaded: _following),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _followPill(BuildContext context, ColorScheme cs, {
-    required int count,
-    required String label,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: Pressable(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: cs.outline),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, size: 15, color: cs.primary),
-              const SizedBox(width: 6),
-              Text(
-                '$count $label',
-                style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface),
-              ),
-              const SizedBox(width: 4),
-              Icon(Icons.keyboard_arrow_down_rounded, size: 16, color: Colors.grey),
-            ],
-          ),
-        ),
       ),
     );
   }

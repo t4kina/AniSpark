@@ -1,22 +1,19 @@
-import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
-import '../theme/app_motion.dart';
 import '../utils/external_url.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../utils/haptics.dart';
+import '../utils/score_utils.dart';
 import '../utils/translations.dart' show tr, trf;
-import '../widgets/blurred_backdrop.dart';
 import '../widgets/motion/fade_switcher.dart';
-import '../widgets/motion/stretchy_banner.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/profile/affinity_card.dart';
-import '../widgets/profile/count_up_text.dart';
 import '../widgets/profile/favourite_cards.dart';
+import '../widgets/profile/profile_card.dart';
 import 'detail_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
@@ -24,11 +21,15 @@ class UserProfileScreen extends StatefulWidget {
   final String name;
   final String? avatarUrl;
 
+  /// Talks to AniList; tests pass one with a mock client.
+  final AniListService? service;
+
   const UserProfileScreen({
     super.key,
     required this.userId,
     required this.name,
     this.avatarUrl,
+    this.service,
   });
 
   @override
@@ -36,16 +37,8 @@ class UserProfileScreen extends StatefulWidget {
 }
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
-  final _service = AniListService();
+  late final _service = widget.service ?? AniListService();
 
-  /// Drives the banner's stretch and parallax.
-  final _scroll = ScrollController();
-
-  @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
-  }
   Map<String, dynamic>? _profile;
   List<dynamic> _recentActivity = [];
   bool _loading = true;
@@ -179,9 +172,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthService>();
     final lang = context.watch<SettingsProvider>().language;
-    final isOwnProfile = auth.isLoggedIn && auth.user?['id'] == widget.userId;
 
     return Scaffold(
       body: Stack(
@@ -201,127 +192,52 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               onPressed: () => Navigator.pop(context),
             ),
           ),
-          if (!_loading && _profileIsFresh && auth.isLoggedIn && !isOwnProfile)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 6,
-              right: 12,
-              child: _followButton(context, lang),
-            ),
         ],
       ),
     );
   }
 
-  /// Follow or Following, cross-fading (with a slight zoom) when it flips.
-  Widget _followButton(BuildContext context, String lang) {
-    return AnimatedSwitcher(
-      duration: AppMotion.of(context, AppMotion.short),
-      switchInCurve: AppMotion.enter,
-      switchOutCurve: AppMotion.exit,
-      // Both pills hang from the right edge, where the button sits.
-      layoutBuilder: (current, previous) => Stack(
-        alignment: Alignment.centerRight,
-        children: [...previous, ?current],
-      ),
-      transitionBuilder: (child, animation) => FadeTransition(
-        opacity: animation,
-        child: ScaleTransition(
-          scale: Tween(begin: 0.9, end: 1.0).animate(animation),
-          alignment: Alignment.centerRight,
-          child: child,
+  /// Unfollow (when following), block and report; the last two are done
+  /// on AniList's site.
+  void _showProfileActions(BuildContext context, String lang) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_isFollowing)
+                ListTile(
+                  leading: const Icon(Icons.person_remove_outlined, color: Colors.red),
+                  title: Text(tr('uprof_unfollow', lang), style: const TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.pop(sheet);
+                    _toggleFollow();
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.block_outlined),
+                title: Text(tr('uprof_block', lang)),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  _openAniListProfile();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.flag_outlined),
+                title: Text(tr('uprof_report', lang)),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  _openAniListProfile();
+                },
+              ),
+            ],
+          ),
         ),
-      ),
-      child: KeyedSubtree(
-        key: ValueKey(_isFollowing),
-        child: _followButtonFor(context, lang),
-      ),
-    );
-  }
-
-  Widget _followButtonFor(BuildContext context, String lang) {
-    if (_isFollowing) {
-      return PopupMenuButton<String>(
-        padding: EdgeInsets.zero,
-        color: Theme.of(context).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        offset: const Offset(0, 44),
-        onSelected: (val) {
-          if (val == 'unfollow') _toggleFollow();
-          if (val == 'block' || val == 'report') _openAniListProfile();
-        },
-        itemBuilder: (_) => [
-          PopupMenuItem(
-            value: 'unfollow',
-            child: Row(children: [
-              const Icon(Icons.person_remove_outlined, size: 16, color: Colors.red),
-              const SizedBox(width: 10),
-              Text(tr('uprof_unfollow', lang),
-                  style: const TextStyle(color: Colors.red, fontSize: 13)),
-            ]),
-          ),
-          PopupMenuItem(
-            value: 'block',
-            child: Row(children: [
-              const Icon(Icons.block_outlined, size: 16, color: Colors.grey),
-              const SizedBox(width: 10),
-              Text(tr('uprof_block', lang), style: const TextStyle(fontSize: 13)),
-            ]),
-          ),
-          PopupMenuItem(
-            value: 'report',
-            child: Row(children: [
-              const Icon(Icons.flag_outlined, size: 16, color: Colors.grey),
-              const SizedBox(width: 10),
-              Text(tr('uprof_report', lang), style: const TextStyle(fontSize: 13)),
-            ]),
-          ),
-        ],
-        child: _pillBtn(
-          label: _togglingFollow
-              ? '${tr('uprof_following_button', lang)}…'
-              : tr('uprof_following_button', lang),
-          icon: Icons.check,
-          filled: true,
-          trailing: const Icon(Icons.keyboard_arrow_down_rounded,
-              size: 16, color: Colors.white),
-        ),
-      );
-    }
-
-    return GestureDetector(
-      onTap: _toggleFollow,
-      child: _pillBtn(
-        label: _togglingFollow ? '…' : tr('uprof_follow', lang),
-        icon: Icons.person_add_outlined,
-        filled: false,
-      ),
-    );
-  }
-
-  Widget _pillBtn({
-    required String label,
-    required IconData icon,
-    required bool filled,
-    Widget? trailing,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: filled ? cs.primary : Colors.black.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(20),
-        border: filled ? null : Border.all(color: Colors.white.withValues(alpha: 0.6)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Colors.white),
-          const SizedBox(width: 5),
-          Text(label,
-              style: const TextStyle(
-                  color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-          if (trailing != null) ...[const SizedBox(width: 2), trailing],
-        ],
       ),
     );
   }
@@ -360,12 +276,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final mangaStats = p['statistics']?['manga'] as Map<String, dynamic>?;
 
     final totalAnime = (animeStats?['count'] as num?)?.toInt() ?? 0;
-    final episodesWatched = (animeStats?['episodesWatched'] as num?)?.toInt() ?? 0;
-    final minutesWatched = (animeStats?['minutesWatched'] as num?)?.toInt() ?? 0;
-    final daysWatched = minutesWatched / 1440;
     final totalManga = (mangaStats?['count'] as num?)?.toInt() ?? 0;
-    final chaptersRead = (mangaStats?['chaptersRead'] as num?)?.toInt() ?? 0;
-    final volumesRead = (mangaStats?['volumesRead'] as num?)?.toInt() ?? 0;
 
     final favAnime = (p['favourites']?['anime']?['nodes'] as List<dynamic>?) ?? [];
     final favManga = (p['favourites']?['manga']?['nodes'] as List<dynamic>?) ?? [];
@@ -380,165 +291,51 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         .toList();
 
     final about = (p['about'] as String? ?? '').trim();
-
-    final surface = Theme.of(context).colorScheme.surface;
-    final outline = Theme.of(context).colorScheme.outline;
-    final topPadding = MediaQuery.of(context).padding.top;
+    final auth = context.watch<AuthService>();
+    final canFollow = _profileIsFresh && auth.isLoggedIn && auth.user?['id'] != widget.userId;
 
     return CustomScrollView(
       key: const ValueKey('uprof-content'),
-      controller: _scroll,
       slivers: [
-        // ── Header card ───────────────────────────────────────────────
+        // ── Who they are and their stats, on their banner ───────────
         SliverToBoxAdapter(
-          child: Container(
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(24),
-                bottomRight: Radius.circular(24),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.14),
-                  blurRadius: 18,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Stack(
-                  alignment: Alignment.bottomCenter,
-                  // The banner stretches up into the gap when the page is pulled down.
-                  clipBehavior: Clip.none,
-                  children: [
-                    SizedBox(
-                      height: 200 + topPadding,
-                      width: double.infinity,
-                      child: StretchyBanner(
-                        controller: _scroll,
-                        child: banner != null
-                            ? CachedNetworkImage(
-                                imageUrl: banner,
-                                fit: BoxFit.cover,
-                                memCacheWidth: 800,
-                                placeholder: (ctx, _) => Container(
-                                    color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
-                                errorWidget: (_, _, _) => Container(
-                                    color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                              )
-                            : avatar != null
-                                ? BlurredBackdrop(url: avatar)
-                                : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
+          child: ProfileCard(
+            name: name,
+            lang: lang,
+            avatarUrl: avatar,
+            bannerUrl: banner,
+            animeStats: animeStats,
+            mangaStats: mangaStats,
+            scoreFormat: scoreFormatOf(auth.user),
+            nameTag: _isFollower ? tr('uprof_follows_you', lang) : null,
+            // Room for the back button above the card.
+            topGap: 52,
+            onCountTap: (type) {
+              final count = type == 'MANGA' ? totalManga : totalAnime;
+              if (count > 0) _showListSheet(context, type);
+            },
+            cornerButton: canFollow
+                ? ProfileCard.roundButton(
+                    icon: Icons.more_horiz_rounded,
+                    tooltip: tr('tooltip_more', lang),
+                    onPressed: () => _showProfileActions(context, lang),
+                  )
+                : null,
+            actions: [
+              if (canFollow)
+                _isFollowing
+                    ? ProfileCard.secondaryButton(
+                        label: '${tr('uprof_following_button', lang)}${_togglingFollow ? '…' : ''}',
+                        icon: Icons.check_rounded,
+                        trailing: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.white),
+                        onPressed: () => _showProfileActions(context, lang),
+                      )
+                    : ProfileCard.primaryButton(
+                        label: _togglingFollow ? '…' : tr('uprof_follow', lang),
+                        icon: Icons.person_add_alt_1_rounded,
+                        onPressed: _togglingFollow ? null : _toggleFollow,
                       ),
-                    ),
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              surface.withValues(alpha: 0.6),
-                              surface,
-                            ],
-                            stops: const [0.3, 0.7, 1.0],
-                          ),
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: surface, width: 3),
-                            ),
-                            child: CircleAvatar(
-                              radius: 40,
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.surfaceContainerHighest,
-                              backgroundImage: avatar != null
-                                  ? CachedNetworkImageProvider(avatar)
-                                  : null,
-                              child: avatar == null
-                                  ? const Icon(Icons.person, size: 40, color: Colors.grey)
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            name,
-                            style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.onSurface),
-                          ),
-                          if (_isFollower) ...[
-                            const SizedBox(height: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                tr('uprof_follows_you', lang),
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                // ── Stats card ─────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: outline),
-                    ),
-                    child: Column(
-                      children: [
-                        IntrinsicHeight(
-                          child: Row(children: [
-                            _tappableStat(totalAnime, tr('nav_anime', lang), totalAnime > 0
-                                ? () => _showListSheet(context, 'ANIME') : null),
-                            _vDiv(outline),
-                            _stat(episodesWatched, tr('profile_episodes', lang)),
-                            _vDiv(outline),
-                            _stat(daysWatched, tr('days_watched', lang), fractionDigits: 1),
-                          ]),
-                        ),
-                        Divider(height: 1, color: outline),
-                        IntrinsicHeight(
-                          child: Row(children: [
-                            _tappableStat(totalManga, tr('nav_manga', lang), totalManga > 0
-                                ? () => _showListSheet(context, 'MANGA') : null),
-                            _vDiv(outline),
-                            _stat(chaptersRead, tr('profile_chapters', lang)),
-                            _vDiv(outline),
-                            _stat(volumesRead, tr('profile_volumes_read', lang)),
-                          ]),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            ],
           ),
         ),
 
@@ -826,86 +623,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       ),
     );
   }
-
-  /// A stat that counts up to [value] when the profile first shows it.
-  Widget _stat(num value, String label, {int fractionDigits = 0}) => Expanded(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CountUpText(value,
-                  fractionDigits: fractionDigits,
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 2),
-              Text(label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
-            ],
-          ),
-        ),
-      );
-
-  Widget _tappableStat(int value, String label, VoidCallback? onTap) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-        child: GestureDetector(
-          onTap: onTap,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : Colors.black.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.12)
-                        : Colors.black.withValues(alpha: 0.08),
-                    width: 0.8,
-                  ),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CountUpText(value,
-                        style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                            color: cs.primary)),
-                    const SizedBox(height: 2),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(label,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
-                        const SizedBox(width: 3),
-                        Icon(Icons.chevron_right_rounded, size: 12, color: Colors.grey.withValues(alpha: 0.7)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-
-  Widget _vDiv(Color color) => VerticalDivider(width: 1, thickness: 1, color: color);
 
   void _showListSheet(BuildContext context, String type) {
     showModalBottomSheet(

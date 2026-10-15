@@ -47,7 +47,7 @@ void main() {
   setUp(() => cache = ApiCache(MemoryCacheStore()));
 
   Future<void> pumpProfile(WidgetTester tester) async {
-    // Wide enough for the follow pills in the test font, short enough to scroll.
+    // Wide enough for the follow buttons in the test font, short enough to scroll.
     tester.view.physicalSize = const Size(800, 600);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -66,7 +66,7 @@ void main() {
     expect(int.parse(midway), lessThan(4567), reason: 'still counting');
 
     await tester.pumpAndSettle();
-    for (final value in ['321', '4567', '12.4', '12', '890', '34']) {
+    for (final value in ['321 anime', '12 manga', '4567', '12.4']) {
       expect(find.text(value), findsOneWidget, reason: value);
     }
   });
