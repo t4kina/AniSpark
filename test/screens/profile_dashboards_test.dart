@@ -112,6 +112,20 @@ void main() {
     expect(find.text('No data'), findsOneWidget, reason: 'the manga genres card, with no manga');
   });
 
+  testWidgets('the activity graph opens on the latest weeks', (tester) async {
+    await _pumpProfile(
+      tester,
+      _StatsAuth(scoreFormat: 'POINT_10_DECIMAL', animeScores: const []),
+    );
+
+    final heatmap = find.byWidgetPredicate(
+        (w) => w is CustomPaint && w.painter.runtimeType.toString() == '_HeatmapPainter');
+    final rect = tester.getRect(heatmap);
+    final screenWidth = tester.view.physicalSize.width / tester.view.devicePixelRatio;
+    expect(rect.width, greaterThan(screenWidth), reason: 'a year is wider than the screen');
+    expect(rect.right, lessThanOrEqualTo(screenWidth), reason: 'today is visible without scrolling');
+  });
+
   testWidgets('eras are listed oldest first with their counts', (tester) async {
     await _pumpProfile(
       tester,

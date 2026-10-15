@@ -661,7 +661,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     String? tooltip;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+      // The bottom gap keeps the legend clear of the genre cards below.
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -679,6 +680,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                 children: [
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
+                    // Opens on the latest weeks; older ones are a swipe left.
+                    reverse: true,
                     child: GestureDetector(
                       onTapUp: (details) {
                         final x = details.localPosition.dx;
