@@ -2,9 +2,12 @@ import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/foundation.dart' show listEquals;
+import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart' show Ticker;
 
 import '../../theme/app_motion.dart';
+import '../../utils/haptics.dart';
 
 /// One tab of a [LiquidNavigationBar].
 class LiquidDestination {
@@ -20,10 +23,15 @@ class LiquidDestination {
 /// and its trailing edge catches up, so it stretches like a drop and then
 /// settles.
 ///
+/// The pill can also be dragged: a finger sliding along the bar (straight
+/// away or after holding) pulls the pill after it, stretched by how far it
+/// trails, with a tick on each tab it crosses; letting go opens the tab
+/// under the finger.
+///
 /// The pill is painted under a transparent NavigationBar, which keeps its
-/// own layout, semantics and taps. The pill is placed on the icons' real
-/// boxes, measured after layout, so it stays centred whatever the label
-/// height, text scale or safe area.
+/// own layout, semantics and taps. It is placed on the icons' real boxes,
+/// measured after layout, so it stays centred whatever the label height,
+/// text scale or safe area.
 class LiquidNavigationBar extends StatefulWidget {
   const LiquidNavigationBar({
     super.key,
@@ -43,7 +51,7 @@ class LiquidNavigationBar extends StatefulWidget {
   State<LiquidNavigationBar> createState() => _LiquidNavigationBarState();
 }
 
-class _LiquidNavigationBarState extends State<LiquidNavigationBar> with SingleTickerProviderStateMixin {
+class _LiquidNavigationBarState extends State<LiquidNavigationBar> with TickerProviderStateMixin {
   // About Material 3's own indicator (64x32), a little narrower so five
   // tabs on a small phone keep a gap between neighbours.
   static const _pillSize = Size(60, 32);
@@ -60,12 +68,45 @@ class _LiquidNavigationBarState extends State<LiquidNavigationBar> with SingleTi
   /// hasn't moved yet.
   Rect? _start;
 
+  // ── Dragging ──
+  late final Ticker _dragTicker = createTicker(_followFinger);
+  Duration _lastTick = Duration.zero;
+  final _dragFrame = ValueNotifier<int>(0);
+  int? _pointer;
+  Offset? _downAt;
+  bool _dragging = false;
+
+  /// The finger's x, and the pill's, which trails it.
+  double _fingerX = 0;
+  double _pillX = 0;
+
+  /// The tab under the finger, for the tick when it changes.
+  int? _hovered;
+
+  /// Where a drag let go of the pill, so the move to the chosen tab starts
+  /// there rather than from the previous tab.
+  Rect? _releasedAt;
+
   @override
   void didUpdateWidget(LiquidNavigationBar oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectedIndex == widget.selectedIndex) return;
     // Leave from wherever the pill is now, even halfway through a move.
-    _start = _pillRect(oldWidget.selectedIndex, _start, _controller.value);
+    _start = _releasedAt ?? _pillRect(oldWidget.selectedIndex, _start, _controller.value);
+    _releasedAt = null;
+    _settle();
+  }
+
+  @override
+  void dispose() {
+    _dragTicker.dispose();
+    _dragFrame.dispose();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  /// Animates the pill from [_start] onto the selected tab.
+  void _settle() {
     final duration = AppMotion.of(context, AppMotion.long);
     if (duration == Duration.zero) {
       _controller.value = 1;
@@ -73,12 +114,6 @@ class _LiquidNavigationBarState extends State<LiquidNavigationBar> with SingleTi
       _controller.duration = duration;
       _controller.forward(from: 0);
     }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
   }
 
   void _register(int slot, BuildContext icon) => _icons[slot] = icon;
@@ -117,10 +152,104 @@ class _LiquidNavigationBarState extends State<LiquidNavigationBar> with SingleTi
     final left = lerpDouble(start.left, end.left, forward ? trail : lead)!;
     final right = lerpDouble(start.right, end.right, forward ? lead : trail)!;
     final centerY = lerpDouble(start.center.dy, end.center.dy, lead)!;
-    // Thinner while stretched, like a drop pulled along.
-    final stretch = ((right - left - end.width) / end.width).clamp(0.0, 1.0);
-    final height = end.height * (1 - 0.18 * stretch);
-    return Rect.fromLTRB(math.min(left, right), centerY - height / 2, math.max(left, right), centerY + height / 2);
+    return _squashed(math.min(left, right), math.max(left, right), centerY);
+  }
+
+  /// A pill spanning [left]–[right], thinner the more it's stretched, like
+  /// a drop pulled along.
+  Rect _squashed(double left, double right, double centerY) {
+    final stretch = ((right - left - _pillSize.width) / _pillSize.width).clamp(0.0, 1.0);
+    final height = _pillSize.height * (1 - 0.18 * stretch);
+    return Rect.fromLTRB(left, centerY - height / 2, right, centerY + height / 2);
+  }
+
+  /// The dragged pill: centred on [_pillX] and stretched back toward it
+  /// from the finger by how far it trails.
+  Rect _draggedRect() {
+    final centerY = _centers.whereType<Offset>().first.dy;
+    final lag = _fingerX - _pillX;
+    final half = _pillSize.width / 2;
+    final stretch = math.min(lag.abs() * 0.6, _pillSize.width * 0.8);
+    final left = _pillX - half - (lag < 0 ? stretch : 0);
+    final right = _pillX + half + (lag > 0 ? stretch : 0);
+    return _squashed(left, right, centerY);
+  }
+
+  Rect? _currentRect() => _dragging ? _draggedRect() : _pillRect(widget.selectedIndex, _start, _controller.value);
+
+  // ── Drag handling ──
+  // A Listener (outside the gesture arena) so the drag also works after a
+  // long hold, and taps on the destinations stay theirs: they cancel once
+  // the finger moves past the touch slop, which is when dragging starts.
+
+  bool get _canDrag => _centers.whereType<Offset>().length == widget.destinations.length;
+
+  int _tabAt(double x) {
+    var nearest = 0;
+    for (var i = 1; i < _centers.length; i++) {
+      if ((_centers[i]!.dx - x).abs() < (_centers[nearest]!.dx - x).abs()) nearest = i;
+    }
+    return nearest;
+  }
+
+  double _clampToTabs(double x) => x.clamp(_centers.first!.dx, _centers.last!.dx);
+
+  void _onPointerDown(PointerDownEvent event) {
+    if (_pointer != null) return;
+    _pointer = event.pointer;
+    _downAt = event.localPosition;
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    if (event.pointer != _pointer || !_canDrag) return;
+    if (!_dragging) {
+      if ((event.localPosition.dx - _downAt!.dx).abs() <= kTouchSlop) return;
+      _pillX = _currentRect()?.center.dx ?? _clampToTabs(event.localPosition.dx);
+      _hovered = widget.selectedIndex;
+      _dragging = true;
+      _lastTick = Duration.zero;
+      _dragTicker.start();
+    }
+    _fingerX = _clampToTabs(event.localPosition.dx);
+    final hovered = _tabAt(_fingerX);
+    if (hovered != _hovered) {
+      _hovered = hovered;
+      selectionHaptic();
+    }
+  }
+
+  void _onPointerUp(PointerUpEvent event) => _endDrag(event.pointer, select: true);
+
+  void _onPointerCancel(PointerCancelEvent event) => _endDrag(event.pointer, select: false);
+
+  void _endDrag(int pointer, {required bool select}) {
+    if (pointer != _pointer) return;
+    _pointer = null;
+    if (!_dragging) return;
+    final released = _draggedRect();
+    _dragging = false;
+    _dragTicker.stop();
+    final target = select ? _tabAt(_fingerX) : widget.selectedIndex;
+    if (target != widget.selectedIndex) {
+      // didUpdateWidget picks the move up from here.
+      _releasedAt = released;
+      widget.onDestinationSelected(target);
+    } else {
+      _start = released;
+      _settle();
+    }
+  }
+
+  void _followFinger(Duration elapsed) {
+    // Eases toward the finger by elapsed time (the same at 60 or 120 Hz),
+    // so the pill trails it and catches up when it stops. No trailing
+    // when animations are reduced.
+    final dt = (elapsed - _lastTick).inMicroseconds / Duration.microsecondsPerSecond;
+    _lastTick = elapsed;
+    final follow = AppMotion.reduced(context) ? 1.0 : 1 - math.exp(-dt / 0.06);
+    _pillX += (_fingerX - _pillX) * follow;
+    if ((_fingerX - _pillX).abs() < 0.5) _pillX = _fingerX;
+    _dragFrame.value++;
   }
 
   @override
@@ -141,8 +270,8 @@ class _LiquidNavigationBarState extends State<LiquidNavigationBar> with SingleTi
             child: CustomPaint(
               key: LiquidNavigationBar.pillKey,
               painter: _PillPainter(
-                progress: _controller,
-                rectAt: (t) => _pillRect(widget.selectedIndex, _start, t),
+                repaint: Listenable.merge([_controller, _dragFrame]),
+                rect: _currentRect,
                 color: colors.primary,
                 centers: _centers,
                 selectedIndex: widget.selectedIndex,
@@ -150,20 +279,31 @@ class _LiquidNavigationBarState extends State<LiquidNavigationBar> with SingleTi
             ),
           ),
         ),
-        NavigationBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          surfaceTintColor: Colors.transparent,
-          selectedIndex: widget.selectedIndex,
-          onDestinationSelected: widget.onDestinationSelected,
-          destinations: [
-            for (final (i, d) in widget.destinations.indexed)
-              NavigationDestination(
-                icon: _IconProbe(slot: i, register: _register, unregister: _unregister, child: d.icon),
-                selectedIcon: _IconProbe(slot: i, register: _register, unregister: _unregister, child: d.selectedIcon),
-                label: d.label,
-              ),
-          ],
+        Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: _onPointerDown,
+          onPointerMove: _onPointerMove,
+          onPointerUp: _onPointerUp,
+          onPointerCancel: _onPointerCancel,
+          child: NavigationBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            surfaceTintColor: Colors.transparent,
+            selectedIndex: widget.selectedIndex,
+            onDestinationSelected: widget.onDestinationSelected,
+            destinations: [
+              for (final (i, d) in widget.destinations.indexed)
+                NavigationDestination(
+                  icon: _IconProbe(slot: i, register: _register, unregister: _unregister, child: d.icon),
+                  selectedIcon:
+                      _IconProbe(slot: i, register: _register, unregister: _unregister, child: d.selectedIcon),
+                  label: d.label,
+                  // The label is always shown; a long-press tooltip would
+                  // only cover the bar while dragging along it.
+                  tooltip: '',
+                ),
+            ],
+          ),
         ),
       ],
     );
@@ -211,38 +351,36 @@ class _IconProbeState extends State<_IconProbe> {
 
 class _PillPainter extends CustomPainter {
   _PillPainter({
-    required this.progress,
-    required this.rectAt,
+    required Listenable repaint,
+    required this.rect,
     required this.color,
     required this.centers,
     required this.selectedIndex,
-  }) : super(repaint: progress);
+  }) : super(repaint: repaint);
 
-  final Animation<double> progress;
-  final Rect? Function(double t) rectAt;
+  final Rect? Function() rect;
   final Color color;
 
-  // Only compared in shouldRepaint: rectAt reads them.
+  // Only compared in shouldRepaint: rect reads them.
   final List<Offset?> centers;
   final int selectedIndex;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = rectAt(progress.value);
-    if (rect == null) return;
+    final pill = rect();
+    if (pill == null) return;
     final paint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [color.withValues(alpha: 0.26), color.withValues(alpha: 0.14)],
-      ).createShader(rect);
-    canvas.drawRRect(RRect.fromRectAndRadius(rect, Radius.circular(rect.height / 2)), paint);
+      ).createShader(pill);
+    canvas.drawRRect(RRect.fromRectAndRadius(pill, Radius.circular(pill.height / 2)), paint);
   }
 
   @override
   bool shouldRepaint(_PillPainter oldDelegate) =>
       oldDelegate.color != color ||
       oldDelegate.selectedIndex != selectedIndex ||
-      !identical(oldDelegate.centers, centers) ||
-      oldDelegate.progress != progress;
+      !identical(oldDelegate.centers, centers);
 }
