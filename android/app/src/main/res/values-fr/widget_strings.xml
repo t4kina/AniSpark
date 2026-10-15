@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home-screen widget (UpNextWidget.kt). -->
+<resources>
+    <string name="widget_name">À suivre</string>
+    <string name="widget_description">Les prochains épisodes de votre liste</string>
+    <string name="widget_up_next">À suivre</string>
+    <string name="widget_airing_soon">Bientôt diffusé</string>
+    <string name="widget_loading">Chargement…</string>
+    <string name="widget_error">Chargement impossible. Touchez pour ouvrir AniSpark.</string>
+    <string name="widget_empty">Rien de diffusé prochainement</string>
+    <string name="widget_episode_at">Ép. %1$d · %2$s</string>
+    <string name="widget_today">Aujourd\'hui</string>
+    <string name="widget_tomorrow">Demain</string>
+</resources>

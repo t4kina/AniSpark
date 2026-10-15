@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home-screen widget (UpNextWidget.kt). -->
+<resources>
+    <string name="widget_name">次のエピソード</string>
+    <string name="widget_description">リストから次に放送されるエピソード</string>
+    <string name="widget_up_next">次のエピソード</string>
+    <string name="widget_airing_soon">まもなく放送</string>
+    <string name="widget_loading">読み込み中…</string>
+    <string name="widget_error">読み込めませんでした。タップしてAniSparkを開きます。</string>
+    <string name="widget_empty">まもなく放送の作品はありません</string>
+    <string name="widget_episode_at">第%1$d話 · %2$s</string>
+    <string name="widget_today">今日</string>
+    <string name="widget_tomorrow">明日</string>
+</resources>

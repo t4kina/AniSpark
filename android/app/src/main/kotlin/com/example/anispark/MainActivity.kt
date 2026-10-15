@@ -10,15 +10,26 @@ import io.flutter.plugin.common.MethodChannel
 class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        val messenger = flutterEngine.dartExecutor.binaryMessenger
         // lib/services/device_calendar.dart
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "anispark/calendar")
-            .setMethodCallHandler { call, result ->
-                if (call.method == "addEvent") {
-                    result.success(openNewEvent(call.arguments as? Map<*, *> ?: emptyMap<Any, Any>()))
-                } else {
-                    result.notImplemented()
-                }
+        MethodChannel(messenger, "anispark/calendar").setMethodCallHandler { call, result ->
+            if (call.method == "addEvent") {
+                result.success(openNewEvent(call.arguments as? Map<*, *> ?: emptyMap<Any, Any>()))
+            } else {
+                result.notImplemented()
             }
+        }
+        // lib/services/home_widgets.dart
+        MethodChannel(messenger, "anispark/widgets").setMethodCallHandler { call, result ->
+            if (call.method == "configure") {
+                // The accent arrives as a Long when its alpha bit makes it too big for an Int.
+                val accent = call.argument<Number>("accent")?.toInt() ?: UpNextWidget.DEFAULT_ACCENT
+                UpNextWidget.configure(applicationContext, call.argument<String>("user"), accent)
+                result.success(null)
+            } else {
+                result.notImplemented()
+            }
+        }
     }
 
     /**

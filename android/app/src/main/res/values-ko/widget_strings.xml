@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home-screen widget (UpNextWidget.kt). -->
+<resources>
+    <string name="widget_name">다음 에피소드</string>
+    <string name="widget_description">내 목록에서 곧 방영될 에피소드</string>
+    <string name="widget_up_next">다음 에피소드</string>
+    <string name="widget_airing_soon">곧 방영</string>
+    <string name="widget_loading">불러오는 중…</string>
+    <string name="widget_error">불러오지 못했어요. 탭해서 AniSpark를 여세요.</string>
+    <string name="widget_empty">곧 방영될 작품이 없어요</string>
+    <string name="widget_episode_at">%1$d화 · %2$s</string>
+    <string name="widget_today">오늘</string>
+    <string name="widget_tomorrow">내일</string>
+</resources>

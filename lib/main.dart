@@ -11,6 +11,7 @@ import 'services/anilist_service.dart';
 import 'services/api_cache.dart';
 import 'services/auth_service.dart';
 import 'services/hive_cache_store.dart';
+import 'services/home_widgets.dart';
 import 'services/notification_service.dart';
 import 'services/secure_store.dart';
 import 'services/session_expiry.dart';
@@ -69,6 +70,8 @@ void main() async {
   });
   // Leftovers of a logout that was interrupted, e.g. by the app being killed.
   if (!authService.isLoggedIn) unawaited(apiCache.clear());
+  // The home-screen widget shows the logged-in user's list in their accent.
+  syncHomeWidgets(authService, settingsProvider);
 
   runApp(
     MultiProvider(
