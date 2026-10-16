@@ -50,3 +50,59 @@ workflows:
         notify:
           success: true
           failure: true
+
+  # The same build with the "Up next" home-screen widget (iOS 17+) embedded.
+  # Kept apart so ios-release always works while the widget is new. Signing
+  # it with a free Apple ID uses one more App ID for the widget.
+  ios-release-widget:
+    name: iOS Release with widget
+    max_build_duration: 60
+    environment:
+      flutter: 3.41.4
+      xcode: latest
+      cocoapods: default
+      vars:
+        BUNDLE_ID: "com.example.anispark"
+      groups:
+        - anilist_secrets
+    scripts:
+      - name: Get Flutter packages
+        script: flutter pub get
+
+      - name: Analyze and test
+        script: |
+          flutter analyze
+          flutter test
+
+      - name: Add the Up next widget extension
+        script: |
+          # The Xcode project is edited without Xcode, so the widget's target
+          # is added here (see the script); xcodeproj comes with CocoaPods.
+          gem list -i xcodeproj > /dev/null || gem install xcodeproj
+          ruby ios/scripts/add_up_next_widget.rb
+
+      - name: Install CocoaPods
+        script: |
+          cd ios && pod install
+
+      - name: Build iOS (no code sign)
+        script: |
+          flutter build ios --release --no-codesign \
+            --dart-define=ANILIST_CLIENT_ID=$ANILIST_CLIENT_ID
+
+      - name: Package .ipa for sideloading
+        script: |
+          cd build/ios/Release-iphoneos
+          rm -rf Payload AniSpark.ipa
+          mkdir Payload
+          cp -R Runner.app Payload/
+          zip -qry AniSpark.ipa Payload
+    artifacts:
+      - build/ios/Release-iphoneos/AniSpark.ipa
+    publishing:
+      email:
+        recipients:
+          - t4kina69@gmail.com
+        notify:
+          success: true
+          failure: true
