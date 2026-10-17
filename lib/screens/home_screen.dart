@@ -282,16 +282,13 @@ class _HomeScreenState extends State<HomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildShortcuts(lang),
+              const SizedBox(height: 12),
               if (_weeklySchedule.isNotEmpty) ...[
-                const SizedBox(height: 12),
                 _sectionHeader(tr('home_this_week', lang), lang, onSeeAll: _openCalendar),
                 const SizedBox(height: 10),
                 _buildWeeklySchedule(lang),
-                const SizedBox(height: 18),
-                const Divider(indent: 16, endIndent: 16),
-                const SizedBox(height: 10),
+                _groupDivider(),
               ],
-              const SizedBox(height: 12),
               _sectionHeader(tr('trending', lang), lang, browse: BrowseQuery.trending, items: _trending),
               const SizedBox(height: 10),
               _buildHorizontalRow(_trending, heroScope: 'home-trending'),
@@ -309,9 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
               _sectionHeader(tr('top_airing', lang), lang, browse: BrowseQuery.topAiring, items: _topAiring),
               const SizedBox(height: 10),
               _buildHorizontalRow(_topAiring, heroScope: 'home-top-airing'),
-              const SizedBox(height: 28),
-              const Divider(indent: 16, endIndent: 16),
-              const SizedBox(height: 16),
+              _groupDivider(above: _groupGap - _rowBottomPadding),
               _sectionHeader(tr('home_trending_manga', lang), lang,
                   browse: BrowseQuery.trendingManga, items: _trendingManga),
               const SizedBox(height: 10),
@@ -415,11 +410,25 @@ class _HomeScreenState extends State<HomeScreen> {
       );
   }
 
+  /// Room between Discover's groups (this week, anime, manga), the same
+  /// above and below the line between them.
+  static const _groupGap = 24.0;
+
+  /// Space the card rows leave under their cards.
+  static const _rowBottomPadding = 12.0;
+
+  /// The line between two groups, in the middle of [_groupGap] on each
+  /// side. [above] is less when the content above leaves room of its own.
+  Widget _groupDivider({double above = _groupGap}) => Padding(
+        padding: EdgeInsets.only(top: above, bottom: _groupGap),
+        child: const Divider(height: 1, indent: 16, endIndent: 16),
+      );
+
   Widget _buildHorizontalRow(List<dynamic> items, {required String heroScope}) => SizedBox(
         height: 222,
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
-          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: _rowBottomPadding),
           itemCount: items.length,
           itemBuilder: (_, i) => Padding(
             padding: const EdgeInsets.only(right: 10),
