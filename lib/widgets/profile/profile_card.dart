@@ -348,23 +348,25 @@ class _ProfileCardState extends State<ProfileCard> {
     );
   }
 
+  // The strip's labels are one short word or two (the icons say the rest),
+  // so the three stats line up.
   Widget _animeStrip(String lang) => _strip([
         _StripStat(icon: Icons.star_rounded, color: const Color(0xFFF5A524), text: _mean(widget.animeStats),
-            label: tr('affinity_mean_score', lang)),
+            label: tr('profile_stat_mean', lang)),
         _StripStat(icon: Icons.play_circle_fill_rounded, color: const Color(0xFF3B82F6),
             value: _int(widget.animeStats, 'episodesWatched'), label: tr('profile_episodes', lang)),
         _StripStat(icon: Icons.access_time_filled_rounded, color: const Color(0xFF8B5CF6),
             value: _int(widget.animeStats, 'minutesWatched') / 1440, fractionDigits: 1,
-            label: tr('days_watched', lang)),
+            label: tr('profile_stat_days', lang)),
       ]);
 
   Widget _mangaStrip(String lang) => _strip([
         _StripStat(icon: Icons.star_rounded, color: const Color(0xFFF5A524), text: _mean(widget.mangaStats),
-            label: tr('affinity_mean_score', lang)),
+            label: tr('profile_stat_mean', lang)),
         _StripStat(icon: Icons.menu_book_rounded, color: const Color(0xFF3B82F6),
             value: _int(widget.mangaStats, 'chaptersRead'), label: tr('profile_chapters', lang)),
         _StripStat(icon: Icons.library_books_rounded, color: const Color(0xFF8B5CF6),
-            value: _int(widget.mangaStats, 'volumesRead'), label: tr('profile_volumes_read', lang)),
+            value: _int(widget.mangaStats, 'volumesRead'), label: tr('profile_stat_volumes', lang)),
       ]);
 
   Widget _strip(List<Widget> stats) => _Glass(
@@ -405,9 +407,11 @@ class _StripStat extends StatelessWidget {
   final String? text;
   final int fractionDigits;
 
+  static const _valueHeight = 22.0;
+
   @override
   Widget build(BuildContext context) {
-    const valueStyle = TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white);
+    const valueStyle = TextStyle(fontSize: 17, height: 1.2, fontWeight: FontWeight.bold, color: Colors.white);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -417,18 +421,27 @@ class _StripStat extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // A fixed height, so a long value that shrinks to fit doesn't
+              // lift its label above the others.
+              SizedBox(
+                height: _valueHeight,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: text != null
+                      ? Text(text!, style: valueStyle)
+                      : CountUpText(value!, fractionDigits: fractionDigits, style: valueStyle),
+                ),
+              ),
+              const SizedBox(height: 2),
+              // Shrinks a little on a narrow phone rather than wrap.
               FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
-                child: text != null
-                    ? Text(text!, style: valueStyle)
-                    : CountUpText(value!, fractionDigits: fractionDigits, style: valueStyle),
+                child: Text(label,
+                    maxLines: 1,
+                    style: TextStyle(fontSize: 11.5, height: 1.2, color: Colors.white.withValues(alpha: 0.72))),
               ),
-              const SizedBox(height: 2),
-              Text(label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11.5, height: 1.2, color: Colors.white.withValues(alpha: 0.72))),
             ],
           ),
         ),

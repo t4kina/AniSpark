@@ -26,8 +26,9 @@ void main() {
     String? avatar = _avatar,
     String? scoreFormat,
     ValueChanged<String>? onCountTap,
+    double width = 800,
   }) async {
-    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.physicalSize = Size(width, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(MaterialApp(
@@ -101,6 +102,16 @@ void main() {
 
     expect(find.text('78'), findsOneWidget);
     expect(find.text('7.8'), findsNothing);
+  });
+
+  testWidgets('every stat label stays on one line, even on a narrow phone', (tester) async {
+    await pumpCard(tester, width: 320);
+
+    final labels = ['Mean score', 'Episodes', 'Days'];
+    final heights = [for (final label in labels) tester.getSize(find.text(label)).height];
+    expect(heights.toSet(), hasLength(1), reason: 'a wrapped label is taller: $heights');
+    final tops = [for (final label in labels) tester.getTopLeft(find.text(label)).dy];
+    expect(tops.toSet(), hasLength(1), reason: 'the labels line up: $tops');
   });
 
   testWidgets('the anime and manga counts open their lists', (tester) async {
