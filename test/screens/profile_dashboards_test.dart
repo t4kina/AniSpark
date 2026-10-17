@@ -72,6 +72,25 @@ void main() {
     }
   });
 
+  testWidgets('scores are rows of bars, highest first, with how many titles got each', (tester) async {
+    await _pumpProfile(
+      tester,
+      _StatsAuth(scoreFormat: 'POINT_10_DECIMAL', animeScores: [
+        {'score': 60, 'count': 1},
+        {'score': 85, 'count': 4},
+        {'score': 100, 'count': 2},
+      ]),
+    );
+    await _expand(tester, 'SCORE DISTRIBUTION');
+
+    final highest = tester.getTopLeft(find.text('10.0')).dy;
+    final middle = tester.getTopLeft(find.text('8.5')).dy;
+    final lowest = tester.getTopLeft(find.text('6.0')).dy;
+    expect(highest, lessThan(middle));
+    expect(middle, lessThan(lowest));
+    expect(find.text('4'), findsOneWidget, reason: 'the count beside its bar');
+  });
+
   testWidgets('a 100-point user reads 100-point labels', (tester) async {
     await _pumpProfile(
       tester,

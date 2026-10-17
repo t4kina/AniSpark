@@ -727,10 +727,10 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  /// One bar per score the user has given, as tall as how often they gave
-  /// it, labelled in their score format. Bars keep a slim width however few
-  /// there are; past a dozen different scores they're grouped by whole
-  /// point so they stay readable.
+  /// One row per score the user has given, highest first: the score in
+  /// their format, a bar as long as how often they gave it, and the count.
+  /// Past a dozen different scores they're grouped by whole point so the
+  /// list stays short.
   Widget _scoreChart(List<dynamic>? raw, String lang, String? scoreFormat) {
     final counts = <int, int>{};
     for (final e in (raw ?? const []).cast<Map<String, dynamic>>()) {
@@ -750,54 +750,44 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                   .where((e) => ((e.key - 1) ~/ 10 + 1) * 10 == score)
                   .fold<int>(0, (sum, e) => sum + e.value),
           };
-    final bars = grouped.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
+    final bars = grouped.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
     final maxCount = bars.map((e) => e.value).reduce(math.max);
-    final accent = Theme.of(context).colorScheme.primary;
-    return SizedBox(
-      height: 80,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (final bar in bars)
-            Flexible(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 36),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 2),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      Tooltip(
-                        message: '${bar.value}',
-                        child: Container(
-                          height: math.max(4, 56 * bar.value / maxCount),
-                          decoration: BoxDecoration(
-                            borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                accent.withValues(alpha: 0.55 + 0.45 * bar.value / maxCount),
-                                accent.withValues(alpha: 0.25 + 0.25 * bar.value / maxCount),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(_statScore(bar.key, scoreFormat),
-                            maxLines: 1, style: const TextStyle(fontSize: 9, color: Colors.grey)),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+    return Column(
+      children: [
+        for (final (i, bar) in bars.indexed)
+          Padding(
+            padding: EdgeInsets.only(top: i == 0 ? 0 : 8),
+            child: _countBarRow(
+              label: _statScore(bar.key, scoreFormat),
+              labelWidth: 40,
+              ratio: bar.value / maxCount,
+              count: bar.value,
             ),
-        ],
-      ),
+          ),
+      ],
+    );
+  }
+
+  /// [label], a bar filled to [ratio] and [count] at its end: a row of the
+  /// score and era cards.
+  Widget _countBarRow({
+    required String label,
+    required double labelWidth,
+    required double ratio,
+    required int count,
+  }) {
+    const style = TextStyle(fontSize: 11, color: Colors.grey, fontFeatures: [FontFeature.tabularFigures()]);
+    return Row(
+      children: [
+        SizedBox(width: labelWidth, child: Text(label, maxLines: 1, style: style)),
+        const SizedBox(width: 8),
+        Expanded(child: _dashboardBar(ratio)),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 30,
+          child: Text('$count', textAlign: TextAlign.end, style: style.copyWith(fontWeight: FontWeight.w600)),
+        ),
+      ],
     );
   }
 
@@ -820,7 +810,6 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final sortedBuckets = buckets.entries.toList()
       ..sort((a, b) => b.key.compareTo(a.key));
     final maxCount = sortedBuckets.map((e) => e.value).reduce(math.max);
-    const label = TextStyle(fontSize: 11, color: Colors.grey, fontFeatures: [FontFeature.tabularFigures()]);
 
     return _dashboardCard(
       title: tr('profile_titles_by_era', lang),
@@ -833,18 +822,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           for (final (i, entry) in sortedBuckets.indexed)
             Padding(
               padding: EdgeInsets.only(top: i == 0 ? 0 : 10),
-              child: Row(
-                children: [
-                  SizedBox(width: 72, child: Text('${entry.key}–${entry.key + 4}', style: label)),
-                  const SizedBox(width: 8),
-                  Expanded(child: _dashboardBar(entry.value / maxCount)),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 30,
-                    child: Text('${entry.value}',
-                        textAlign: TextAlign.end, style: label.copyWith(fontWeight: FontWeight.w600)),
-                  ),
-                ],
+              child: _countBarRow(
+                label: '${entry.key}–${entry.key + 4}',
+                labelWidth: 72,
+                ratio: entry.value / maxCount,
+                count: entry.value,
               ),
             ),
         ],
