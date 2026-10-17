@@ -816,8 +816,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     }
     if (buckets.isEmpty) return const SizedBox.shrink();
 
+    // Newest first: what the user watches now leads.
     final sortedBuckets = buckets.entries.toList()
-      ..sort((a, b) => a.key.compareTo(b.key));
+      ..sort((a, b) => b.key.compareTo(a.key));
     final maxCount = sortedBuckets.map((e) => e.value).reduce(math.max);
     const label = TextStyle(fontSize: 11, color: Colors.grey, fontFeatures: [FontFeature.tabularFigures()]);
 

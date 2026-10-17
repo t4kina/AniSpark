@@ -126,7 +126,7 @@ void main() {
     expect(rect.right, lessThanOrEqualTo(screenWidth), reason: 'today is visible without scrolling');
   });
 
-  testWidgets('eras are listed oldest first with their counts', (tester) async {
+  testWidgets('eras are listed newest first with their counts', (tester) async {
     await _pumpProfile(
       tester,
       _StatsAuth(scoreFormat: 'POINT_10_DECIMAL', animeScores: const []),
@@ -135,7 +135,7 @@ void main() {
 
     final early = tester.getTopLeft(find.text('1995–1999'));
     final late = tester.getTopLeft(find.text('2020–2024'));
-    expect(early.dy, lessThan(late.dy));
+    expect(late.dy, lessThan(early.dy));
     expect(find.text('4'), findsOneWidget);
   });
 }
