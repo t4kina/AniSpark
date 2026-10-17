@@ -1,24 +1,35 @@
-import 'dart:ui' show ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../utils/external_url.dart';
+import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
+import '../services/api_cache.dart';
 import '../services/auth_service.dart';
+import '../utils/haptics.dart';
+import '../utils/score_utils.dart';
+import '../utils/translations.dart' show tr, trf;
+import '../widgets/motion/fade_switcher.dart';
 import '../widgets/overlay_button.dart';
+import '../widgets/profile/affinity_card.dart';
+import '../widgets/profile/favourite_cards.dart';
+import '../widgets/profile/profile_card.dart';
 import 'detail_screen.dart';
-import 'character_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final int userId;
   final String name;
   final String? avatarUrl;
 
+  /// Talks to AniList; tests pass one with a mock client.
+  final AniListService? service;
+
   const UserProfileScreen({
     super.key,
     required this.userId,
     required this.name,
     this.avatarUrl,
+    this.service,
   });
 
   @override
@@ -26,10 +37,14 @@ class UserProfileScreen extends StatefulWidget {
 }
 
 class _UserProfileScreenState extends State<UserProfileScreen> {
-  final _service = AniListService();
+  late final _service = widget.service ?? AniListService();
+
   Map<String, dynamic>? _profile;
   List<dynamic> _recentActivity = [];
   bool _loading = true;
+  // ToggleFollow flips whatever AniList has, so the follow button waits for a
+  // fresh profile instead of trusting a possibly stale cached isFollowing.
+  bool _profileIsFresh = false;
   bool _isFollowing = false;
   bool _isFollower = false;
   bool _togglingFollow = false;
@@ -41,146 +56,188 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
+  /// Cache key for data that depends on who is looking (isFollowing etc.).
+  String _viewerKey(String name) {
+    final viewerId = context.read<AuthService>().user?['id'] as int?;
+    final key = '$name:${widget.userId}';
+    return viewerId != null ? ApiCache.userKey(viewerId, key) : 'anon:$key';
+  }
+
   Future<void> _load() async {
     final auth = context.read<AuthService>();
     final token = auth.isLoggedIn ? auth.token : null;
-    final results = await Future.wait([
-      _service.getPublicUserProfile(widget.userId, token: token),
-      _service.getUserRecentActivity(widget.userId, token: token),
-    ]);
-    if (!mounted) return;
-    final data = results[0] as Map<String, dynamic>?;
-    setState(() {
-      _profile = data;
-      _recentActivity = results[1] as List<dynamic>;
-      _isFollowing = data?['isFollowing'] == true;
-      _isFollower = data?['isFollower'] == true;
-      _loading = false;
-    });
+    final cache = context.read<ApiCache>();
+    final profileKey = _viewerKey('profile');
+    final activityKey = _viewerKey('activity');
+    try {
+      await Future.wait([
+        _loadProfile(cache, profileKey, token),
+        _loadActivity(cache, activityKey, token),
+      ]);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadProfile(ApiCache cache, String key, String? token) async {
+    try {
+      await cache.load<Map<String, dynamic>?>(
+        key: key,
+        fetch: () => _service.getPublicUserProfile(widget.userId, token: token),
+        decode: (json) => (json as Map).cast<String, dynamic>(),
+        onData: (data, {required isFresh}) {
+          if (!mounted) return;
+          setState(() {
+            _profile = data;
+            _profileIsFresh = isFresh;
+            _isFollowing = data?['isFollowing'] == true;
+            _isFollower = data?['isFollower'] == true;
+            _loading = false;
+          });
+        },
+        isValid: (data) => data != null,
+      );
+    } on Exception catch (e) {
+      debugPrint('[UserProfileScreen] Loading profile ${widget.userId} failed: $e');
+    }
+  }
+
+  Future<void> _loadActivity(ApiCache cache, String key, String? token) async {
+    try {
+      await cache.load<List<dynamic>>(
+        key: key,
+        fetch: () => _service.getUserRecentActivity(widget.userId, token: token),
+        decode: (json) => json as List<dynamic>,
+        onData: (activity, {required isFresh}) {
+          if (mounted) setState(() => _recentActivity = activity);
+        },
+      );
+    } on Exception catch (e) {
+      debugPrint('[UserProfileScreen] Loading activity of ${widget.userId} failed: $e');
+    }
+  }
+
+  void _retry() {
+    setState(() => _loading = true);
+    _load();
   }
 
   Future<void> _toggleFollow() async {
     final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn || _togglingFollow) return;
+    final token = auth.token;
+    if (!auth.isLoggedIn || token == null || _togglingFollow) return;
+    final cache = context.read<ApiCache>();
+    final profileKey = _viewerKey('profile');
+    final lang = context.read<SettingsProvider>().language;
+    final messenger = ScaffoldMessenger.of(context);
+    final wasFollowing = _isFollowing;
     setState(() => _togglingFollow = true);
-    final nowFollowing = await _service.toggleFollow(widget.userId, auth.token!);
-    if (mounted) setState(() { _isFollowing = nowFollowing; _togglingFollow = false; });
+    bool? result;
+    try {
+      result = await _service.toggleFollow(widget.userId, token);
+    } on Exception catch (e) {
+      debugPrint('[UserProfileScreen] Toggling follow failed: $e');
+    }
+    // toggleFollow also reports an HTTP error as "not following", so an
+    // unchanged state means the toggle didn't go through.
+    if (result == null || result == wasFollowing) {
+      if (!mounted) return;
+      setState(() => _togglingFollow = false);
+      messenger.showSnackBar(SnackBar(content: Text(tr('save_failed', lang))));
+      return;
+    }
+    final nowFollowing = result;
+    if (nowFollowing) lightHaptic();
+    final profile = _profile;
+    final updated =
+        profile == null ? null : {...profile, 'isFollowing': nowFollowing};
+    if (mounted) {
+      setState(() {
+        if (updated != null) _profile = updated;
+        _isFollowing = nowFollowing;
+        _togglingFollow = false;
+      });
+    }
+    if (updated == null) return;
+    try {
+      // So the next visit doesn't flash the old follow state.
+      await cache.write(profileKey, updated);
+    } on Exception catch (e) {
+      debugPrint('[UserProfileScreen] Caching the follow state failed: $e');
+    }
   }
 
-  Future<void> _openAniListProfile() async {
-    final uri = Uri.parse('https://anilist.co/user/${widget.name}');
-    if (await canLaunchUrl(uri)) launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+  Future<void> _openAniListProfile() =>
+      openExternalUrl('https://anilist.co/user/${Uri.encodeComponent(widget.name)}');
 
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthService>();
-    final isOwnProfile = auth.isLoggedIn && auth.user?['id'] == widget.userId;
+    final lang = context.watch<SettingsProvider>().language;
 
     return Scaffold(
       body: Stack(
         children: [
-          _loading ? _buildShimmer() : _buildContent(),
+          FadeSwitcher(
+            child: _loading
+                ? KeyedSubtree(key: const ValueKey('uprof-loading'), child: _buildShimmer())
+                : _buildContent(lang),
+          ),
+          // 44px touch target around a 36px circle, so the offset is 4px smaller.
           Positioned(
-            top: MediaQuery.of(context).padding.top + 6,
-            left: 12,
+            top: MediaQuery.of(context).padding.top + 2,
+            left: 8,
             child: overlayBtn(
               icon: Icons.arrow_back,
+              tooltip: tr('tooltip_back', lang),
               onPressed: () => Navigator.pop(context),
             ),
           ),
-          if (!_loading && auth.isLoggedIn && !isOwnProfile)
-            Positioned(
-              top: MediaQuery.of(context).padding.top + 6,
-              right: 12,
-              child: _followButton(context),
-            ),
         ],
       ),
     );
   }
 
-  Widget _followButton(BuildContext context) {
-    if (_isFollowing) {
-      return PopupMenuButton<String>(
-        padding: EdgeInsets.zero,
-        color: Theme.of(context).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        offset: const Offset(0, 44),
-        onSelected: (val) {
-          if (val == 'unfollow') _toggleFollow();
-          if (val == 'block' || val == 'report') _openAniListProfile();
-        },
-        itemBuilder: (_) => [
-          const PopupMenuItem(
-            value: 'unfollow',
-            child: Row(children: [
-              Icon(Icons.person_remove_outlined, size: 16, color: Colors.red),
-              SizedBox(width: 10),
-              Text('Unfollow', style: TextStyle(color: Colors.red, fontSize: 13)),
-            ]),
+  /// Unfollow (when following), block and report; the last two are done
+  /// on AniList's site.
+  void _showProfileActions(BuildContext context, String lang) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheet) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_isFollowing)
+                ListTile(
+                  leading: const Icon(Icons.person_remove_outlined, color: Colors.red),
+                  title: Text(tr('uprof_unfollow', lang), style: const TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.pop(sheet);
+                    _toggleFollow();
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.block_outlined),
+                title: Text(tr('uprof_block', lang)),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  _openAniListProfile();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.flag_outlined),
+                title: Text(tr('uprof_report', lang)),
+                onTap: () {
+                  Navigator.pop(sheet);
+                  _openAniListProfile();
+                },
+              ),
+            ],
           ),
-          const PopupMenuItem(
-            value: 'block',
-            child: Row(children: [
-              Icon(Icons.block_outlined, size: 16, color: Colors.grey),
-              SizedBox(width: 10),
-              Text('Block', style: TextStyle(fontSize: 13)),
-            ]),
-          ),
-          const PopupMenuItem(
-            value: 'report',
-            child: Row(children: [
-              Icon(Icons.flag_outlined, size: 16, color: Colors.grey),
-              SizedBox(width: 10),
-              Text('Report', style: TextStyle(fontSize: 13)),
-            ]),
-          ),
-        ],
-        child: _pillBtn(
-          label: _togglingFollow ? 'Following…' : 'Following',
-          icon: Icons.check,
-          filled: true,
-          trailing: const Icon(Icons.keyboard_arrow_down_rounded,
-              size: 16, color: Colors.white),
         ),
-      );
-    }
-
-    return GestureDetector(
-      onTap: _toggleFollow,
-      child: _pillBtn(
-        label: _togglingFollow ? '…' : 'Follow',
-        icon: Icons.person_add_outlined,
-        filled: false,
-      ),
-    );
-  }
-
-  Widget _pillBtn({
-    required String label,
-    required IconData icon,
-    required bool filled,
-    Widget? trailing,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: filled ? cs.primary : Colors.black.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(20),
-        border: filled ? null : Border.all(color: Colors.white.withValues(alpha: 0.6)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: Colors.white),
-          const SizedBox(width: 5),
-          Text(label,
-              style: const TextStyle(
-                  color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
-          if (trailing != null) ...[const SizedBox(width: 2), trailing],
-        ],
       ),
     );
   }
@@ -208,11 +265,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(String lang) {
     final p = _profile;
-    if (p == null) {
-      return const Center(child: Text('Could not load profile.'));
-    }
+    if (p == null) return _LoadErrorView(key: const ValueKey('uprof-error'), onRetry: _retry);
 
     final banner = p['bannerImage'] as String?;
     final avatar = p['avatar']?['large'] as String? ?? widget.avatarUrl;
@@ -221,12 +276,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final mangaStats = p['statistics']?['manga'] as Map<String, dynamic>?;
 
     final totalAnime = (animeStats?['count'] as num?)?.toInt() ?? 0;
-    final episodesWatched = (animeStats?['episodesWatched'] as num?)?.toInt() ?? 0;
-    final minutesWatched = (animeStats?['minutesWatched'] as num?)?.toInt() ?? 0;
-    final daysWatched = (minutesWatched / 1440).toStringAsFixed(1);
     final totalManga = (mangaStats?['count'] as num?)?.toInt() ?? 0;
-    final chaptersRead = (mangaStats?['chaptersRead'] as num?)?.toInt() ?? 0;
-    final volumesRead = (mangaStats?['volumesRead'] as num?)?.toInt() ?? 0;
 
     final favAnime = (p['favourites']?['anime']?['nodes'] as List<dynamic>?) ?? [];
     final favManga = (p['favourites']?['manga']?['nodes'] as List<dynamic>?) ?? [];
@@ -241,163 +291,60 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         .toList();
 
     final about = (p['about'] as String? ?? '').trim();
-
-    final surface = Theme.of(context).colorScheme.surface;
-    final outline = Theme.of(context).colorScheme.outline;
-    final topPadding = MediaQuery.of(context).padding.top;
+    final auth = context.watch<AuthService>();
+    final canFollow = _profileIsFresh && auth.isLoggedIn && auth.user?['id'] != widget.userId;
 
     return CustomScrollView(
+      key: const ValueKey('uprof-content'),
       slivers: [
-        // ── Header card ───────────────────────────────────────────────
+        // ── Who they are and their stats, on their banner ───────────
         SliverToBoxAdapter(
-          child: Container(
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(24),
-                bottomRight: Radius.circular(24),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.14),
-                  blurRadius: 18,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                Stack(
-                  alignment: Alignment.bottomCenter,
-                  children: [
-                    SizedBox(
-                      height: 200 + topPadding,
-                      width: double.infinity,
-                      child: banner != null
-                          ? CachedNetworkImage(
-                              imageUrl: banner,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 800,
-                              placeholder: (ctx, _) => Container(
-                                  color: Theme.of(ctx).colorScheme.surfaceContainerHighest),
-                              errorWidget: (_, _, _) => Container(
-                                  color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                            )
-                          : Container(
-                              color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                    ),
-                    Positioned.fill(
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              surface.withValues(alpha: 0.6),
-                              surface,
-                            ],
-                            stops: const [0.3, 0.7, 1.0],
-                          ),
-                        ),
+          child: ProfileCard(
+            name: name,
+            lang: lang,
+            avatarUrl: avatar,
+            bannerUrl: banner,
+            animeStats: animeStats,
+            mangaStats: mangaStats,
+            scoreFormat: scoreFormatOf(auth.user),
+            nameTag: _isFollower ? tr('uprof_follows_you', lang) : null,
+            // Room for the back button above the card.
+            topGap: 52,
+            onCountTap: (type) {
+              final count = type == 'MANGA' ? totalManga : totalAnime;
+              if (count > 0) _showListSheet(context, type);
+            },
+            cornerButton: canFollow
+                ? ProfileCard.roundButton(
+                    icon: Icons.more_horiz_rounded,
+                    tooltip: tr('tooltip_more', lang),
+                    onPressed: () => _showProfileActions(context, lang),
+                  )
+                : null,
+            actions: [
+              if (canFollow)
+                _isFollowing
+                    ? ProfileCard.secondaryButton(
+                        label: '${tr('uprof_following_button', lang)}${_togglingFollow ? '…' : ''}',
+                        icon: Icons.check_rounded,
+                        trailing: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.white),
+                        onPressed: () => _showProfileActions(context, lang),
+                      )
+                    : ProfileCard.primaryButton(
+                        label: _togglingFollow ? '…' : tr('uprof_follow', lang),
+                        icon: Icons.person_add_alt_1_rounded,
+                        onPressed: _togglingFollow ? null : _toggleFollow,
                       ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: surface, width: 3),
-                            ),
-                            child: CircleAvatar(
-                              radius: 40,
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.surfaceContainerHighest,
-                              backgroundImage: avatar != null
-                                  ? CachedNetworkImageProvider(avatar)
-                                  : null,
-                              child: avatar == null
-                                  ? const Icon(Icons.person, size: 40, color: Colors.grey)
-                                  : null,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            name,
-                            style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.onSurface),
-                          ),
-                          if (_isFollower) ...[
-                            const SizedBox(height: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary,
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const Text(
-                                'Follows You',
-                                style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600),
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                // ── Stats card ─────────────────────────────────────────
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: outline),
-                    ),
-                    child: Column(
-                      children: [
-                        IntrinsicHeight(
-                          child: Row(children: [
-                            _tappableStat('$totalAnime', 'Anime', totalAnime > 0
-                                ? () => _showListSheet(context, 'ANIME') : null),
-                            _vDiv(outline),
-                            _stat('$episodesWatched', 'Episodes'),
-                            _vDiv(outline),
-                            _stat(daysWatched, 'Days Watched'),
-                          ]),
-                        ),
-                        Divider(height: 1, color: outline),
-                        IntrinsicHeight(
-                          child: Row(children: [
-                            _tappableStat('$totalManga', 'Manga', totalManga > 0
-                                ? () => _showListSheet(context, 'MANGA') : null),
-                            _vDiv(outline),
-                            _stat('$chaptersRead', 'Chapters'),
-                            _vDiv(outline),
-                            _stat('$volumesRead', 'Volumes Read'),
-                          ]),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
+            ],
           ),
         ),
 
+        // ── Affinity with the viewer (hides itself when not applicable) ──
+        SliverToBoxAdapter(child: AffinityCard(userId: widget.userId, userName: name)),
+
         // ── Bio ────────────────────────────────────────────────────────
         if (about.isNotEmpty)
-          SliverToBoxAdapter(child: _buildBio(about)),
+          SliverToBoxAdapter(child: _buildBio(about, lang)),
 
         // ── Top genres ─────────────────────────────────────────────────
         if (topGenres.isNotEmpty)
@@ -408,8 +355,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
-              child: const Text('FAVOURITE ANIME',
-                  style: TextStyle(
+              child: Text(tr('favorite_anime', lang),
+                  style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: Colors.grey,
@@ -423,7 +370,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: favAnime.length,
-                itemBuilder: (_, i) => _animeFavCard(favAnime[i]),
+                itemBuilder: (_, i) => FavouriteMediaCard(
+                  media: favAnime[i] as Map<String, dynamic>,
+                  heroScope: 'uprof-favs-anime',
+                ),
               ),
             ),
           ),
@@ -434,8 +384,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-              child: const Text('FAVOURITE MANGA',
-                  style: TextStyle(
+              child: Text(tr('uprof_favorite_manga', lang),
+                  style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: Colors.grey,
@@ -449,7 +399,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: favManga.length,
-                itemBuilder: (_, i) => _animeFavCard(favManga[i]),
+                itemBuilder: (_, i) => FavouriteMediaCard(
+                  media: favManga[i] as Map<String, dynamic>,
+                  heroScope: 'uprof-favs-manga',
+                ),
               ),
             ),
           ),
@@ -460,8 +413,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-              child: const Text('FAVOURITE CHARACTERS',
-                  style: TextStyle(
+              child: Text(tr('favorite_characters', lang),
+                  style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: Colors.grey,
@@ -475,7 +428,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemCount: favChars.length,
-                itemBuilder: (_, i) => _charFavCard(favChars[i]),
+                itemBuilder: (_, i) => FavouriteCharacterCard(
+                  character: favChars[i] as Map<String, dynamic>,
+                ),
               ),
             ),
           ),
@@ -486,14 +441,14 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
-              child: const Text('RECENT ACTIVITY',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+              child: Text(tr('uprof_recent_activity', lang),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
                       color: Colors.grey, letterSpacing: 0.5)),
             ),
           ),
           SliverList(
             delegate: SliverChildBuilderDelegate(
-              (_, i) => _recentActivityRow(_recentActivity[i]),
+              (_, i) => _recentActivityRow(_recentActivity[i], lang),
               childCount: _recentActivity.length,
             ),
           ),
@@ -504,7 +459,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildBio(String about) {
+  Widget _buildBio(String about, String lang) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
@@ -519,8 +474,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('ABOUT',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
+            Text(tr('uprof_about', lang),
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600,
                     color: Colors.grey, letterSpacing: 0.5)),
             const SizedBox(height: 8),
             AnimatedCrossFade(
@@ -540,7 +495,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               GestureDetector(
                 onTap: () => setState(() => _bioExpanded = !_bioExpanded),
                 child: Text(
-                  _bioExpanded ? 'Show less' : 'Show more',
+                  tr(_bioExpanded ? 'uprof_show_less' : 'uprof_show_more', lang),
                   style: TextStyle(fontSize: 12, color: cs.primary,
                       fontWeight: FontWeight.w600),
                 ),
@@ -574,16 +529,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _recentActivityRow(dynamic activity) {
+  Widget _recentActivityRow(dynamic activity, String lang) {
     final type = activity['type'] as String?;
     final createdAt = activity['createdAt'] as int? ?? 0;
     final diff = DateTime.now()
         .difference(DateTime.fromMillisecondsSinceEpoch(createdAt * 1000));
     final timeStr = diff.inMinutes < 60
-        ? '${diff.inMinutes}m ago'
+        ? trf('feed_minutes_ago', lang, {'n': diff.inMinutes})
         : diff.inHours < 24
-            ? '${diff.inHours}h ago'
-            : '${diff.inDays}d ago';
+            ? trf('feed_hours_ago', lang, {'n': diff.inHours})
+            : trf('feed_days_ago', lang, {'n': diff.inDays});
 
     if (type == 'TEXT') {
       final text = activity['text'] as String? ?? '';
@@ -613,7 +568,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     final status = activity['status'] as String? ?? '';
     final progress = activity['progress'];
     final cover = media?['coverImage']?['medium'] as String?;
-    final title = (media?['title']?['english'] ?? media?['title']?['romaji'] ?? '') as String;
+    final title = context.read<SettingsProvider>().resolveTitle(media?['title'] as Map<String, dynamic>?);
     final mediaId = media?['id'] as int?;
     final isAnime = media?['type'] == 'ANIME';
     final actionText = progress != null ? '$status $progress' : status;
@@ -669,84 +624,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _stat(String value, String label) => Expanded(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(value,
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 2),
-              Text(label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
-            ],
-          ),
-        ),
-      );
-
-  Widget _tappableStat(String value, String label, VoidCallback? onTap) {
-    final cs = Theme.of(context).colorScheme;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Expanded(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 10),
-        child: GestureDetector(
-          onTap: onTap,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withValues(alpha: 0.08)
-                      : Colors.black.withValues(alpha: 0.05),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withValues(alpha: 0.12)
-                        : Colors.black.withValues(alpha: 0.08),
-                    width: 0.8,
-                  ),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(value,
-                        style: TextStyle(
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                            color: cs.primary)),
-                    const SizedBox(height: 2),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(label,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                                color: Colors.grey, fontSize: 10, letterSpacing: 0.2)),
-                        const SizedBox(width: 3),
-                        Icon(Icons.chevron_right_rounded, size: 12, color: Colors.grey.withValues(alpha: 0.7)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-
-  Widget _vDiv(Color color) => VerticalDivider(width: 1, thickness: 1, color: color);
-
   void _showListSheet(BuildContext context, String type) {
     showModalBottomSheet(
       context: context,
@@ -756,96 +633,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         userId: widget.userId,
         type: type,
         service: _service,
-      ),
-    );
-  }
-
-  Widget _animeFavCard(dynamic anime) {
-    final a = anime as Map<String, dynamic>;
-    final id = a['id'] as int?;
-    final image = a['coverImage']?['large'] as String?;
-    final title =
-        (a['title']?['english'] ?? a['title']?['romaji'] ?? '') as String;
-    return Padding(
-      padding: const EdgeInsets.only(right: 10),
-      child: GestureDetector(
-        onTap: id != null
-            ? () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)))
-            : null,
-        child: SizedBox(
-          width: 100,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        width: 100,
-                        height: 140,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 200,
-                      )
-                    : Container(
-                        width: 100,
-                        height: 140,
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest),
-              ),
-              const SizedBox(height: 4),
-              Text(title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 11)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _charFavCard(dynamic char) {
-    final c = char as Map<String, dynamic>;
-    final id = c['id'] as int?;
-    final image = c['image']?['medium'] as String?;
-    final name = c['name']?['full'] as String? ?? '';
-    return Padding(
-      padding: const EdgeInsets.only(right: 10),
-      child: GestureDetector(
-        onTap: id != null
-            ? () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => CharacterScreen(
-                    characterId: id, name: name, imageUrl: image)))
-            : null,
-        child: SizedBox(
-          width: 80,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 160,
-                      )
-                    : Container(
-                        width: 80,
-                        height: 80,
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest),
-              ),
-              const SizedBox(height: 4),
-              Text(name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 10)),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -873,15 +660,20 @@ class _UserListSheetState extends State<_UserListSheet>
   late final TabController _tabs;
   Map<String, List<dynamic>>? _lists;
   bool _loading = true;
+  bool _hasError = false;
+  bool _isPrivate = false;
 
   static const _statuses = ['CURRENT', 'COMPLETED', 'DROPPED', 'PAUSED', 'PLANNING'];
-  static const _labels = {
-    'CURRENT': 'Watching',
-    'COMPLETED': 'Completed',
-    'DROPPED': 'Dropped',
-    'PAUSED': 'Paused',
-    'PLANNING': 'Planning',
-  };
+
+  /// Translation key of each status tab, worded like the user's own lists.
+  static String _labelKey(String status, {required bool isAnime}) =>
+      switch (status) {
+        'CURRENT' => isAnime ? 'watching' : 'reading',
+        'COMPLETED' => 'completed',
+        'DROPPED' => 'dropped',
+        'PAUSED' => 'on_hold',
+        _ => isAnime ? 'plan_to_watch' : 'plan_to_read',
+      };
 
   @override
   void initState() {
@@ -897,13 +689,28 @@ class _UserListSheetState extends State<_UserListSheet>
   }
 
   Future<void> _load() async {
-    final data = await widget.service.getPublicUserList(widget.userId, widget.type);
-    if (mounted) setState(() { _lists = data; _loading = false; });
+    try {
+      final data = await widget.service.getPublicUserList(widget.userId, widget.type);
+      if (mounted) setState(() { _lists = data; _loading = false; });
+    } on Exception catch (e) {
+      // AniList answers 404 for private (or deleted) users.
+      final isPrivate = e is AniListRequestException && e.statusCode == 404;
+      if (!isPrivate) {
+        debugPrint('[UserProfileScreen] Loading ${widget.type} list of ${widget.userId} failed: $e');
+      }
+      if (mounted) setState(() { _loading = false; _isPrivate = isPrivate; _hasError = !isPrivate; });
+    }
+  }
+
+  void _retry() {
+    setState(() { _loading = true; _hasError = false; });
+    _load();
   }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final lang = context.watch<SettingsProvider>().language;
     final isAnime = widget.type == 'ANIME';
 
     if (_loading || _lists == null) {
@@ -943,7 +750,7 @@ class _UserListSheetState extends State<_UserListSheet>
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
               child: Text(
-                isAnime ? 'Anime List' : 'Manga List',
+                tr(isAnime ? 'uprof_anime_list' : 'uprof_manga_list', lang),
                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
               ),
             ),
@@ -961,11 +768,7 @@ class _UserListSheetState extends State<_UserListSheet>
               padding: const EdgeInsets.symmetric(horizontal: 8),
               tabs: _statuses.map((s) {
                 final count = _lists?[s]?.length ?? 0;
-                final label = isAnime && s == 'CURRENT'
-                    ? 'Watching'
-                    : !isAnime && s == 'CURRENT'
-                        ? 'Reading'
-                        : _labels[s]!;
+                final label = tr(_labelKey(s, isAnime: isAnime), lang);
                 return Tab(
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -993,13 +796,27 @@ class _UserListSheetState extends State<_UserListSheet>
             Expanded(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
+                  : _isPrivate
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.lock_outline, size: 40, color: cs.onSurface.withValues(alpha: 0.4)),
+                          const SizedBox(height: 8),
+                          Text(tr('affinity_private', lang),
+                              style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6))),
+                        ],
+                      ),
+                    )
+                  : _hasError
+                  ? _LoadErrorView(onRetry: _retry)
                   : TabBarView(
                       controller: _tabs,
                       children: _statuses.map((s) {
                         final entries = _lists?[s] ?? [];
                         if (entries.isEmpty) {
                           return Center(
-                            child: Text('Nothing here',
+                            child: Text(tr('nothing_here', lang),
                                 style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))),
                           );
                         }
@@ -1020,6 +837,34 @@ class _UserListSheetState extends State<_UserListSheet>
   }
 }
 
+class _LoadErrorView extends StatelessWidget {
+  final VoidCallback onRetry;
+
+  const _LoadErrorView({super.key, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text(tr('load_error', lang),
+              style: const TextStyle(color: Colors.grey)),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh),
+            label: Text(tr('retry', lang)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _EntryTile extends StatelessWidget {
   final Map<String, dynamic> entry;
   final bool isAnime;
@@ -1030,7 +875,7 @@ class _EntryTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final media = entry['media'] as Map<String, dynamic>? ?? {};
     final id = media['id'] as int?;
-    final title = (media['title']?['english'] ?? media['title']?['romaji'] ?? '') as String;
+    final title = context.read<SettingsProvider>().resolveTitle(media['title'] as Map<String, dynamic>?);
     final image = media['coverImage']?['medium'] as String?;
     final progress = (entry['progress'] as num?)?.toInt() ?? 0;
     final score = (entry['score'] as num?)?.toDouble() ?? 0.0;
@@ -1038,6 +883,8 @@ class _EntryTile extends StatelessWidget {
         ? (media['episodes'] as num?)?.toInt()
         : (media['chapters'] as num?)?.toInt();
     final cs = Theme.of(context).colorScheme;
+    final lang = context.watch<SettingsProvider>().language;
+    final unit = tr(isAnime ? 'uprof_ep_short' : 'uprof_ch_short', lang);
     final progressFraction = (total != null && total > 0) ? (progress / total).clamp(0.0, 1.0) : null;
 
     return GestureDetector(
@@ -1087,8 +934,8 @@ class _EntryTile extends StatelessWidget {
                     children: [
                       Text(
                         total != null
-                            ? '$progress / $total ${isAnime ? 'ep' : 'ch'}'
-                            : '$progress ${isAnime ? 'ep' : 'ch'}',
+                            ? '$progress / $total $unit'
+                            : '$progress $unit',
                         style: TextStyle(fontSize: 11,
                             color: cs.onSurface.withValues(alpha: 0.5)),
                       ),

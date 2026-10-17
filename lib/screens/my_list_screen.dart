@@ -1,15 +1,29 @@
 import 'dart:math' show pi;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:confetti/confetti.dart';
-import '../services/anilist_service.dart';
+import '../providers/media_list_store.dart';
 import '../services/auth_service.dart';
 import '../screens/detail_screen.dart';
 import '../main.dart';
 import '../providers/settings_provider.dart';
-import '../utils/translations.dart' show tr;
+import '../utils/haptics.dart';
+import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
+import '../utils/score_utils.dart';
+import '../utils/tab_reselect.dart';
+import '../theme/app_motion.dart';
+import '../widgets/motion/animated_count.dart';
+import '../widgets/motion/cover_hero.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/press_scale.dart';
+import '../widgets/motion/rounded_hero.dart';
+import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/option_sheet.dart';
+import '../widgets/skeletons.dart';
+import '../widgets/entry_editor/entry_editor_sheet.dart';
 import '../services/notification_service.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
@@ -48,11 +62,28 @@ class _ListTabScreenState extends State<_ListTabScreen> {
   _SortMode _sortMode = _SortMode.lastUpdated;
   Set<String> _activeGenres = {};
 
-  static const _genres = [
-    'Action', 'Adventure', 'Comedy', 'Drama', 'Ecchi', 'Fantasy', 'Horror',
-    'Mahou Shoujo', 'Mecha', 'Music', 'Mystery', 'Psychological', 'Romance',
-    'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller',
-  ];
+  /// AniList genre names (matched against the entries as is) and their
+  /// display keys.
+  static const _genreKeys = {
+    'Action': 'search_genre_action',
+    'Adventure': 'search_genre_adventure',
+    'Comedy': 'search_genre_comedy',
+    'Drama': 'search_genre_drama',
+    'Ecchi': 'search_genre_ecchi',
+    'Fantasy': 'search_genre_fantasy',
+    'Horror': 'search_genre_horror',
+    'Mahou Shoujo': 'search_genre_mahou_shoujo',
+    'Mecha': 'search_genre_mecha',
+    'Music': 'search_genre_music',
+    'Mystery': 'search_genre_mystery',
+    'Psychological': 'search_genre_psychological',
+    'Romance': 'search_genre_romance',
+    'Sci-Fi': 'search_genre_sci_fi',
+    'Slice of Life': 'search_genre_slice_of_life',
+    'Sports': 'search_genre_sports',
+    'Supernatural': 'search_genre_supernatural',
+    'Thriller': 'search_genre_thriller',
+  };
 
   @override
   void dispose() {
@@ -62,6 +93,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
 
   void _showGenreFilter(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final lang = context.read<SettingsProvider>().language;
     showModalBottomSheet(
       context: context,
       backgroundColor: cs.surface,
@@ -77,7 +109,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
             children: [
               Row(
                 children: [
-                  Text('Filter by Genre',
+                  Text(tr('list_filter_by_genre', lang),
                       style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
@@ -89,7 +121,8 @@ class _ListTabScreenState extends State<_ListTabScreen> {
                         setState(() => _activeGenres = {});
                         setSheet(() {});
                       },
-                      child: const Text('Clear', style: TextStyle(fontSize: 13)),
+                      child: Text(tr('clear', lang),
+                          style: const TextStyle(fontSize: 13)),
                     ),
                 ],
               ),
@@ -97,7 +130,8 @@ class _ListTabScreenState extends State<_ListTabScreen> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _genres.map((g) {
+                children: _genreKeys.entries.map((genre) {
+                  final g = genre.key;
                   final selected = _activeGenres.contains(g);
                   return GestureDetector(
                     onTap: () {
@@ -111,7 +145,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
                       setSheet(() {});
                     },
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
+                      duration: AppMotion.of(ctx, AppMotion.short),
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: selected ? cs.primary : cs.surfaceContainerHighest,
@@ -121,7 +155,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
                         ),
                       ),
                       child: Text(
-                        g,
+                        tr(genre.value, lang),
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
@@ -186,25 +220,37 @@ class _ListTabScreenState extends State<_ListTabScreen> {
               color: _activeGenres.isNotEmpty ? Theme.of(context).colorScheme.primary : Colors.grey,
             ),
             onPressed: () => _showGenreFilter(context),
+            tooltip: tr('filters', lang),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
-            child: PopupMenuButton<_SortMode>(
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-            icon: const Icon(Icons.swap_vert, color: Colors.grey, size: 22),
-            color: Theme.of(context).colorScheme.surface,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            onSelected: (mode) => setState(() => _sortMode = mode),
-            itemBuilder: (_) => [
-              _sortItem(_SortMode.lastUpdated, tr('last_updated', lang), Icons.history),
-              _sortItem(_SortMode.alphabetical, tr('alphabetical', lang), Icons.sort_by_alpha),
-              _sortItem(_SortMode.ratingHigh, tr('rating_high', lang), Icons.star),
-              _sortItem(_SortMode.ratingLow, tr('rating_low', lang), Icons.star_outline),
-            ],
-          ),
+            child: IconButton(
+              icon: const Icon(Icons.swap_vert, color: Colors.grey, size: 22),
+              tooltip: tr('search_sort', lang),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              onPressed: () => showOptionSheet<_SortMode>(
+                context: context,
+                title: tr('search_sort', lang),
+                options: _SortMode.values,
+                labelOf: (mode) => switch (mode) {
+                  _SortMode.lastUpdated => tr('last_updated', lang),
+                  _SortMode.alphabetical => tr('alphabetical', lang),
+                  _SortMode.ratingHigh => tr('rating_high', lang),
+                  _SortMode.ratingLow => tr('rating_low', lang),
+                },
+                iconOf: (mode) => switch (mode) {
+                  _SortMode.lastUpdated => Icons.history,
+                  _SortMode.alphabetical => Icons.sort_by_alpha,
+                  _SortMode.ratingHigh => Icons.star,
+                  _SortMode.ratingLow => Icons.star_outline,
+                },
+                current: _sortMode,
+                onSelected: (mode) => setState(() => _sortMode = mode),
+              ),
+            ),
           ),
         ],
       ),
@@ -242,22 +288,6 @@ class _ListTabScreenState extends State<_ListTabScreen> {
       ),
     );
   }
-
-  PopupMenuItem<_SortMode> _sortItem(_SortMode mode, String label, IconData icon) =>
-      PopupMenuItem(
-        value: mode,
-        child: Row(
-          children: [
-            Icon(icon, size: 16,
-                color: _sortMode == mode ? Theme.of(context).colorScheme.primary : Colors.grey),
-            const SizedBox(width: 10),
-            Text(label,
-                style: TextStyle(
-                    color: _sortMode == mode ? Theme.of(context).colorScheme.primary : null,
-                    fontSize: 13)),
-          ],
-        ),
-      );
 }
 
 // ─── Media List (content) ──────────────────────────────────────────────────
@@ -278,10 +308,6 @@ class _MediaListState extends State<_MediaList>
   @override
   bool get wantKeepAlive => true;
 
-  final _service = AniListService();
-  Map<String, List<Map<String, dynamic>>> _lists = {};
-  bool _loading = true;
-  String? _error;
   final Set<String> _collapsedSections = {};
 
   final _statusOrder = [
@@ -311,149 +337,174 @@ class _MediaListState extends State<_MediaList>
     'REPEATING': tr('rereading', lang),
   };
 
-  late final AuthService _auth;
+  AuthService? _auth;
+  final _scrollController = ScrollController();
+  late final VoidCallback _stopReselectListener;
+
+  /// This list's index in the bottom navigation.
+  int get _tab => widget.type == 'ANIME' ? 0 : 1;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _auth = context.read<AuthService>();
-      _auth.addListener(_onAuthChanged);
+      if (!mounted) return;
+      _auth = context.read<AuthService>()..addListener(_onAuthChanged);
       _load();
     });
-    listRefreshNotifier.addListener(_silentReload);
+    listRefreshNotifier.addListener(_onRefreshRequested);
+    _stopReselectListener = scrollToTopOnReselect(
+      tabReselectedNotifier,
+      tab: _tab,
+      onReselected: () => scrollToTop(_scrollController, animate: !AppMotion.reduced(context)),
+    );
   }
 
   @override
   void dispose() {
-    _auth.removeListener(_onAuthChanged);
-    listRefreshNotifier.removeListener(_silentReload);
+    _auth?.removeListener(_onAuthChanged);
+    listRefreshNotifier.removeListener(_onRefreshRequested);
+    _stopReselectListener();
+    _scrollController.dispose();
     super.dispose();
   }
 
   void _onAuthChanged() {
-    if (_auth.isLoggedIn && _lists.isEmpty) {
-      _load();
-    } else if (!_auth.isLoggedIn) {
-      setState(() {
-        _lists = {};
-        _loading = false;
-        _error = 'Connect your AniList from the Profile tab';
-      });
+    final auth = _auth;
+    if (auth == null || !mounted || !auth.isLoggedIn) return;
+    if (context.read<MediaListStore>().listsOf(widget.type) == null) _load();
+  }
+
+  void _onRefreshRequested() => _load(force: true);
+
+  /// Shows the cached list instantly and refreshes it from AniList, then
+  /// reschedules episode notifications whenever a fresh anime list arrives.
+  Future<void> _load({bool force = false}) async {
+    final auth = context.read<AuthService>();
+    final userId = auth.user?['id'] as int?;
+    final token = auth.token;
+    if (userId == null || token == null) return;
+    final store = context.read<MediaListStore>();
+    final settings = context.read<SettingsProvider>();
+    final gotFresh = await store.load(
+      widget.type,
+      userId: userId,
+      token: token,
+      force: force,
+    );
+    final lists = store.listsOf(widget.type);
+    if (gotFresh && widget.type == 'ANIME' && lists != null) {
+      NotificationService().scheduleForAnimeList(lists, settings);
     }
   }
 
-  Future<void> _load() async {
-    final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn) {
-      setState(() {
-        _loading = false;
-        _error = 'Connect your AniList from the Profile tab';
-      });
-      return;
-    }
-
-    final userId = auth.user?['id'];
-    if (userId == null) {
-      setState(() {
-        _loading = false;
-        _error = 'Could not get user ID';
-      });
-      return;
-    }
-
-    setState(() { _loading = true; _error = null; });
-    try {
-      final raw = widget.type == 'ANIME'
-          ? await _service.getUserAnimeList(userId, auth.token!)
-          : await _service.getUserMangaList(userId, auth.token!);
-      final typed = raw.map(
-        (k, v) => MapEntry(k, v.cast<Map<String, dynamic>>()),
-      );
-      setState(() {
-        _lists = typed;
-        _loading = false;
-      });
-      if (mounted) {
-        final settings = context.read<SettingsProvider>();
-        if (widget.type == 'ANIME') {
-          NotificationService().scheduleForAnimeList(typed, settings);
-        }
-      }
-    } catch (e) {
-      setState(() {
-        _loading = false;
-        _error = e.toString();
-      });
+  Future<void> _refresh() async {
+    await _load(force: true);
+    if (!mounted) return;
+    if (context.read<MediaListStore>().errorOf(widget.type) != null) {
+      _showSnack(tr('load_error', context.read<SettingsProvider>().language));
     }
   }
 
-  void _silentReload() {
-    final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn) return;
-    final userId = auth.user?['id'];
-    if (userId == null) return;
-
-    () async {
-      try {
-        final raw = widget.type == 'ANIME'
-            ? await _service.getUserAnimeList(userId, auth.token!)
-            : await _service.getUserMangaList(userId, auth.token!);
-        if (!mounted) return;
-        final typed = raw.map(
-          (k, v) => MapEntry(k, v.cast<Map<String, dynamic>>()),
-        );
-        setState(() => _lists = typed);
-      } catch (_) {}
-    }();
+  void _showSnack(String message, {SnackBarAction? action}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(
+        content: Text(message, maxLines: 1, overflow: TextOverflow.ellipsis),
+        duration: const Duration(seconds: 3),
+        // Flutter keeps a snack bar with an action (Undo) until it's
+        // dismissed; this one should still go away after [duration].
+        persist: false,
+        action: action,
+      ));
   }
 
-  Future<void> _incrementEpisode(Map<String, dynamic> entry) async {
-    final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn) return;
+  /// Adds [delta] to an entry's progress. The row updates instantly; the last
+  /// episode opens the completion dialog instead, and a failed save is
+  /// reverted with a message.
+  Future<void> _changeProgress(Map<String, dynamic> entry, int delta) async {
+    final token = context.read<AuthService>().token;
+    final store = context.read<MediaListStore>();
+    final settings = context.read<SettingsProvider>();
     final media = entry['media'] as Map<String, dynamic>? ?? {};
     final mediaId = media['id'] as int?;
-    if (mediaId == null) return;
+    if (token == null || mediaId == null || store.isSaving(mediaId)) return;
 
     final progress = (entry['progress'] as num?)?.toInt() ?? 0;
     final total = widget.type == 'ANIME'
         ? media['episodes'] as int?
         : media['chapters'] as int?;
-    if (total != null && progress >= total) return;
-
-    final newProgress = progress + 1;
-    final isLastEpisode = total != null && newProgress == total;
+    final newProgress = progress + delta;
+    if (newProgress < 0 || (total != null && newProgress > total)) return;
+    // An Undo for an earlier change must not stay tappable while this one saves.
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    selectionHaptic();
 
     // For the last episode, show the completion dialog BEFORE saving.
-    // The dialog's onComplete callback handles both the progress save and
-    // the status change. If the user dismisses, nothing is written to AniList.
-    if (isLastEpisode && mounted) {
-      await _showCompletionDialog(entry, mediaId, total, newProgress);
+    // If the user dismisses it, nothing is written to AniList.
+    if (delta > 0 && total != null && newProgress == total) {
+      await _showCompletionDialog(entry, mediaId, total);
       return;
     }
 
-    final status = (entry['status'] as String?) ?? 'CURRENT';
-    final score = (entry['score'] as num?)?.toDouble() ?? 0;
-    final ok = await _service.saveListEntry(
-      mediaId: mediaId,
-      status: status,
-      progress: newProgress,
-      score: score,
-      token: auth.token!,
-    );
-    if (ok) {
-      setState(() => entry['progress'] = newProgress);
-      _silentReload();
+    final ok = await store.setProgress(widget.type, mediaId, newProgress, token: token);
+    if (!mounted) return;
+    final lang = settings.language;
+    if (!ok) {
+      _showSnack(tr('save_failed', lang));
+      return;
     }
+    final title = settings.resolveTitle(media['title'] as Map<String, dynamic>?);
+    final unitKey = widget.type == 'ANIME' ? 'list_episode_n' : 'list_chapter_n';
+    _showSnack(
+      '$title · ${trf(unitKey, lang, {'n': newProgress})}',
+      action: SnackBarAction(
+        label: tr('undo', lang),
+        onPressed: () => _undoProgress(mediaId, progress),
+      ),
+    );
+  }
+
+  /// Opens the full entry editor for a row (long-press). The editor reads
+  /// the fields the list doesn't load before showing them, and a save
+  /// updates the shared store this list is built from.
+  void _openEditor(Map<String, dynamic> entry) {
+    final media = EditorMedia.fromMedia(
+      entry['media'] as Map<String, dynamic>?,
+      isManga: widget.type == 'MANGA',
+    );
+    if (media == null) return;
+    mediumHaptic();
+    // Entries only know their status through the list they're in.
+    final status = context
+        .read<MediaListStore>()
+        .listsOf(widget.type)
+        ?.entries
+        .where((list) =>
+            !list.key.startsWith(customListPrefix) &&
+            list.value.any((e) => (e['media'] as Map?)?['id'] == media.id))
+        .map((list) => list.key)
+        .firstOrNull;
+    showEntryEditor(context, media: media, entry: {...entry, 'status': ?status});
+  }
+
+  Future<void> _undoProgress(int mediaId, int previousProgress) async {
+    if (!mounted) return;
+    final token = context.read<AuthService>().token;
+    final store = context.read<MediaListStore>();
+    final lang = context.read<SettingsProvider>().language;
+    if (token == null) return;
+    final ok = await store.setProgress(widget.type, mediaId, previousProgress, token: token);
+    if (!ok && mounted) _showSnack(tr('save_failed', lang));
   }
 
   Future<void> _showCompletionDialog(
     Map<String, dynamic> entry,
     int mediaId,
     int total,
-    int newProgress,
   ) async {
     final settings = context.read<SettingsProvider>();
+    final store = context.read<MediaListStore>();
     final media = entry['media'] as Map<String, dynamic>? ?? {};
     final title = settings.resolveTitle(media['title'] as Map<String, dynamic>?);
     final coverImage = media['coverImage']?['large'] as String?;
@@ -465,12 +516,12 @@ class _MediaListState extends State<_MediaList>
       context: context,
       barrierDismissible: false,
       barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 400),
+      transitionDuration: AppMotion.of(context, AppMotion.long),
       transitionBuilder: (ctx, animation, _, child) => FadeTransition(
-        opacity: CurvedAnimation(parent: animation, curve: Curves.easeOut),
+        opacity: CurvedAnimation(parent: animation, curve: AppMotion.enter, reverseCurve: AppMotion.exit),
         child: SlideTransition(
           position: Tween(begin: const Offset(0, 0.06), end: Offset.zero)
-              .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+              .animate(CurvedAnimation(parent: animation, curve: AppMotion.enter, reverseCurve: AppMotion.exit)),
           child: child,
         ),
       ),
@@ -481,53 +532,21 @@ class _MediaListState extends State<_MediaList>
         initialScore: initialScore,
         type: widget.type,
         onComplete: (score) async {
-          final auth = context.read<AuthService>();
-          if (!auth.isLoggedIn || !mounted) return;
-          final ok = await _service.saveListEntry(
-            mediaId: mediaId,
+          final token = context.read<AuthService>().token;
+          if (token == null || !mounted) return false;
+          return store.saveFields(
+            widget.type,
+            mediaId,
             status: 'COMPLETED',
             progress: total,
-            score: score,
-            token: auth.token!,
+            // Only write the score when the user changed it, so AniList keeps
+            // the exact value in the user's own score format otherwise.
+            scoreRaw: score != initialScore ? toRawScore(score) : null,
+            token: token,
           );
-          if (ok && mounted) {
-            setState(() {
-              entry['progress'] = newProgress;
-              entry['status'] = 'COMPLETED';
-              if (score > 0) entry['score'] = score;
-            });
-            _silentReload();
-          }
         },
       ),
     );
-  }
-
-  Future<void> _decrementEpisode(Map<String, dynamic> entry) async {
-    final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn) return;
-    final media = entry['media'] as Map<String, dynamic>? ?? {};
-    final mediaId = media['id'] as int?;
-    if (mediaId == null) return;
-
-    final progress = (entry['progress'] as num?)?.toInt() ?? 0;
-    if (progress <= 0) return;
-
-    final newProgress = progress - 1;
-    final status = (entry['status'] as String?) ?? 'CURRENT';
-    final score = (entry['score'] as num?)?.toDouble() ?? 0;
-
-    final ok = await _service.saveListEntry(
-      mediaId: mediaId,
-      status: status,
-      progress: newProgress,
-      score: score,
-      token: auth.token!,
-    );
-    if (ok) {
-      setState(() => entry['progress'] = newProgress);
-      _silentReload();
-    }
   }
 
 
@@ -568,38 +587,43 @@ class _MediaListState extends State<_MediaList>
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    // Each state is keyed, so loading, errors and the list cross-fade.
+    return FadeSwitcher(child: _content(context));
+  }
 
-    if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_error != null) {
-      final isNetworkError = _error != 'Connect your AniList from the Profile tab'
-          && _error != 'Could not get user ID';
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isNetworkError ? Icons.wifi_off_rounded : Icons.list_alt_outlined,
-              size: 52,
-              color: Colors.grey,
-            ),
-            const SizedBox(height: 12),
-            Text(_error!, style: const TextStyle(color: Colors.grey)),
-            if (isNetworkError) ...[
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Reintentar'),
-              ),
-            ],
-          ],
+  Widget _content(BuildContext context) {
+    final lang = context.select<SettingsProvider, String>((s) => s.language);
+    final isLoggedIn = context.select<AuthService, bool>((auth) => auth.isLoggedIn);
+    final (lists, loading, error) = context.select<MediaListStore, (MediaLists?, bool, Object?)>(
+        (store) => (store.listsOf(widget.type), store.isLoading(widget.type), store.errorOf(widget.type)));
+
+    if (!isLoggedIn) {
+      return _ListMessage(
+        key: const ValueKey('list-logged-out'),
+        icon: Icons.list_alt_outlined,
+        message: tr('list_connect_prompt', lang),
+      );
+    }
+    if (lists == null) {
+      if (loading || error == null) {
+        return const ListSkeleton(key: ValueKey('list-skeleton'));
+      }
+      return _ListMessage(
+        key: const ValueKey('list-error'),
+        icon: Icons.wifi_off_rounded,
+        message: tr('load_error', lang),
+        action: FilledButton.icon(
+          onPressed: _load,
+          icon: const Icon(Icons.refresh),
+          label: Text(tr('retry', lang)),
         ),
       );
     }
-    if (_lists.isEmpty) {
+    if (lists.isEmpty) {
       final isAnime = widget.type == 'ANIME';
       final cs = Theme.of(context).colorScheme;
       return Center(
+        key: const ValueKey('list-empty'),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 32),
           child: Column(
@@ -612,7 +636,7 @@ class _MediaListState extends State<_MediaList>
               ),
               const SizedBox(height: 16),
               Text(
-                isAnime ? 'Your anime list is empty' : 'Your manga list is empty',
+                tr(isAnime ? 'list_empty_anime' : 'list_empty_manga', lang),
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
@@ -620,9 +644,7 @@ class _MediaListState extends State<_MediaList>
               ),
               const SizedBox(height: 8),
               Text(
-                isAnime
-                    ? 'Start tracking anime you\'re watching or plan to watch'
-                    : 'Start tracking manga you\'re reading or plan to read',
+                tr(isAnime ? 'list_empty_anime_hint' : 'list_empty_manga_hint', lang),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 13,
@@ -645,7 +667,7 @@ class _MediaListState extends State<_MediaList>
                           color: Colors.white, size: 18),
                       const SizedBox(width: 8),
                       Text(
-                        isAnime ? 'Discover Anime' : 'Discover Manga',
+                        tr(isAnime ? 'list_discover_anime' : 'list_discover_manga', lang),
                         style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
@@ -661,47 +683,52 @@ class _MediaListState extends State<_MediaList>
       );
     }
 
-    final lang = context.read<SettingsProvider>().language;
     final labels =
         widget.type == 'ANIME' ? _animeStatusLabels(lang) : _mangaStatusLabels(lang);
 
-    // Build a flat item list: headers + entries (only when expanded)
+    // Build a flat item list: headers + entries (only when expanded). An
+    // entry's status is the section it's shown in (a media can also be in
+    // custom lists), which keeps its cover hero unique.
     final items = <({bool isHeader, String? status, String? label, int? count, Map<String, dynamic>? entry, bool isCustom})>[];
     for (final status in _statusOrder) {
-      final raw = _lists[status];
+      final raw = lists[status];
       if (raw == null || raw.isEmpty) continue;
       final filtered = _filterEntries(raw);
       if (filtered.isEmpty) continue;
       items.add((isHeader: true, status: status, label: labels[status] ?? status, count: filtered.length, entry: null, isCustom: false));
       if (!_collapsedSections.contains(status)) {
         for (final e in filtered) {
-          items.add((isHeader: false, status: null, label: null, count: null, entry: e, isCustom: false));
+          items.add((isHeader: false, status: status, label: null, count: null, entry: e, isCustom: false));
         }
         items.add((isHeader: false, status: null, label: null, count: null, entry: null, isCustom: false)); // spacer
       }
     }
 
     // Custom list sections
-    final customKeys = _lists.keys.where((k) => k.startsWith('custom:')).toList();
+    final customKeys = lists.keys.where((k) => k.startsWith(customListPrefix)).toList();
     if (customKeys.isNotEmpty && items.isNotEmpty) {
       items.add((isHeader: false, status: null, label: null, count: null, entry: null, isCustom: false));
     }
     for (final key in customKeys) {
-      final raw = _lists[key]!;
+      final raw = lists[key]!;
       final filtered = _filterEntries(raw);
       if (filtered.isEmpty) continue;
       final name = key.substring('custom:'.length);
       items.add((isHeader: true, status: key, label: name, count: filtered.length, entry: null, isCustom: true));
       if (!_collapsedSections.contains(key)) {
         for (final e in filtered) {
-          items.add((isHeader: false, status: null, label: null, count: null, entry: e, isCustom: false));
+          items.add((isHeader: false, status: key, label: null, count: null, entry: e, isCustom: false));
         }
         items.add((isHeader: false, status: null, label: null, count: null, entry: null, isCustom: false));
       }
     }
 
-    if (items.isEmpty) {
-      return Center(
+    // "No match" shares the list's gate and key, so typing between results
+    // and none swaps them at once instead of cross-fading the whole list
+    // and replaying its cascade on every keystroke.
+    final noMatch = items.isNotEmpty
+        ? null
+        : Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -710,86 +737,130 @@ class _MediaListState extends State<_MediaList>
             const SizedBox(height: 12),
             Text(
               widget.searchQuery.isNotEmpty
-                  ? 'No results for "${widget.searchQuery}"'
-                  : 'No entries match the selected genres',
+                  ? trf('list_no_results_for', lang, {'query': widget.searchQuery})
+                  : tr('list_no_genre_match', lang),
               style: TextStyle(
                   color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
                   fontSize: 13)),
           ],
         ),
       );
-    }
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView.builder(
-        padding: const EdgeInsets.only(bottom: 16),
-        itemCount: items.length,
-        itemBuilder: (_, i) {
-          final item = items[i];
-          if (item.isHeader) {
-            final collapsed = _collapsedSections.contains(item.status);
-            return InkWell(
-              onTap: () => setState(() {
-                if (collapsed) {
-                  _collapsedSections.remove(item.status);
-                } else {
-                  _collapsedSections.add(item.status!);
-                }
-              }),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                child: Row(
-                  children: [
-                    if (item.isCustom) ...[
-                      const Icon(Icons.playlist_add_check, size: 16, color: Colors.grey),
-                      const SizedBox(width: 6),
-                    ],
-                    Text(item.label!,
-                        style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey)),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${item.count}',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: Theme.of(context).colorScheme.primary),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Icon(
-                      collapsed ? Icons.chevron_right : Icons.expand_more,
-                      color: Colors.grey,
-                      size: 20,
-                    ),
-                  ],
-                ),
+    // The first rows cascade in when the list first appears; rows built
+    // later (scrolling, filtering, expanding a section) appear at once.
+    return EntranceGate(
+      key: const ValueKey('list'),
+      trigger: widget.type,
+      child: noMatch ?? RefreshIndicator(
+        onRefresh: _refresh,
+        child: ListView.builder(
+          controller: _scrollController,
+          padding: const EdgeInsets.only(bottom: 16),
+          itemCount: items.length,
+          itemBuilder: (_, i) {
+            final item = items[i];
+            if (item.isHeader) {
+              return StaggeredEntrance(
+                index: i,
+                child: _sectionHeader(context, item.status!, item.label!, item.count!, isCustom: item.isCustom),
+              );
+            }
+            final entry = item.entry;
+            if (entry == null) return const SizedBox(height: 4);
+            final mediaId = entry['media']?['id'] as int?;
+            final entryId = entry['id'] as int?;
+            return StaggeredEntrance(
+              index: i,
+              child: _SwipeableRow(
+                key: ValueKey(mediaId ?? entryId ?? i),
+                entry: entry,
+                type: widget.type,
+                heroScope: 'mylist-${widget.type}-${item.status}',
+                onAddEpisode: () => _changeProgress(entry, 1),
+                onRemove: () => _changeProgress(entry, -1),
+                onEdit: () => _openEditor(entry),
               ),
             );
-          }
-          if (item.entry == null) return const SizedBox(height: 4);
-          final mediaId = item.entry!['media']?['id'] as int?;
-          final entryId = item.entry!['id'] as int?;
-          return _SwipeableRow(
-            key: ValueKey(mediaId ?? entryId ?? i),
-            entry: item.entry!,
-            type: widget.type,
-            onAddEpisode: () => _incrementEpisode(item.entry!),
-            onRemove: () => _decrementEpisode(item.entry!),
-          );
-        },
+          },
+        ),
       ),
     );
   }
+
+  /// A section's title and size; tapping it collapses or expands it.
+  Widget _sectionHeader(BuildContext context, String section, String label, int count, {required bool isCustom}) {
+    final collapsed = _collapsedSections.contains(section);
+    final primary = Theme.of(context).colorScheme.primary;
+    return InkWell(
+      onTap: () => setState(() {
+        if (collapsed) {
+          _collapsedSections.remove(section);
+        } else {
+          _collapsedSections.add(section);
+        }
+      }),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            if (isCustom) ...[
+              const Icon(Icons.playlist_add_check, size: 16, color: Colors.grey),
+              const SizedBox(width: 6),
+            ],
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: primary),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              collapsed ? Icons.chevron_right : Icons.expand_more,
+              color: Colors.grey,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ListMessage extends StatelessWidget {
+  final IconData icon;
+  final String message;
+  final Widget? action;
+  const _ListMessage({super.key, required this.icon, required this.message, this.action});
+
+  @override
+  Widget build(BuildContext context) => Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 52, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(message, style: const TextStyle(color: Colors.grey)),
+            if (action != null) ...[
+              const SizedBox(height: 16),
+              action!,
+            ],
+          ],
+        ),
+      );
 }
 
 // ─── Swipeable Row ──────────────────────────────────────────────────────────
@@ -797,14 +868,22 @@ class _MediaListState extends State<_MediaList>
 class _SwipeableRow extends StatefulWidget {
   final Map<String, dynamic> entry;
   final String type;
+
+  /// The list section the row is in, for its cover's hero tag: unique on
+  /// the screen even when a media is also in custom lists.
+  final String heroScope;
   final VoidCallback onAddEpisode;
   final VoidCallback onRemove;
+  /// Opens the full entry editor (long-press).
+  final VoidCallback onEdit;
   const _SwipeableRow({
     super.key,
     required this.entry,
     required this.type,
+    required this.heroScope,
     required this.onAddEpisode,
     required this.onRemove,
+    required this.onEdit,
   });
 
   @override
@@ -814,10 +893,20 @@ class _SwipeableRow extends StatefulWidget {
 class _SwipeableRowState extends State<_SwipeableRow> {
   late int _progress;
 
+  // Press feedback lives on the cover only: the row itself must stay still
+  // under the swipe and long-press gestures.
+  final _pressed = ValueNotifier(false);
+
   @override
   void initState() {
     super.initState();
     _progress = (widget.entry['progress'] as num?)?.toInt() ?? 0;
+  }
+
+  @override
+  void dispose() {
+    _pressed.dispose();
+    super.dispose();
   }
 
   @override
@@ -827,13 +916,40 @@ class _SwipeableRowState extends State<_SwipeableRow> {
     if (next != _progress) setState(() => _progress = next);
   }
 
-  String? _timeUntilAiring(int airingAt) {
+  /// The cover, which flies to the detail page and dips while the row is
+  /// pressed (a transform only, so the row never re-lays out).
+  Widget _cover(BuildContext context, String? image, String? heroTag) {
+    final placeholder = Container(
+        width: 80,
+        height: 115,
+        color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final cover = RoundedHero(
+      tag: heroTag,
+      borderRadius: BorderRadius.circular(6),
+      child: image != null
+          ? CachedNetworkImage(
+              imageUrl: image,
+              width: 80,
+              height: 115,
+              fit: BoxFit.cover,
+              memCacheWidth: 160,
+              placeholder: (_, _) => placeholder,
+              errorWidget: (_, _, _) => placeholder,
+            )
+          : placeholder,
+    );
+    return PressScale(pressed: _pressed, child: cover);
+  }
+
+  String? _timeUntilAiring(int airingAt, String lang) {
     final remaining = airingAt - DateTime.now().millisecondsSinceEpoch ~/ 1000;
     if (remaining <= 0) return null; // already aired — hide the row
     final days = remaining ~/ 86400;
-    if (days > 0) return '$days day${days == 1 ? '' : 's'}';
+    if (days > 0) {
+      return trf(days == 1 ? 'list_airs_day' : 'list_airs_days', lang, {'n': days});
+    }
     final hours = remaining ~/ 3600;
-    return '$hours hour${hours == 1 ? '' : 's'}';
+    return trf(hours == 1 ? 'list_airs_hour' : 'list_airs_hours', lang, {'n': hours});
   }
 
   @override
@@ -843,14 +959,18 @@ class _SwipeableRowState extends State<_SwipeableRow> {
     final media = widget.entry['media'] as Map<String, dynamic>? ?? {};
     final progress = (widget.entry['progress'] as num?)?.toInt() ?? 0;
     final score = (widget.entry['score'] as num?)?.toDouble() ?? 0;
+    final scoreFormat = context.select<AuthService, String?>((a) => scoreFormatOf(a.user));
     final title = settings.resolveTitle(media['title'] as Map<String, dynamic>?);
     final image = media['coverImage']?['large'] as String?;
     final total = widget.type == 'ANIME'
         ? media['episodes'] as int?
         : media['chapters'] as int?;
     final id = media['id'] as int?;
+    final heroTag = id == null ? null : coverHeroTag(widget.heroScope, id);
     final nextAiring = media['nextAiringEpisode'] as Map<String, dynamic>?;
     final unitLabel = widget.type == 'ANIME' ? tr('episode', lang) : tr('chapter', lang);
+    final progressSuffix =
+        '${total != null ? ' / $total' : ''} ${widget.type == 'ANIME' ? tr('episodes', lang) : tr('chapters', lang)}';
 
     return Dismissible(
       key: widget.key ?? ValueKey(id),
@@ -919,42 +1039,33 @@ class _SwipeableRowState extends State<_SwipeableRow> {
       ),
       child: Container(
         color: Theme.of(context).scaffoldBackgroundColor,
+        // Screen readers can't discover a long press, so the editor is also
+        // offered as a named action.
+        child: Semantics(
+        onLongPressHint: tr('tooltip_edit_entry', lang),
+        customSemanticsActions: {
+          CustomSemanticsAction(label: tr('tooltip_edit_entry', lang)): widget.onEdit,
+        },
         child: InkWell(
         onTap: id != null
             ? () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) => DetailScreen(animeId: id)),
+                      builder: (_) => DetailScreen(
+                            animeId: id,
+                            heroTag: heroTag,
+                            initialCoverUrl: image,
+                          )),
                 )
             : null,
+        onLongPress: widget.onEdit,
+        onHighlightChanged: (pressed) => _pressed.value = pressed,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        width: 80,
-                        height: 115,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 160,
-                        placeholder: (_, _) => Container(
-                            width: 80,
-                            height: 115,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                        errorWidget: (_, _, _) => Container(
-                            width: 80,
-                            height: 115,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                      )
-                    : Container(
-                        width: 80,
-                        height: 115,
-                        color: Theme.of(context).colorScheme.surfaceContainerHighest),
-              ),
+              _cover(context, image, heroTag),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -969,12 +1080,22 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                           fontSize: 14, fontWeight: FontWeight.w600),
                     ),
                     const SizedBox(height: 6),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      child: Text(
-                        '$_progress${total != null ? ' / $total' : ''} ${widget.type == 'ANIME' ? tr('episodes', lang) : tr('chapters', lang)}',
-                        key: ValueKey(_progress),
+                    // Only the number rolls when a swipe or edit changes it;
+                    // screen readers still hear one phrase.
+                    Semantics(
+                      label: '$_progress$progressSuffix',
+                      excludeSemantics: true,
+                      child: DefaultTextStyle.merge(
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            AnimatedCount(value: _progress),
+                            Flexible(child: Text(progressSuffix)),
+                          ],
+                        ),
                       ),
                     ),
                     if (score > 0) ...[
@@ -985,7 +1106,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                               size: 13, color: Color(0xFFFFC107)),
                           const SizedBox(width: 3),
                           Text(
-                            score.toStringAsFixed(1),
+                            formatScore(score, scoreFormat),
                             style: const TextStyle(
                                 fontSize: 12, color: Colors.grey),
                           ),
@@ -1014,7 +1135,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                       final airingAtRaw = nextAiring['airingAt'];
                       if (nextEp == null || airingAtRaw == null) return const SizedBox.shrink();
                       final airingAt = (airingAtRaw as num).toInt();
-                      final timeStr = _timeUntilAiring(airingAt);
+                      final timeStr = _timeUntilAiring(airingAt, lang);
                       if (timeStr == null) return const SizedBox.shrink();
                       final behindBy = (nextEp - 1) - progress;
                       final color = behindBy >= 1
@@ -1032,7 +1153,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                             const SizedBox(width: 4),
                             Expanded(
                               child: Text(
-                                'Episode $nextEp airs in $timeStr',
+                                trf('list_airs_in', lang, {'n': nextEp, 'time': timeStr}),
                                 style: TextStyle(fontSize: 12, color: color),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -1049,17 +1170,9 @@ class _SwipeableRowState extends State<_SwipeableRow> {
         ),
       ),
       ),
+      ),
     );
   }
-}
-
-// ─── Legacy MyListScreen (kept for backward compat) ────────────────────────
-
-class MyListScreen extends StatelessWidget {
-  const MyListScreen({super.key});
-
-  @override
-  Widget build(BuildContext context) => const AnimeListScreen();
 }
 
 // ─── Completion Dialog ─────────────────────────────────────────────────────
@@ -1070,7 +1183,8 @@ class _CompletionDialog extends StatefulWidget {
   final double? averageScore;
   final double initialScore;
   final String type;
-  final Future<void> Function(double score) onComplete;
+  /// Saves the completion; returns whether AniList accepted it.
+  final Future<bool> Function(double score) onComplete;
 
   const _CompletionDialog({
     required this.title,
@@ -1087,6 +1201,7 @@ class _CompletionDialog extends StatefulWidget {
 
 class _CompletionDialogState extends State<_CompletionDialog> {
   late final ConfettiController _confetti;
+  bool _confettiStarted = false;
   double _score = 0;
   bool _completing = false;
 
@@ -1104,7 +1219,15 @@ class _CompletionDialogState extends State<_CompletionDialog> {
     super.initState();
     _score = widget.initialScore;
     _confetti = ConfettiController(duration: const Duration(milliseconds: 2500));
-    _confetti.play();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // One burst when the dialog opens, skipped when animations are reduced.
+    if (_confettiStarted) return;
+    _confettiStarted = true;
+    if (!AppMotion.reduced(context)) _confetti.play();
   }
 
   @override
@@ -1115,8 +1238,18 @@ class _CompletionDialogState extends State<_CompletionDialog> {
 
   Future<void> _complete() async {
     setState(() => _completing = true);
-    await widget.onComplete(_score);
-    if (mounted) Navigator.pop(context);
+    final ok = await widget.onComplete(_score);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(context);
+      return;
+    }
+    // Keep the dialog open so the user can retry instead of losing the change.
+    setState(() => _completing = false);
+    final lang = context.read<SettingsProvider>().language;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(tr('save_failed', lang))),
+    );
   }
 
   void _openScorePicker() {
@@ -1139,9 +1272,13 @@ class _CompletionDialogState extends State<_CompletionDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final unitLabel = widget.type == 'ANIME' ? 'series' : 'manga';
+    final lang = context.watch<SettingsProvider>().language;
+    final isAnime = widget.type == 'ANIME';
 
-    return Scaffold(
+    // Back is blocked while saving so the list can't be swiped mid-request.
+    return PopScope(
+      canPop: !_completing,
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
         children: [
@@ -1155,6 +1292,8 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                     fit: BoxFit.cover,
                     width: double.infinity,
                     height: double.infinity,
+                    // A darkened backdrop: a small decode is plenty.
+                    memCacheWidth: 300,
                   ),
                   Container(color: Colors.black.withValues(alpha: 0.78)),
                 ],
@@ -1210,7 +1349,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
 
                 // Congrats subtitle
                 Text(
-                  'Congrats! You\'ve just finished',
+                  tr('list_congrats_finished', lang),
                   style: TextStyle(
                     fontSize: 15,
                     color: Colors.white.withValues(alpha: 0.6),
@@ -1253,7 +1392,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
 
                 // Rating question
                 Text(
-                  'What\'s your final rating for this $unitLabel?',
+                  tr(isAnime ? 'list_final_rating_series' : 'list_final_rating_manga', lang),
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.white.withValues(alpha: 0.55),
@@ -1272,7 +1411,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                       border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
                     ),
                     child: Text(
-                      _score > 0 ? _score.toStringAsFixed(1) : 'Not Scored',
+                      _score > 0 ? _score.toStringAsFixed(1) : tr('list_not_scored', lang),
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w500,
@@ -1291,7 +1430,8 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                       const Icon(Icons.star_rounded, size: 13, color: Color(0xFFFFC107)),
                       const SizedBox(width: 4),
                       Text(
-                        'AVERAGE RATING  ${(widget.averageScore! / 10).toStringAsFixed(1)}',
+                        trf('list_average_rating', lang,
+                            {'score': (widget.averageScore! / 10).toStringAsFixed(1)}),
                         style: TextStyle(
                           fontSize: 11,
                           letterSpacing: 0.5,
@@ -1330,7 +1470,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                                 ),
                               )
                             : Text(
-                                'Complete ${widget.type == 'ANIME' ? 'Series' : 'Manga'}',
+                                tr(isAnime ? 'list_complete_series' : 'list_complete_manga', lang),
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w600,
@@ -1345,6 +1485,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -1406,6 +1547,7 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final lang = context.watch<SettingsProvider>().language;
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -1423,7 +1565,7 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
             ),
           ),
           Text(
-            'Score',
+            tr('list_score', lang),
             style: TextStyle(
               fontSize: 20,
               fontWeight: FontWeight.bold,
@@ -1506,9 +1648,9 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(18)),
               ),
-              child: const Text(
-                'Update',
-                style: TextStyle(
+              child: Text(
+                tr('list_update', lang),
+                style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: Colors.white),

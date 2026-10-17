@@ -70,8 +70,8 @@
 |---|---|
 | **Framework** | Flutter 3.41 (Dart) |
 | **API** | AniList GraphQL |
-| **Auth** | OAuth 2.0 — Authorization Code (mobile) / Implicit (web) |
-| **Storage** | Hive (local), SharedPreferences |
+| **Auth** | OAuth 2.0 implicit grant (no client secret in the app); token in the iOS Keychain / Android Keystore |
+| **Storage** | Hive (AES-encrypted, key in the keystore), SharedPreferences |
 | **State** | Provider |
 | **Notifications** | flutter\_local\_notifications |
 | **Image cache** | cached\_network\_image |

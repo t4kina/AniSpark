@@ -1,238 +1,144 @@
+import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:provider/provider.dart';
-import 'providers/anime_list_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'providers/media_list_store.dart';
 import 'providers/settings_provider.dart';
+import 'services/affinity_api.dart';
+import 'services/anilist_service.dart';
+import 'services/api_cache.dart';
 import 'services/auth_service.dart';
+import 'services/hive_cache_store.dart';
+import 'services/home_widgets.dart';
 import 'services/notification_service.dart';
+import 'services/secure_store.dart';
+import 'services/session_expiry.dart';
 import 'screens/home_screen.dart';
+import 'screens/login_gate_screen.dart';
+import 'screens/search_screen.dart' show recentSearchesPrefsKey;
 import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/feed_screen.dart';
+import 'theme/app_theme.dart';
+import 'utils/haptics.dart';
 import 'utils/translations.dart' show tr;
-import 'utils/refresh_notifier.dart' show authExpiredNotifier, rateLimitActiveNotifier;
+import 'widgets/rate_limit_notice.dart';
+import 'utils/tab_reselect.dart';
+import 'widgets/motion/liquid_navigation_bar.dart';
+import 'widgets/motion/pop_in.dart';
+import 'widgets/motion/tab_fade_through.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final animeProvider = AnimeListProvider();
-  await animeProvider.init();
+  await Hive.initFlutter();
+  unawaited(_deleteLegacyListBox());
+  final settingsProvider = SettingsProvider();
+  // AES key for the local boxes, kept in the platform keystore. Null when the
+  // keystore can't be used (and on web): storage then stays unencrypted
+  // exactly as before instead of failing. Loaded alongside the work that
+  // doesn't need it, to keep startup fast.
+  final (storageCipher, _, _) = await (
+    kIsWeb ? Future<HiveAesCipher?>.value() : loadStorageCipher(const DeviceSecureStore()),
+    NotificationService().init(),
+    settingsProvider.load(),
+  ).wait;
+  final apiCache = ApiCache(await HiveCacheStore.openOrFallback(cipher: storageCipher));
+  unawaited(apiCache.prune(maxAge: const Duration(days: 14), maxEntries: 300));
 
   final authService = AuthService();
-  await authService.init();
+  await authService.init(cipher: storageCipher);
 
-  await NotificationService().init();
+  final mediaListStore = MediaListStore(service: AniListService(), cache: apiCache);
+  final messengerKey = GlobalKey<ScaffoldMessengerState>();
 
-  authExpiredNotifier.addListener(() => authService.logout());
-
-  final settingsProvider = SettingsProvider();
-  await settingsProvider.load();
+  // A 401 means AniList no longer accepts the token (expired or revoked);
+  // only a rejection of the current session's token logs it out.
+  watchSessionExpiry(authService, onExpired: () {
+    messengerKey.currentState?.showSnackBar(
+      SnackBar(content: Text(tr('session_expired', settingsProvider.language))),
+    );
+  });
+  // Everything stored for the account goes away when its session ends.
+  var wasLoggedIn = authService.isLoggedIn;
+  authService.addListener(() {
+    final loggedIn = authService.isLoggedIn;
+    if (wasLoggedIn && !loggedIn) unawaited(_clearAccountData(apiCache, mediaListStore));
+    wasLoggedIn = loggedIn;
+  });
+  // Leftovers of a logout that was interrupted, e.g. by the app being killed.
+  if (!authService.isLoggedIn) unawaited(apiCache.clear());
+  // The home-screen widget shows the logged-in user's list in their accent.
+  syncHomeWidgets(authService, settingsProvider);
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider.value(value: animeProvider),
+        Provider.value(value: apiCache),
         ChangeNotifierProvider.value(value: authService),
+        ChangeNotifierProvider.value(value: mediaListStore),
         ChangeNotifierProvider.value(value: settingsProvider),
       ],
-      child: const MyAnimeApp(),
+      child: MyAnimeApp(scaffoldMessengerKey: messengerKey),
     ),
   );
 }
 
+/// Removes everything tied to the account that just logged out. Each step is
+/// best effort and independent, so one failure doesn't skip the others.
+Future<void> _clearAccountData(ApiCache cache, MediaListStore store) async {
+  store.reset();
+  await _bestEffort('clearing the affinity memo', () async => AffinityApi.clearViewerMemo());
+  await _bestEffort('clearing the API cache', cache.clear);
+  await _bestEffort('resetting notifications', NotificationService().resetForLogout);
+  await _bestEffort('clearing recent searches', () async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(recentSearchesPrefsKey);
+  });
+}
+
+Future<void> _bestEffort(String what, Future<void> Function() step) async {
+  try {
+    await step();
+  } on Object catch (e) {
+    // The session itself is already gone; leftovers are retried next logout.
+    debugPrint('[Logout] Failed $what: $e');
+  }
+}
+
+/// Removes the old local-only list box. It only mirrored AniList entries and
+/// was never shown anywhere, so there is nothing to migrate.
+Future<void> _deleteLegacyListBox() async {
+  try {
+    await Hive.deleteBoxFromDisk('myAnimeList');
+  } on Object catch (e) {
+    // Best-effort cleanup (Hive errors are Errors, not Exceptions).
+    debugPrint('[Startup] Could not delete legacy list box: $e');
+  }
+}
+
 class MyAnimeApp extends StatelessWidget {
-  const MyAnimeApp({super.key});
+  const MyAnimeApp({super.key, this.scaffoldMessengerKey});
+
+  /// Lets app-wide events (e.g. an expired session) show a SnackBar.
+  final GlobalKey<ScaffoldMessengerState>? scaffoldMessengerKey;
 
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
     return MaterialApp(
+      scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'AniSpark',
       debugShowCheckedModeBanner: false,
       themeMode: settings.themeMode,
-      theme: ThemeData(
-        brightness: Brightness.light,
-        visualDensity: VisualDensity.compact,
-        splashColor: Colors.transparent,
-        highlightColor: Colors.transparent,
-        scaffoldBackgroundColor: const Color(0xFFD8D8DC),
-        colorScheme: ColorScheme.light(
-          primary: settings.accentColor,
-          surface: const Color(0xFFE2E2E6),
-          surfaceContainerHighest: const Color(0xFFD0D0D4),
-          outline: const Color(0xFFB8B8BC),
-          onSurface: const Color(0xFF1A1A2E),
-          onSurfaceVariant: Colors.black54,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFD8D8DC),
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          centerTitle: true,
-          foregroundColor: Color(0xFF1A1A2E),
-        ),
-        navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: const Color(0xFFEFEFF1),
-          height: 64,
-          indicatorColor: Colors.transparent,
-          overlayColor: WidgetStateProperty.all(Colors.transparent),
-          iconTheme: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return IconThemeData(color: settings.accentColor);
-            }
-            return const IconThemeData(color: Colors.grey);
-          }),
-          labelTextStyle: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return TextStyle(color: settings.accentColor, fontSize: 11, fontWeight: FontWeight.w600);
-            }
-            return const TextStyle(color: Colors.grey, fontSize: 11);
-          }),
-        ),
-        tabBarTheme: TabBarThemeData(
-          labelColor: settings.accentColor,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: settings.accentColor,
-        ),
-        chipTheme: ChipThemeData(
-          backgroundColor: const Color(0xFFE5E7F2),
-          labelStyle: const TextStyle(fontSize: 11, color: Color(0xFF1A1A2E)),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          side: const BorderSide(color: Color(0xFFD0D2E4)),
-        ),
-        cardTheme: CardThemeData(
-          color: const Color(0xFFE2E2E6),
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: EdgeInsets.zero,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFFE8EAF4),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide.none,
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: settings.accentColor, width: 1),
-          ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          hintStyle: const TextStyle(color: Colors.grey),
-        ),
-        listTileTheme: const ListTileThemeData(
-          tileColor: Color(0xFFE2E2E6),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8)),
-          ),
-        ),
-        dividerTheme: const DividerThemeData(
-          color: Color(0xFFD0D2E4),
-          thickness: 1,
-          space: 0,
-        ),
-        dialogTheme: const DialogThemeData(
-          backgroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
-        ),
-        fontFamily: 'Roboto',
-      ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        visualDensity: VisualDensity.compact,
-        splashColor: Colors.transparent,
-        highlightColor: Colors.transparent,
-        scaffoldBackgroundColor: const Color(0xFF111113),
-        colorScheme: ColorScheme.dark(
-          primary: settings.accentColor,
-          surface: const Color(0xFF1C1C1E),
-          surfaceContainerLow: const Color(0xFF1C1C1E),
-          surfaceContainerHighest: const Color(0xFF2C2C2E),
-          outlineVariant: const Color(0xFF38383A),
-          outline: const Color(0xFF48484A),
-          onSurface: const Color(0xFFEAEAEA),
-          onSurfaceVariant: const Color(0xFFAAAAAA),
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF111113),
-          surfaceTintColor: Colors.transparent,
-          elevation: 0,
-          centerTitle: true,
-        ),
-        navigationBarTheme: NavigationBarThemeData(
-          backgroundColor: const Color(0xFF1C1C1E),
-          height: 64,
-          indicatorColor: Colors.transparent,
-          overlayColor: WidgetStateProperty.all(Colors.transparent),
-          iconTheme: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return IconThemeData(color: settings.accentColor);
-            }
-            return const IconThemeData(color: Colors.grey);
-          }),
-          labelTextStyle: WidgetStateProperty.resolveWith((states) {
-            if (states.contains(WidgetState.selected)) {
-              return TextStyle(color: settings.accentColor, fontSize: 11, fontWeight: FontWeight.w600);
-            }
-            return const TextStyle(color: Colors.grey, fontSize: 11);
-          }),
-        ),
-        tabBarTheme: TabBarThemeData(
-          labelColor: settings.accentColor,
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: settings.accentColor,
-        ),
-        chipTheme: ChipThemeData(
-          backgroundColor: const Color(0xFF2C2C2E),
-          labelStyle: const TextStyle(fontSize: 11),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        ),
-        cardTheme: CardThemeData(
-          color: const Color(0xFF1C1C1E),
-          elevation: 0,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          margin: EdgeInsets.zero,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: const Color(0xFF2C2C2E),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide.none,
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(10),
-            borderSide: BorderSide(color: settings.accentColor, width: 1),
-          ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          hintStyle: const TextStyle(color: Colors.grey),
-        ),
-        listTileTheme: const ListTileThemeData(
-          tileColor: Color(0xFF1C1C1E),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.all(Radius.circular(8)),
-          ),
-        ),
-        dividerTheme: const DividerThemeData(
-          color: Color(0xFF2C2C2E),
-          thickness: 1,
-          space: 0,
-        ),
-        fontFamily: 'Roboto',
-      ),
+      theme: buildAppTheme(Brightness.light, settings.accentColor),
+      darkTheme: buildAppTheme(Brightness.dark, settings.accentColor),
       builder: (context, child) {
         return ScrollConfiguration(
           behavior: const _SmoothScrollBehavior(),
-          child: _RateLimitBannerWrapper(child: child!),
+          child: RateLimitNotice(child: child!),
         );
       },
       home: const SplashScreen(),
@@ -257,7 +163,7 @@ class _SplashScreenState extends State<SplashScreen>
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 400),
     );
     _fadeIn = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
     _controller.forward();
@@ -269,11 +175,13 @@ class _SplashScreenState extends State<SplashScreen>
       );
     });
 
-    Future.delayed(const Duration(seconds: 2), () {
+    // Everything needed to render is already loaded (cached lists and
+    // profile), so the splash only stays long enough for the logo fade.
+    Future.delayed(const Duration(milliseconds: 600), () {
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         PageRouteBuilder(
-          pageBuilder: (_, _, _) => MainNavigation(key: MainNavigation.globalKey),
+          pageBuilder: (_, _, _) => const AuthGate(),
           transitionsBuilder: (_, animation, _, child) =>
               FadeTransition(opacity: animation, child: child),
           transitionDuration: const Duration(milliseconds: 500),
@@ -309,6 +217,49 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
+/// The login screen (no tabs) while signed out, the app's tabs once there is
+/// a session. When a session ends (logout or expiry) the pages opened on top
+/// are closed too, so the login screen isn't left hidden under them.
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key, this.signedIn});
+
+  /// What a signed-in user sees; the app's tabs unless a test swaps them.
+  final WidgetBuilder? signedIn;
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  late final AuthService _auth;
+  late bool _signedIn;
+
+  @override
+  void initState() {
+    super.initState();
+    _auth = context.read<AuthService>()..addListener(_onAuthChanged);
+    _signedIn = _auth.isLoggedIn;
+  }
+
+  @override
+  void dispose() {
+    _auth.removeListener(_onAuthChanged);
+    super.dispose();
+  }
+
+  void _onAuthChanged() {
+    final signedIn = _auth.isLoggedIn;
+    if (signedIn == _signedIn) return;
+    setState(() => _signedIn = signedIn);
+    if (!signedIn) Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
+  @override
+  Widget build(BuildContext context) => _signedIn
+      ? widget.signedIn?.call(context) ?? MainNavigation(key: MainNavigation.globalKey)
+      : const LoginGateScreen();
+}
+
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
 
@@ -323,13 +274,31 @@ class MainNavigation extends StatefulWidget {
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  int _currentIndex = 0;
-  final Set<int> _visited = {0};
+  late int _currentIndex;
+  late final Set<int> _visited;
+
+  @override
+  void initState() {
+    super.initState();
+    // Opens on the tab chosen in Settings (Anime unless changed).
+    _currentIndex = context.read<SettingsProvider>().defaultTab.clamp(0, _screens.length - 1);
+    _visited = {_currentIndex};
+  }
 
   void _setTab(int index) => setState(() {
     _currentIndex = index;
     _visited.add(index);
   });
+
+  void _onDestinationSelected(int index) {
+    if (index == _currentIndex) {
+      // Tapping the open tab again takes it back to the top.
+      tabReselectedNotifier.reselect(index);
+      return;
+    }
+    selectionHaptic();
+    _setTab(index);
+  }
 
   final List<Widget> _screens = const [
     AnimeListScreen(),
@@ -346,36 +315,35 @@ class _MainNavigationState extends State<MainNavigation> {
         index: _currentIndex,
         children: List.generate(
           _screens.length,
-          (i) => _visited.contains(i) ? _screens[i] : const SizedBox.shrink(),
+          (i) => _visited.contains(i)
+              ? TabFadeThrough(active: i == _currentIndex, child: _screens[i])
+              : const SizedBox.shrink(),
         ),
       ),
       bottomNavigationBar: Consumer<SettingsProvider>(
-        builder: (_, settings, _) => NavigationBar(
+        builder: (_, settings, _) => LiquidNavigationBar(
           selectedIndex: _currentIndex,
-          onDestinationSelected: (i) => setState(() {
-            _currentIndex = i;
-            _visited.add(i);
-          }),
+          onDestinationSelected: _onDestinationSelected,
           destinations: [
-            NavigationDestination(
+            LiquidDestination(
                 icon: const Icon(Icons.smart_display_outlined),
-                selectedIcon: const Icon(Icons.smart_display),
+                selectedIcon: const PopIn(child: Icon(Icons.smart_display)),
                 label: tr('nav_anime', settings.language)),
-            NavigationDestination(
+            LiquidDestination(
                 icon: const Icon(Icons.collections_bookmark_outlined),
-                selectedIcon: const Icon(Icons.collections_bookmark),
+                selectedIcon: const PopIn(child: Icon(Icons.collections_bookmark)),
                 label: tr('nav_manga', settings.language)),
-            NavigationDestination(
+            LiquidDestination(
                 icon: const Icon(Icons.travel_explore_outlined),
-                selectedIcon: const Icon(Icons.travel_explore),
+                selectedIcon: const PopIn(child: Icon(Icons.travel_explore)),
                 label: tr('nav_discover', settings.language)),
-            NavigationDestination(
+            LiquidDestination(
                 icon: const Icon(Icons.article_outlined),
-                selectedIcon: const Icon(Icons.article),
+                selectedIcon: const PopIn(child: Icon(Icons.article)),
                 label: tr('nav_feed', settings.language)),
-            NavigationDestination(
+            LiquidDestination(
                 icon: const Icon(Icons.person_outline_rounded),
-                selectedIcon: const Icon(Icons.person_rounded),
+                selectedIcon: const PopIn(child: Icon(Icons.person_rounded)),
                 label: tr('nav_profile', settings.language)),
           ],
         ),
@@ -389,83 +357,4 @@ class _SmoothScrollBehavior extends ScrollBehavior {
   @override
   ScrollPhysics getScrollPhysics(BuildContext context) =>
       const BouncingScrollPhysics();
-}
-
-class _RateLimitBannerWrapper extends StatefulWidget {
-  final Widget child;
-  const _RateLimitBannerWrapper({required this.child});
-
-  @override
-  State<_RateLimitBannerWrapper> createState() => _RateLimitBannerWrapperState();
-}
-
-class _RateLimitBannerWrapperState extends State<_RateLimitBannerWrapper>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _ctrl;
-  late final Animation<Offset> _slide;
-  late final Animation<double> _fade;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 300));
-    _slide = Tween(begin: const Offset(0, 1.5), end: Offset.zero)
-        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutBack));
-    _fade = CurvedAnimation(parent: _ctrl, curve: Curves.easeIn);
-    rateLimitActiveNotifier.addListener(_onRateLimitChanged);
-  }
-
-  @override
-  void dispose() {
-    rateLimitActiveNotifier.removeListener(_onRateLimitChanged);
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  void _onRateLimitChanged() {
-    if (!mounted) return;
-    if (rateLimitActiveNotifier.value) {
-      if (!_ctrl.isCompleted) _ctrl.forward();
-    } else {
-      if (!_ctrl.isDismissed) _ctrl.reverse();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        widget.child,
-        Positioned(
-          bottom: MediaQuery.of(context).padding.bottom + 64 + 12,
-          left: 0,
-          right: 0,
-          child: FadeTransition(
-            opacity: _fade,
-            child: SlideTransition(
-              position: _slide,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    'Rate limit reached',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      decoration: TextDecoration.none,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 }

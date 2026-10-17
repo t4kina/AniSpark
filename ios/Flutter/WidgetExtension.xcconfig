@@ -1,0 +1,4 @@
+// Base settings of the UpNextWidget extension (ios/scripts/add_up_next_widget.rb):
+// Flutter's build name and number for its version, without the CocoaPods
+// settings Flutter adds to Runner's Debug/Release.xcconfig.
+#include "Generated.xcconfig"

@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 import '../providers/settings_provider.dart';
+import '../utils/translations.dart' show tr, trf;
 
 class NotificationService {
   NotificationService._();
@@ -94,6 +95,8 @@ class NotificationService {
 
     final nowSeconds = DateTime.now().millisecondsSinceEpoch ~/ 1000;
     final currentEntries = lists['CURRENT'] ?? [];
+    final lang = settings.language;
+    final notifTitle = tr('notif_new_episode_title', lang);
 
     for (final entry in currentEntries) {
       final media = entry['media'] as Map<String, dynamic>?;
@@ -108,7 +111,8 @@ class NotificationService {
       if (airingAt == null || episode == null) continue;
       if (airingAt <= nowSeconds) continue;
 
-      final title = (media['title']?['english'] ?? media['title']?['romaji'] ?? 'Unknown') as String;
+      final title = settings.resolveTitle(media['title'] as Map<String, dynamic>?);
+      final notifBody = trf('notif_new_episode_body', lang, {'n': episode, 'title': title});
       final coverUrl = media['coverImage']?['large'] as String?;
       final notifId = mediaId % 100000;
       final airingTime = tz.TZDateTime.fromMillisecondsSinceEpoch(tz.local, airingAt * 1000);
@@ -117,8 +121,8 @@ class NotificationService {
       try {
         await _plugin.zonedSchedule(
           notifId,
-          'New Episode Airing',
-          'Episode $episode of $title is now airing!',
+          notifTitle,
+          notifBody,
           airingTime,
           NotificationDetails(
             android: AndroidNotificationDetails(
@@ -132,8 +136,8 @@ class NotificationService {
                   ? BigPictureStyleInformation(
                       FilePathAndroidBitmap(imagePath),
                       largeIcon: FilePathAndroidBitmap(imagePath),
-                      contentTitle: 'New Episode Airing',
-                      summaryText: 'Episode $episode of $title is now airing!',
+                      contentTitle: notifTitle,
+                      summaryText: notifBody,
                     )
                   : null,
             ),
@@ -185,14 +189,15 @@ class NotificationService {
     await prefs.setInt(_prefLastActivityKey, newestAt);
 
     final count = newActivities.length;
+    final lang = settings.language;
     final body = count == 1
-        ? _activitySummary(newActivities.first)
-        : '$count friends were recently active';
+        ? _activitySummary(newActivities.first, settings)
+        : trf('notif_friends_active', lang, {'count': count});
 
     try {
       await _plugin.show(
         _friendNotifId,
-        'Friend Activity',
+        tr('notif_friend_activity_title', lang),
         body,
         const NotificationDetails(
           android: AndroidNotificationDetails(
@@ -215,17 +220,26 @@ class NotificationService {
     }
   }
 
-  String _activitySummary(dynamic activity) {
+  String _activitySummary(dynamic activity, SettingsProvider settings) {
+    final lang = settings.language;
     final user = activity['user'] as Map?;
-    final name = user?['name'] as String? ?? 'A friend';
+    final name = user?['name'] as String? ?? tr('notif_a_friend', lang);
     final type = activity['type'] as String?;
-    if (type == 'TEXT') return '$name posted a status update';
+    if (type == 'TEXT') return trf('notif_status_update', lang, {'name': name});
+    // AniList sends the status already worded ("watched episode"); this
+    // fallback only stands in for it, so it stays in the same vocabulary.
     final status = activity['status'] as String? ?? 'updated';
     final media = activity['media'] as Map<String, dynamic>?;
-    final title = (media?['title']?['english'] ?? media?['title']?['romaji'] ?? 'something') as String;
+    final titleMap = media?['title'] as Map<String, dynamic>?;
+    final title = titleMap == null
+        ? tr('notif_something', lang)
+        : settings.resolveTitle(titleMap);
     final progress = activity['progress'];
-    if (progress != null) return '$name $status $progress of $title';
-    return '$name $status $title';
+    if (progress != null) {
+      return trf('notif_activity_progress', lang,
+          {'name': name, 'status': status, 'progress': progress, 'title': title});
+    }
+    return trf('notif_activity_status', lang, {'name': name, 'status': status, 'title': title});
   }
 
   Future<String?> _downloadImage(String url) async {
@@ -240,6 +254,14 @@ class NotificationService {
   Future<void> cancelAll() async {
     if (kIsWeb) return;
     await _plugin.cancelAll();
+  }
+
+  /// Forgets everything tied to the signed-in account: scheduled episode
+  /// alerts and the last friend activity that was notified.
+  Future<void> resetForLogout() async {
+    if (_initialized) await cancelAll();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_prefLastActivityKey);
   }
 
   Future<void> cancelForMedia(int mediaId) async {

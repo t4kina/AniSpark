@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../utils/haptics.dart' as haptics;
+import '../utils/translations.dart' show tr;
 
 const accentColorOptions = <String, Color>{
   'Blue':   Color(0xFF02A9FF),
@@ -18,6 +20,10 @@ class SettingsProvider extends ChangeNotifier {
   bool _newEpisodeAlerts = true;
   bool _friendActivityAlerts = false;
   String _accentColorName = 'Blue';
+  // Index into MainNavigation's tabs: Anime, Manga, Discover, Feed, Profile.
+  // Anime, where the app has always opened.
+  int _defaultTab = 0;
+  bool _hapticsEnabled = true;
 
   String get language => _language;
   String get appearance => _appearance;
@@ -26,23 +32,27 @@ class SettingsProvider extends ChangeNotifier {
   bool get newEpisodeAlerts => _newEpisodeAlerts;
   bool get friendActivityAlerts => _friendActivityAlerts;
   String get accentColorName => _accentColorName;
+  int get defaultTab => _defaultTab;
+  bool get hapticsEnabled => _hapticsEnabled;
   Color get accentColor => accentColorOptions[_accentColorName] ?? const Color(0xFF02A9FF);
 
   ThemeMode get themeMode => switch (_appearance) {
     'Light' => ThemeMode.light,
+    'System' => ThemeMode.system,
     _ => ThemeMode.dark,
   };
 
   /// Returns the AniList title field key based on preference.
   String resolveTitle(Map<String, dynamic>? titleMap) {
-    if (titleMap == null) return 'Unknown';
+    final unknown = tr('feed_unknown', _language);
+    if (titleMap == null) return unknown;
     switch (_titleLanguage) {
       case 'Romaji':
-        return (titleMap['romaji'] ?? titleMap['english'] ?? 'Unknown') as String;
+        return (titleMap['romaji'] ?? titleMap['english'] ?? unknown) as String;
       case 'Native':
-        return (titleMap['native'] ?? titleMap['romaji'] ?? 'Unknown') as String;
+        return (titleMap['native'] ?? titleMap['romaji'] ?? unknown) as String;
       default: // English
-        return (titleMap['english'] ?? titleMap['romaji'] ?? 'Unknown') as String;
+        return (titleMap['english'] ?? titleMap['romaji'] ?? unknown) as String;
     }
   }
 
@@ -55,6 +65,9 @@ class SettingsProvider extends ChangeNotifier {
     _newEpisodeAlerts = prefs.getBool('newEpisodeAlerts') ?? false;
     _friendActivityAlerts = prefs.getBool('friendActivityAlerts') ?? false;
     _accentColorName = prefs.getString('accentColorName') ?? 'Blue';
+    _defaultTab = prefs.getInt('defaultTab') ?? 0;
+    _hapticsEnabled = prefs.getBool('hapticsEnabled') ?? true;
+    haptics.hapticsEnabled = _hapticsEnabled;
     notifyListeners();
   }
 
@@ -108,4 +121,18 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> setDefaultTab(int index) async {
+    _defaultTab = index;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('defaultTab', index);
+    notifyListeners();
+  }
+
+  Future<void> setHapticsEnabled(bool value) async {
+    _hapticsEnabled = value;
+    haptics.hapticsEnabled = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('hapticsEnabled', value);
+    notifyListeners();
+  }
 }

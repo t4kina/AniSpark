@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The home-screen widget (UpNextWidget.kt). -->
+<resources>
+    <string name="widget_name">Als Nächstes</string>
+    <string name="widget_description">Die nächsten Folgen aus deiner Liste</string>
+    <string name="widget_up_next">Als Nächstes</string>
+    <string name="widget_airing_soon">Läuft bald</string>
+    <string name="widget_loading">Wird geladen…</string>
+    <string name="widget_error">Laden fehlgeschlagen. Tippe, um AniSpark zu öffnen.</string>
+    <string name="widget_empty">Demnächst läuft nichts</string>
+    <string name="widget_episode_at">Folge %1$d · %2$s</string>
+    <string name="widget_today">Heute</string>
+    <string name="widget_tomorrow">Morgen</string>
+</resources>

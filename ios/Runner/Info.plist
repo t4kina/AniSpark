@@ -14,6 +14,17 @@
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>es</string>
+		<string>ja</string>
+		<string>fr</string>
+		<string>de</string>
+		<string>pt</string>
+		<string>it</string>
+		<string>ko</string>
+	</array>
 	<key>CFBundleName</key>
 	<string>anispark</string>
 	<key>CFBundlePackageType</key>
@@ -26,6 +37,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCalendarsUsageDescription</key>
+	<string>AniSpark adds the episodes you swipe in the airing calendar to your calendar.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>The new event screen can suggest locations and people from your contacts.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

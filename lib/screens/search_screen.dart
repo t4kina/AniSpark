@@ -1,9 +1,25 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
+import '../theme/app_motion.dart';
+import '../utils/translations.dart' show tr, trf;
+import '../widgets/genre_filter_sheet.dart';
+import '../widgets/motion/cover_hero.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pressable.dart';
+import '../widgets/motion/rounded_hero.dart';
+import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/option_sheet.dart';
 import 'detail_screen.dart';
+
+/// SharedPreferences key of the recent searches; cleared on logout.
+const recentSearchesPrefsKey = 'recent_searches';
+
+/// Selected genres in the filters sheet, as search has always shown them.
 
 class SearchScreen extends StatefulWidget {
   const SearchScreen({super.key});
@@ -19,12 +35,16 @@ class _SearchScreenState extends State<SearchScreen> {
   Timer? _debounce;
 
   List<dynamic> _results = [];
+  // Bumped for every new set of results: the old list fades out while the
+  // new one fades in, and their covers need different hero tags.
+  int _resultsVersion = 0;
   bool _loading = false;
+  bool _hasError = false;
   bool _searched = false;
   bool _focused = false;
 
   List<String> _recentSearches = [];
-  static const _prefsKey = 'recent_searches';
+  static const _prefsKey = recentSearchesPrefsKey;
 
   String _contentType = 'ANIME';
   Set<String> _selectedGenres = {};
@@ -35,13 +55,14 @@ class _SearchScreenState extends State<SearchScreen> {
   String get _cacheKey =>
       '${_controller.text.trim()}|$_contentType|${_selectedGenres.toList()..sort()}|$_sort';
 
-  static const _sortLabels = {
-    'POPULARITY_DESC': 'Popularity',
-    'SCORE_DESC': 'Score',
-    'TRENDING_DESC': 'Trending',
-    'FAVOURITES_DESC': 'Favorites',
-    'TITLE_ROMAJI': 'Title',
-    'START_DATE_DESC': 'Release Date',
+  /// AniList sort values and the keys of their labels.
+  static const _sortLabelKeys = {
+    'POPULARITY_DESC': 'popularity',
+    'SCORE_DESC': 'search_sort_score',
+    'TRENDING_DESC': 'trending_sort',
+    'FAVOURITES_DESC': 'search_sort_favorites',
+    'TITLE_ROMAJI': 'search_sort_title',
+    'START_DATE_DESC': 'search_sort_release_date',
   };
 
   @override
@@ -94,6 +115,8 @@ class _SearchScreenState extends State<SearchScreen> {
       setState(() {
         _results = [];
         _searched = false;
+        _loading = false;
+        _hasError = false;
       });
       return;
     }
@@ -106,23 +129,43 @@ class _SearchScreenState extends State<SearchScreen> {
     if (_cache.containsKey(key)) {
       setState(() {
         _results = _cache[key]!;
+        _resultsVersion++;
         _searched = true;
+        _loading = false;
+        _hasError = false;
       });
       return;
     }
-    setState(() => _loading = true);
-    final genres = _selectedGenres.isEmpty ? null : _selectedGenres.toList();
-    final results = _contentType == 'ANIME'
-        ? await _service.searchAnime(query, genres: genres, sort: _sort)
-        : await _service.searchManga(query, genres: genres, sort: _sort);
-    if (!mounted) return;
-    _cache[key] = results;
-    _saveSearch(query);
     setState(() {
-      _results = results;
-      _loading = false;
-      _searched = true;
+      _loading = true;
+      _hasError = false;
     });
+    final genres = _selectedGenres.isEmpty ? null : _selectedGenres.toList();
+    try {
+      final results = _contentType == 'ANIME'
+          ? await _service.searchAnime(query, genres: genres, sort: _sort)
+          : await _service.searchManga(query, genres: genres, sort: _sort);
+      if (!mounted) return;
+      // The service returns [] on HTTP errors; don't remember that for the
+      // whole session.
+      if (results.isNotEmpty) _cache[key] = results;
+      _saveSearch(query);
+      // A newer query/filter replaced this one while it was in flight.
+      if (key != _cacheKey) return;
+      setState(() {
+        _results = results;
+        _resultsVersion++;
+        _loading = false;
+        _searched = true;
+      });
+    } on Exception catch (e) {
+      debugPrint('[SearchScreen] Search for "$query" failed: $e');
+      if (!mounted || key != _cacheKey) return;
+      setState(() {
+        _loading = false;
+        _hasError = true;
+      });
+    }
   }
 
   void _onContentTypeChanged(String type) {
@@ -156,7 +199,7 @@ class _SearchScreenState extends State<SearchScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _FilterSheet(
+      builder: (_) => GenreFilterSheet(
         selected: draft,
         onApply: (genres) {
           if (genres == _selectedGenres) return;
@@ -174,6 +217,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     final hasFilters = _selectedGenres.isNotEmpty;
     final accentColor = Theme.of(context).colorScheme.primary;
 
@@ -187,7 +231,7 @@ class _SearchScreenState extends State<SearchScreen> {
             focusNode: _focusNode,
             autofocus: true,
             decoration: InputDecoration(
-              hintText: 'Search...',
+              hintText: tr('search_hint', lang),
               border: InputBorder.none,
               contentPadding: EdgeInsets.zero,
               suffixIcon: _controller.text.isNotEmpty
@@ -198,6 +242,8 @@ class _SearchScreenState extends State<SearchScreen> {
                         setState(() {
                           _results = [];
                           _searched = false;
+                          _loading = false;
+                          _hasError = false;
                         });
                       },
                     )
@@ -217,9 +263,11 @@ class _SearchScreenState extends State<SearchScreen> {
                   _results = [];
                   _searched = false;
                   _focused = false;
+                  _loading = false;
+                  _hasError = false;
                 });
               },
-              child: const Text('Cancel'),
+              child: Text(tr('cancel', lang)),
             ),
         ],
       ),
@@ -231,13 +279,17 @@ class _SearchScreenState extends State<SearchScreen> {
             child: Row(
               children: [
                 // Content type pill
-                PopupMenuButton<String>(
-                  onSelected: _onContentTypeChanged,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  itemBuilder: (_) => [
-                    PopupMenuItem(value: 'ANIME', child: Text('Anime')),
-                    PopupMenuItem(value: 'MANGA', child: Text('Manga')),
-                  ],
+                _pickerButton(
+                  name: tr('search_content_type', lang),
+                  value: tr(_contentType == 'ANIME' ? 'nav_anime' : 'nav_manga', lang),
+                  onTap: () => showOptionSheet<String>(
+                    context: context,
+                    title: tr('search_content_type', lang),
+                    options: const ['ANIME', 'MANGA'],
+                    labelOf: (v) => tr(v == 'ANIME' ? 'nav_anime' : 'nav_manga', lang),
+                    current: _contentType,
+                    onSelected: _onContentTypeChanged,
+                  ),
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
                     decoration: BoxDecoration(
@@ -248,7 +300,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          _contentType == 'ANIME' ? 'Anime' : 'Manga',
+                          tr(_contentType == 'ANIME' ? 'nav_anime' : 'nav_manga', lang),
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(width: 4),
@@ -265,34 +317,32 @@ class _SearchScreenState extends State<SearchScreen> {
                     color: hasFilters ? accentColor : Colors.grey,
                   ),
                   onPressed: _showFilters,
-                  tooltip: 'Filters',
+                  tooltip: tr('filters', lang),
                 ),
                 // Sort button
-                PopupMenuButton<String>(
-                  onSelected: _onSortChanged,
-                  tooltip: 'Sort',
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  itemBuilder: (_) => _sortLabels.entries.map((e) {
-                    return PopupMenuItem(
-                      value: e.key,
-                      child: Row(
-                        children: [
-                          Expanded(child: Text(e.value)),
-                          if (e.key == _sort)
-                            Icon(Icons.check, size: 16, color: Theme.of(context).colorScheme.primary),
-                        ],
-                      ),
-                    );
-                  }).toList(),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _sortLabels[_sort] ?? 'Sort',
-                        style: const TextStyle(fontSize: 13),
-                      ),
-                      const Icon(Icons.keyboard_arrow_down, size: 16),
-                    ],
+                _pickerButton(
+                  name: tr('search_sort', lang),
+                  value: tr(_sortLabelKeys[_sort] ?? 'search_sort', lang),
+                  onTap: () => showOptionSheet<String>(
+                    context: context,
+                    title: tr('search_sort', lang),
+                    options: _sortLabelKeys.keys.toList(),
+                    labelOf: (v) => tr(_sortLabelKeys[v] ?? 'search_sort', lang),
+                    current: _sort,
+                    onSelected: _onSortChanged,
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          tr(_sortLabelKeys[_sort] ?? 'search_sort', lang),
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                        const Icon(Icons.keyboard_arrow_down, size: 16),
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -300,34 +350,85 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
           const Divider(height: 1),
           // Results
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : !_searched
-                    ? _buildEmptyState()
-                    : _results.isEmpty
-                        ? const Center(child: Text('No results found'))
-                        : ListView.builder(
-                            padding: const EdgeInsets.only(top: 8, bottom: 16),
-                            itemCount: _results.length,
-                            itemBuilder: (_, i) => _ResultCard(data: _results[i]),
-                          ),
+          Expanded(child: FadeSwitcher(child: _buildResults(lang))),
+        ],
+      ),
+    );
+  }
+
+  /// A control that opens an option sheet, read as a button named [name]
+  /// whose value is the current choice.
+  static Widget _pickerButton({
+    required String name,
+    required String value,
+    required VoidCallback onTap,
+    required Widget child,
+  }) =>
+      Semantics(
+        button: true,
+        label: name,
+        value: value,
+        child: Pressable(onTap: onTap, child: ExcludeSemantics(child: child)),
+      );
+
+  /// The area under the controls; each state has its own key so changing
+  /// state (or getting new results) cross-fades.
+  Widget _buildResults(String lang) {
+    if (_loading) {
+      return const Center(key: ValueKey('loading'), child: CircularProgressIndicator());
+    }
+    if (_hasError) return KeyedSubtree(key: const ValueKey('error'), child: _buildError());
+    if (!_searched) return KeyedSubtree(key: const ValueKey('start'), child: _buildEmptyState(lang));
+    if (_results.isEmpty) {
+      return Center(key: const ValueKey('no-results'), child: Text(tr('no_results', lang)));
+    }
+    final heroScope = 'search-$_resultsVersion';
+    final results = _results;
+    return EntranceGate(
+      key: ValueKey(heroScope),
+      trigger: results,
+      child: ListView.builder(
+        padding: const EdgeInsets.only(top: 8, bottom: 16),
+        itemCount: results.length,
+        itemBuilder: (_, i) => StaggeredEntrance(
+          index: i,
+          child: _ResultCard(data: results[i], heroScope: heroScope),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildError() {
+    final lang = context.watch<SettingsProvider>().language;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+          const SizedBox(height: 12),
+          Text(tr('load_error', lang),
+              style: const TextStyle(color: Colors.grey)),
+          const SizedBox(height: 16),
+          FilledButton.icon(
+            onPressed: () => _search(_controller.text.trim()),
+            icon: const Icon(Icons.refresh),
+            label: Text(tr('retry', lang)),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(String lang) {
     if (_recentSearches.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.search, size: 64, color: Colors.grey),
-            SizedBox(height: 12),
-            Text('Search for anime or manga',
-                style: TextStyle(color: Colors.grey)),
+          children: [
+            const Icon(Icons.search, size: 64, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(tr('search_for', lang),
+                style: const TextStyle(color: Colors.grey)),
           ],
         ),
       );
@@ -339,7 +440,7 @@ class _SearchScreenState extends State<SearchScreen> {
       children: [
         Row(
           children: [
-            Text('Recent',
+            Text(tr('search_recent', lang),
                 style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
@@ -348,7 +449,7 @@ class _SearchScreenState extends State<SearchScreen> {
             const Spacer(),
             GestureDetector(
               onTap: _clearRecentSearches,
-              child: Text('Clear all',
+              child: Text(tr('search_clear_all', lang),
                   style: TextStyle(fontSize: 12, color: cs.primary)),
             ),
           ],
@@ -402,10 +503,15 @@ class _SearchScreenState extends State<SearchScreen> {
 
 class _ResultCard extends StatelessWidget {
   final dynamic data;
-  const _ResultCard({required this.data});
+
+  /// The results list's scope for the cover's hero tag.
+  final String heroScope;
+
+  const _ResultCard({required this.data, required this.heroScope});
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.select<SettingsProvider, String>((s) => s.language);
     final id = data['id'] as int?;
     final title = data['title']?['english'] ?? data['title']?['romaji'] ?? '';
     final cover = data['coverImage']?['large'] as String?;
@@ -420,9 +526,9 @@ class _ResultCard extends StatelessWidget {
         .trim();
 
     final episodeLabel = episodes != null
-        ? '$episodes eps'
+        ? trf('search_eps', lang, {'n': episodes})
         : chapters != null
-            ? '$chapters ch'
+            ? trf('search_ch', lang, {'n': chapters})
             : null;
     final formatLabel = format?.replaceAll('_', ' ');
     final metaParts = [
@@ -430,12 +536,21 @@ class _ResultCard extends StatelessWidget {
       ?episodeLabel,
       if (score != null) '★ ${(score / 10).toStringAsFixed(1)}',
     ];
+    final heroTag = id == null ? null : coverHeroTag(heroScope, id);
+    final fadeIn = AppMotion.of(context, AppMotion.short);
+    final coverPlaceholder = ColoredBox(color: Colors.grey[800]!);
 
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => DetailScreen(animeId: id ?? 0)),
-      ),
+    return Pressable(
+      // A full-width card only needs a hint of a press.
+      pressedScale: 0.98,
+      onTap: id == null
+          ? null
+          : () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DetailScreen(animeId: id, heroTag: heroTag, initialCoverUrl: cover),
+                ),
+              ),
       child: Container(
         height: 140,
         margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
@@ -453,6 +568,8 @@ class _ResultCard extends StatelessWidget {
                 imageUrl: banner,
                 fit: BoxFit.cover,
                 memCacheWidth: 600,
+                fadeInDuration: fadeIn,
+                fadeOutDuration: Duration.zero,
                 errorWidget: (_, _, _) => const SizedBox.shrink(),
               ),
             // Dark overlay
@@ -475,21 +592,22 @@ class _ResultCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Cover
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: SizedBox(
-                      width: 78,
-                      height: 116,
+                  SizedBox(
+                    width: 78,
+                    height: 116,
+                    child: RoundedHero(
+                      tag: heroTag,
+                      borderRadius: const BorderRadius.all(Radius.circular(6)),
                       child: cover != null
                           ? CachedNetworkImage(
                               imageUrl: cover,
                               fit: BoxFit.cover,
                               memCacheWidth: 160,
-                              errorWidget: (_, _, _) => Container(
-                                color: Colors.grey[800],
-                              ),
+                              fadeInDuration: fadeIn,
+                              fadeOutDuration: Duration.zero,
+                              errorWidget: (_, _, _) => coverPlaceholder,
                             )
-                          : Container(color: Colors.grey[800]),
+                          : coverPlaceholder,
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -545,7 +663,7 @@ class _ResultCard extends StatelessWidget {
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                g,
+                                genreLabel(g, lang),
                                 style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 10,
@@ -562,141 +680,6 @@ class _ResultCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ── Filter sheet ─────────────────────────────────────────────────────────────
-
-class _FilterSheet extends StatefulWidget {
-  final Set<String> selected;
-  final void Function(Set<String>) onApply;
-
-  const _FilterSheet({required this.selected, required this.onApply});
-
-  @override
-  State<_FilterSheet> createState() => _FilterSheetState();
-}
-
-class _FilterSheetState extends State<_FilterSheet> {
-  late Set<String> _draft;
-
-  static const _genres = [
-    'Action', 'Adventure', 'Comedy', 'Drama', 'Ecchi', 'Fantasy',
-    'Horror', 'Mahou Shoujo', 'Mecha', 'Music', 'Mystery', 'Psychological',
-    'Romance', 'Sci-Fi', 'Slice of Life', 'Sports', 'Supernatural', 'Thriller',
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _draft = Set<String>.from(widget.selected);
-  }
-
-  void _close() {
-    Navigator.pop(context);
-    widget.onApply(_draft);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      expand: false,
-      initialChildSize: 0.7,
-      maxChildSize: 0.95,
-      builder: (_, scrollCtrl) => Column(
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
-            child: Row(
-              children: [
-                TextButton(
-                  onPressed: () => setState(() => _draft.clear()),
-                  child: const Text('Reset', style: TextStyle(color: Colors.grey)),
-                ),
-                const Expanded(
-                  child: Center(
-                    child: Text('Filters',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: _close,
-                ),
-              ],
-            ),
-          ),
-          const Divider(height: 1),
-          Expanded(
-            child: ListView(
-              controller: scrollCtrl,
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-              children: [
-                const Text(
-                  'GENRE',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey,
-                    letterSpacing: 0.8,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _genres.map((g) {
-                    final selected = _draft.contains(g);
-                    return GestureDetector(
-                      onTap: () => setState(() {
-                        if (selected) {
-                          _draft.remove(g);
-                        } else {
-                          _draft.add(g);
-                        }
-                      }),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? const Color(0xFF2ECC71).withValues(alpha: 0.2)
-                              : Theme.of(context).colorScheme.surfaceContainerHighest,
-                          border: Border.all(
-                            color: selected
-                                ? const Color(0xFF2ECC71)
-                                : Colors.transparent,
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (selected) ...[
-                              const Icon(Icons.check, size: 14, color: Color(0xFF2ECC71)),
-                              const SizedBox(width: 4),
-                            ],
-                            Text(
-                              g,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: selected ? const Color(0xFF2ECC71) : null,
-                                fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

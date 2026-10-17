@@ -1,18 +1,36 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
-import '../services/anilist_service.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
+import '../services/social_api.dart';
 import '../providers/settings_provider.dart';
+import '../utils/activity_status.dart';
+import '../utils/activity_text.dart' show relativeTime;
 import '../utils/refresh_notifier.dart';
-import 'detail_screen.dart';
-import 'user_profile_screen.dart';
+import '../theme/app_motion.dart';
+import '../utils/tab_reselect.dart';
+import '../utils/translations.dart' show tr, trf;
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pop_on_change.dart';
+import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/people/paged_items.dart' show LoadMoreFooter;
+import '../widgets/skeletons.dart';
+import '../widgets/social/social_widgets.dart';
+import 'activity_thread_screen.dart';
+import 'notifications_screen.dart';
 
 enum _FeedType { following, global, personal }
 
+/// The feed's index in the bottom navigation.
+const _feedTab = 3;
+
 class FeedScreen extends StatefulWidget {
-  const FeedScreen({super.key});
+  const FeedScreen({super.key, this.api});
+
+  final SocialApi? api;
 
   @override
   State<FeedScreen> createState() => _FeedScreenState();
@@ -20,15 +38,28 @@ class FeedScreen extends StatefulWidget {
 
 class _FeedScreenState extends State<FeedScreen>
     with AutomaticKeepAliveClientMixin {
-  final _service = AniListService();
-  List<dynamic> _activities = [];
+  late final SocialApi _social = widget.api ?? SocialApi();
+  List<Map<String, dynamic>> _activities = [];
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMore = false;
   bool _hasError = false;
+  // The last page request failed: paging waits for a tap on the footer.
+  bool _moreFailed = false;
   int _page = 1;
+  int _unreadCount = 0;
+  // Bumped on every reload so a slow response for a previous feed type or
+  // session can't overwrite the current one.
+  int _loadGeneration = 0;
+  // Activities whose like toggle is still waiting for AniList.
+  final Set<int> _pendingLikes = {};
   _FeedType _feedType = _FeedType.following;
-  late final AuthService _auth;
+  AuthService? _auth;
+  final _scrollController = ScrollController();
+  late final VoidCallback _stopReselectListener;
+  // Bumped when the user posts a status, so its card slides in while the
+  // cards already shown stay put.
+  int _postedCount = 0;
 
   @override
   bool get wantKeepAlive => true;
@@ -37,22 +68,29 @@ class _FeedScreenState extends State<FeedScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _auth = context.read<AuthService>();
-      _auth.addListener(_onAuthChanged);
+      if (!mounted) return;
+      _auth = context.read<AuthService>()..addListener(_onAuthChanged);
       _load();
     });
     feedRefreshNotifier.addListener(_onFeedRefresh);
+    _stopReselectListener = scrollToTopOnReselect(
+      tabReselectedNotifier,
+      tab: _feedTab,
+      onReselected: () => scrollToTop(_scrollController, animate: !AppMotion.reduced(context)),
+    );
   }
 
   @override
   void dispose() {
-    _auth.removeListener(_onAuthChanged);
+    _auth?.removeListener(_onAuthChanged);
     feedRefreshNotifier.removeListener(_onFeedRefresh);
+    _stopReselectListener();
+    _scrollController.dispose();
     super.dispose();
   }
 
   bool _onScrollNotification(ScrollNotification notification) {
-    if (_loadingMore || !_hasMore) return false;
+    if (_loadingMore || !_hasMore || _moreFailed) return false;
     if (notification.metrics.pixels >=
         notification.metrics.maxScrollExtent - 200) {
       _loadMore();
@@ -61,91 +99,233 @@ class _FeedScreenState extends State<FeedScreen>
   }
 
   void _onAuthChanged() {
-    if (_auth.isLoggedIn && _activities.isEmpty) {
+    final auth = _auth;
+    if (auth == null || !mounted) return;
+    if (auth.isLoggedIn && _activities.isEmpty) {
       _load();
-    } else if (!_auth.isLoggedIn) {
-      setState(() => _activities = []);
+    } else if (!auth.isLoggedIn) {
+      _loadGeneration++;
+      setState(() {
+        _activities = [];
+        _unreadCount = 0;
+      });
     }
   }
 
   void _onFeedRefresh() => _load();
 
+  Future<ActivityPage> _fetchPage(String token, AuthService auth, int page) =>
+      _social.fetchFeed(
+        token,
+        isFollowing: _feedType == _FeedType.following,
+        userId: _feedType == _FeedType.personal
+            ? (auth.user?['id'] as int?)
+            : null,
+        page: page,
+      );
+
   Future<void> _load() async {
+    if (!mounted) return;
     final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn) {
+    final token = auth.token;
+    final generation = ++_loadGeneration;
+    if (!auth.isLoggedIn || token == null) {
       setState(() { _loading = false; _hasError = false; });
       return;
     }
-    setState(() { _loading = true; _hasError = false; _page = 1; });
+    setState(() {
+      _loading = true;
+      _loadingMore = false;
+      _moreFailed = false;
+      _hasError = false;
+      _page = 1;
+    });
+    unawaited(_loadUnreadCount());
+    final feedType = _feedType;
+    final settings = context.read<SettingsProvider>();
+    final ActivityPage result;
     try {
-      final result = await _service.getActivityFeed(
-        auth.token!,
-        isFollowing: _feedType == _FeedType.following,
-        userId: _feedType == _FeedType.personal
-            ? (auth.user?['id'] as int?)
-            : null,
-        page: 1,
-      );
-      setState(() {
-        _activities = result.activities;
-        _hasMore = result.hasNextPage;
-        _loading = false;
-      });
-      if (_feedType == _FeedType.following && mounted) {
-        final settings = context.read<SettingsProvider>();
-        await NotificationService().checkFriendActivity(result.activities, settings);
+      result = await _fetchPage(token, auth, 1);
+    } on Exception catch (e) {
+      debugPrint('[FeedScreen] Loading the feed failed: $e');
+      if (mounted && generation == _loadGeneration) {
+        setState(() { _loading = false; _hasError = true; });
       }
-    } catch (_) {
-      setState(() { _loading = false; _hasError = true; });
+      return;
+    }
+    if (!mounted || generation != _loadGeneration) return;
+    setState(() {
+      _activities = result.activities;
+      _hasMore = result.hasNextPage;
+      _loading = false;
+    });
+    if (feedType != _FeedType.following) return;
+    try {
+      await NotificationService().checkFriendActivity(result.activities, settings);
+    } on Exception catch (e) {
+      debugPrint('[FeedScreen] Checking friend activity failed: $e');
     }
   }
 
-  Future<void> _loadMore() async {
-    if (_loadingMore || !_hasMore) return;
+  Future<void> _loadMore({bool retry = false}) async {
+    if (_loadingMore || !_hasMore || (_moreFailed && !retry)) return;
     final auth = context.read<AuthService>();
-    if (!auth.isLoggedIn) return;
-    setState(() => _loadingMore = true);
+    final token = auth.token;
+    if (!auth.isLoggedIn || token == null) return;
+    final generation = _loadGeneration;
+    final nextPage = _page + 1;
+    setState(() {
+      _loadingMore = true;
+      _moreFailed = false;
+    });
     try {
-      final nextPage = _page + 1;
-      final result = await _service.getActivityFeed(
-        auth.token!,
-        isFollowing: _feedType == _FeedType.following,
-        userId: _feedType == _FeedType.personal
-            ? (auth.user?['id'] as int?)
-            : null,
-        page: nextPage,
-      );
+      final result = await _fetchPage(token, auth, nextPage);
+      if (!mounted || generation != _loadGeneration) return;
+      // New posts shift AniList's pages, so a page can repeat activities.
+      final seen = {for (final activity in _activities) activity['id']};
       setState(() {
-        _activities = [..._activities, ...result.activities];
+        _activities = [
+          ..._activities,
+          ...result.activities.where((a) => !seen.contains(a['id'])),
+        ];
         _hasMore = result.hasNextPage;
         _page = nextPage;
         _loadingMore = false;
       });
-    } catch (_) {
-      setState(() => _loadingMore = false);
+    } on Exception catch (e) {
+      debugPrint('[FeedScreen] Loading feed page $nextPage failed: $e');
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _loadingMore = false;
+          _moreFailed = true;
+        });
+      }
     }
   }
 
-  String _timeAgo(int timestamp) {
-    final diff = DateTime.now()
-        .difference(DateTime.fromMillisecondsSinceEpoch(timestamp * 1000));
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    return '${diff.inDays}d ago';
+  Future<void> _loadUnreadCount() async {
+    final token = context.read<AuthService>().token;
+    if (token == null) return;
+    try {
+      final count = await _social.fetchUnreadCount(token);
+      if (mounted) setState(() => _unreadCount = count);
+    } on Exception catch (e) {
+      debugPrint('[FeedScreen] Loading the unread notification count failed: $e');
+    }
   }
 
-  String get _feedLabel {
+  Future<void> _openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+    );
+    // The inbox marks everything read when it loads; confirm with AniList
+    // rather than assuming it did.
+    if (mounted) unawaited(_loadUnreadCount());
+  }
+
+  void _updateActivity(
+    int id,
+    Map<String, dynamic> Function(Map<String, dynamic> activity) update,
+  ) {
+    setState(() {
+      _activities = [
+        for (final activity in _activities)
+          activity['id'] == id ? update(activity) : activity,
+      ];
+    });
+  }
+
+  Future<void> _toggleLike(Map<String, dynamic> activity) async {
+    final id = activity['id'] as int?;
+    final token = context.read<AuthService>().token;
+    if (id == null || token == null || !_pendingLikes.add(id)) return;
+    final lang = context.read<SettingsProvider>().language;
+    final messenger = ScaffoldMessenger.of(context);
+    final before = likeStateOf(activity);
+    _updateActivity(id, withLikeToggled);
+    final result =
+        await _social.toggleLike(id, LikeTarget.activity, token: token);
+    _pendingLikes.remove(id);
+    if (!mounted) return;
+    _updateActivity(id, (current) => withLikeState(current, result ?? before));
+    if (result == null) {
+      messenger.showSnackBar(SnackBar(content: Text(tr('save_failed', lang))));
+    }
+  }
+
+  /// Keeps the card in sync with likes and replies made in its thread.
+  void _onThreadChanged(Map<String, dynamic> updated) {
+    final id = updated['id'] as int?;
+    if (!mounted || id == null) return;
+    _updateActivity(id, (current) => {
+          ...current,
+          'isLiked': updated['isLiked'] ?? current['isLiked'],
+          'likeCount': updated['likeCount'] ?? current['likeCount'],
+          'replyCount': updated['replyCount'] ?? current['replyCount'],
+        });
+  }
+
+  void _openThread(Map<String, dynamic> activity) {
+    final id = activity['id'] as int?;
+    if (id == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ActivityThreadScreen(
+          activityId: id,
+          initialActivity: activity,
+          onActivityChanged: _onThreadChanged,
+        ),
+      ),
+    );
+  }
+
+  void _openComposer() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _ComposeStatusSheet(onPost: _postStatus),
+    );
+  }
+
+  /// Posts a status and puts it at the top of the feed. Returns whether
+  /// AniList accepted it.
+  Future<bool> _postStatus(String text) async {
+    final token = context.read<AuthService>().token;
+    if (token == null) return false;
+    final activity = await _social.postStatus(text, token: token);
+    if (activity == null) return false;
+    if (mounted) {
+      setState(() {
+        _activities = [
+          activity,
+          ..._activities.where((a) => a['id'] != activity['id']),
+        ];
+        _hasError = false;
+        _postedCount++;
+      });
+    }
+    return true;
+  }
+
+  String _feedLabel(String lang) {
     switch (_feedType) {
       case _FeedType.following:
-        return 'Following Feed';
+        return tr('following_feed', lang);
       case _FeedType.global:
-        return 'Global Feed';
+        return tr('global_feed', lang);
       case _FeedType.personal:
-        return 'Your Feed';
+        return tr('your_feed', lang);
     }
   }
 
   void _showFeedPicker() {
+    final lang = context.read<SettingsProvider>().language;
     showModalBottomSheet(
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
@@ -167,14 +347,14 @@ class _FeedScreenState extends State<FeedScreen>
                 ),
               ),
               const SizedBox(height: 8),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text('Choose an activity feed:',
-                    style: TextStyle(color: Colors.grey, fontSize: 13)),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Text(tr('choose_feed', lang),
+                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
               ),
-              _feedOption('Your Feed', Icons.person, _FeedType.personal),
-              _feedOption('Following Feed', Icons.group, _FeedType.following),
-              _feedOption('Global Feed', Icons.public, _FeedType.global),
+              _feedOption(tr('your_feed', lang), Icons.person, _FeedType.personal),
+              _feedOption(tr('following_feed', lang), Icons.group, _FeedType.following),
+              _feedOption(tr('global_feed', lang), Icons.public, _FeedType.global),
               const SizedBox(height: 8),
             ],
           ),
@@ -204,22 +384,47 @@ class _FeedScreenState extends State<FeedScreen>
     );
   }
 
+  List<Widget> _appBarActions(String lang) => [
+        IconButton(
+          tooltip: tr('social_compose', lang),
+          icon: const Icon(Icons.edit_outlined),
+          onPressed: _openComposer,
+        ),
+        IconButton(
+          tooltip: _unreadCount > 0
+              ? trf('inbox_unread_tooltip', lang, {'n': _unreadCount})
+              : tr('inbox_title', lang),
+          // The bell pops when new notifications arrive, not when read.
+          icon: PopOnChange(
+            value: _unreadCount,
+            when: (count) => count is int && count > 0,
+            child: Badge.count(
+              count: _unreadCount,
+              isLabelVisible: _unreadCount > 0,
+              child: const Icon(Icons.notifications_outlined),
+            ),
+          ),
+          onPressed: _openNotifications,
+        ),
+      ];
+
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final auth = context.watch<AuthService>();
+    final lang = context.watch<SettingsProvider>().language;
 
     if (!auth.isLoggedIn) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Feed')),
-        body: const Center(
+        appBar: AppBar(title: Text(tr('nav_feed', lang))),
+        body: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.group_outlined, size: 52, color: Colors.grey),
-              SizedBox(height: 12),
-              Text('Connect your AniList from the Profile tab',
-                  style: TextStyle(color: Colors.grey)),
+              const Icon(Icons.group_outlined, size: 52, color: Colors.grey),
+              const SizedBox(height: 12),
+              Text(tr('feed_connect_from_profile', lang),
+                  style: const TextStyle(color: Colors.grey)),
             ],
           ),
         ),
@@ -234,7 +439,7 @@ class _FeedScreenState extends State<FeedScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                _feedLabel,
+                _feedLabel(lang),
                 style: const TextStyle(
                     fontWeight: FontWeight.bold, fontSize: 18),
               ),
@@ -243,131 +448,177 @@ class _FeedScreenState extends State<FeedScreen>
             ],
           ),
         ),
+        actions: _appBarActions(lang),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _hasError
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-                      const SizedBox(height: 12),
-                      const Text('No se pudo cargar el feed',
-                          style: TextStyle(color: Colors.grey)),
-                      const SizedBox(height: 16),
-                      FilledButton.icon(
-                        onPressed: _load,
-                        icon: const Icon(Icons.refresh),
-                        label: const Text('Reintentar'),
-                      ),
-                    ],
-                  ),
-                )
-              : _activities.isEmpty
-                  ? const Center(
-                      child: Text('No activity yet',
-                          style: TextStyle(color: Colors.grey)))
-                  : NotificationListener<ScrollNotification>(
-                      onNotification: _onScrollNotification,
-                      child: RefreshIndicator(
-                        onRefresh: _load,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(12),
-                          itemCount: _activities.length + (_hasMore ? 1 : 0),
-                          itemBuilder: (_, i) {
-                            if (i == _activities.length) {
-                              return const Padding(
-                                padding: EdgeInsets.symmetric(vertical: 20),
-                                child: Center(child: CircularProgressIndicator()),
-                              );
-                            }
-                            return _ActivityCard(
-                              activity: _activities[i],
-                              timeAgo: _timeAgo,
-                            );
-                          },
-                        ),
-                      ),
-                    ),
+      body: FadeSwitcher(child: _body(lang)),
     );
+  }
+
+  /// The skeleton, error, empty message or cards, each keyed so the switch
+  /// between them cross-fades.
+  Widget _body(String lang) {
+    if (_loading) return const FeedSkeleton(key: ValueKey('feed-skeleton'));
+    if (_hasError) {
+      return Center(
+        key: const ValueKey('feed-error'),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
+            Text(tr('feed_load_error', lang),
+                style: const TextStyle(color: Colors.grey)),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: _load,
+              icon: const Icon(Icons.refresh),
+              label: Text(tr('retry', lang)),
+            ),
+          ],
+        ),
+      );
+    }
+    if (_activities.isEmpty) {
+      return Center(
+          key: const ValueKey('feed-empty'),
+          child: Text(tr('no_activity', lang),
+              style: const TextStyle(color: Colors.grey)));
+    }
+    // A fresh list cascades in; afterwards only a newly posted status does.
+    return EntranceGate(
+      key: const ValueKey('feed-list'),
+      trigger: _postedCount,
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScrollNotification,
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView.builder(
+            controller: _scrollController,
+            padding: const EdgeInsets.all(12),
+            itemCount: _activities.length + (_hasMore ? 1 : 0),
+            // Cards keep their state when a post is inserted above them, so
+            // they don't replay their entrance.
+            findChildIndexCallback: _indexOfCard,
+            itemBuilder: (_, i) {
+              if (i == _activities.length) {
+                return LoadMoreFooter(
+                  key: _moreFailed ? const Key('load-more-retry') : null,
+                  hasMore: true,
+                  failed: _moreFailed,
+                  onRetry: () => _loadMore(retry: true),
+                );
+              }
+              final activity = _activities[i];
+              final card = StaggeredEntrance(
+                index: i,
+                child: _ActivityCard(
+                  activity: activity,
+                  lang: lang,
+                  onToggleLike: () => _toggleLike(activity),
+                  onOpenThread: () => _openThread(activity),
+                ),
+              );
+              final id = activity['id'];
+              return id is int ? KeyedSubtree(key: _CardKey(id), child: card) : card;
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  int? _indexOfCard(Key key) {
+    if (key is! _CardKey) return null;
+    final index = _activities.indexWhere((activity) => activity['id'] == key.value);
+    return index < 0 ? null : index;
   }
 }
 
+/// Identifies a feed card by its activity id.
+class _CardKey extends ValueKey<int> {
+  const _CardKey(super.value);
+}
+
 class _ActivityCard extends StatelessWidget {
-  final dynamic activity;
-  final String Function(int) timeAgo;
+  final Map<String, dynamic> activity;
+  final String lang;
+  final VoidCallback onToggleLike;
+  final VoidCallback onOpenThread;
 
-  const _ActivityCard({required this.activity, required this.timeAgo});
+  // Long posts are cut in the feed; the thread shows them in full.
+  static const _maxTextLines = 10;
 
-  void _openUserProfile(BuildContext context, Map? user) {
-    final id = user?['id'] as int?;
-    final name = user?['name'] as String? ?? 'Unknown';
-    final avatar = user?['avatar']?['large'] as String?;
-    if (id == null) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => UserProfileScreen(userId: id, name: name, avatarUrl: avatar),
-      ),
-    );
-  }
+  const _ActivityCard({
+    required this.activity,
+    required this.lang,
+    required this.onToggleLike,
+    required this.onOpenThread,
+  });
 
   @override
   Widget build(BuildContext context) {
     final type = activity['type'] as String?;
-    final user = activity['user'] as Map?;
-    final avatar = user?['avatar']?['large'] as String?;
-    final username = user?['name'] as String? ?? 'Unknown';
+    final user = asJsonMap(activity['user']);
+    final username = user?['name'] as String? ?? tr('feed_unknown', lang);
     final createdAt = activity['createdAt'] as int? ?? 0;
 
     if (type == 'TEXT') {
-      return _buildTextActivity(context, user, avatar, username, createdAt);
+      return _buildTextActivity(context, user, username, createdAt);
     }
-    return _buildListActivity(context, user, avatar, username, createdAt);
+    return _buildListActivity(context, user, username, createdAt);
   }
 
-  Widget _userAvatar(BuildContext context, Map? user, String? avatar) =>
-      GestureDetector(
-        onTap: () => _openUserProfile(context, user),
-        child: CircleAvatar(
-          radius: 18,
-          backgroundImage:
-              avatar != null ? CachedNetworkImageProvider(avatar) : null,
-          backgroundColor:
-              Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: avatar == null ? const Icon(Icons.person, size: 18) : null,
-        ),
+  BoxDecoration _cardDecoration(BuildContext context) => BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(12),
       );
 
-  Widget _buildListActivity(BuildContext context, Map? user, String? avatar, String username, int createdAt) {
-    final media = activity['media'] as Map<String, dynamic>?;
-    final status = activity['status'] as String? ?? '';
+  /// Time on the left, replies and likes on the right.
+  Widget _footer(int createdAt) => Row(children: [
+        const Icon(Icons.access_time, size: 12, color: Colors.grey),
+        const SizedBox(width: 3),
+        Expanded(
+          child: Text(relativeTime(createdAt, lang),
+              style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        ),
+        ReplyCountButton(
+          count: activity['replyCount'] as int? ?? 0,
+          onPressed: onOpenThread,
+        ),
+        LikeButton(
+          isLiked: activity['isLiked'] == true,
+          count: activity['likeCount'] as int? ?? 0,
+          onPressed: onToggleLike,
+        ),
+      ]);
+
+  Widget _buildListActivity(BuildContext context, Map<String, dynamic>? user, String username, int createdAt) {
+    final media = asJsonMap(activity['media']);
+    final mediaId = media?['id'] as int?;
+    final status = activity['status'] as String?;
     final progress = activity['progress'];
-    final coverImage = media?['coverImage']?['large'] as String?;
-    final title = (media?['title']?['english'] ??
-        media?['title']?['romaji'] ??
-        'Unknown') as String;
-    final actionText = progress != null ? '$status $progress of' : status;
+    final coverImage = asJsonMap(media?['coverImage'])?['large'] as String?;
+    final titleMap = asJsonMap(media?['title']);
+    final title = titleMap == null
+        ? tr('feed_unknown', lang)
+        : context.read<SettingsProvider>().resolveTitle(titleMap);
+    final actionText = activityStatusText(status, progress, lang);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      decoration: _cardDecoration(context),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _userAvatar(context, user, avatar),
+          ProfileAvatar(user: user),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: () => _openUserProfile(context, user),
+                TappableUserName(
+                  onTap: () => openUserProfile(context, user),
                   child: RichText(
                     text: TextSpan(
                       style: const TextStyle(fontSize: 13),
@@ -390,29 +641,14 @@ class _ActivityCard extends StatelessWidget {
                         fontSize: 13, fontWeight: FontWeight.w600),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 4),
-                Row(children: [
-                  const Icon(Icons.access_time, size: 12, color: Colors.grey),
-                  const SizedBox(width: 3),
-                  Text(timeAgo(createdAt),
-                      style:
-                          const TextStyle(fontSize: 11, color: Colors.grey)),
-                ]),
+                _footer(createdAt),
               ],
             ),
           ),
           if (coverImage != null) ...[
             const SizedBox(width: 10),
             GestureDetector(
-              onTap: media?['id'] != null && media?['type'] == 'ANIME'
-                  ? () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              DetailScreen(animeId: media!['id'] as int),
-                        ),
-                      )
-                  : null,
+              onTap: mediaId != null ? () => openMediaDetail(context, mediaId) : null,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: CachedNetworkImage(
@@ -430,27 +666,24 @@ class _ActivityCard extends StatelessWidget {
     );
   }
 
-  Widget _buildTextActivity(BuildContext context, Map? user, String? avatar, String username, int createdAt) {
-    final text = activity['text'] as String? ?? '';
+  Widget _buildTextActivity(BuildContext context, Map<String, dynamic>? user, String username, int createdAt) {
+    final text = activityPlainText(activity['text'] as String?, lang);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-      ),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      decoration: _cardDecoration(context),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _userAvatar(context, user, avatar),
+          ProfileAvatar(user: user),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: () => _openUserProfile(context, user),
+                TappableUserName(
+                  onTap: () => openUserProfile(context, user),
                   child: Text(username,
                       style: TextStyle(
                           fontWeight: FontWeight.bold,
@@ -458,21 +691,127 @@ class _ActivityCard extends StatelessWidget {
                           fontSize: 13)),
                 ),
                 const SizedBox(height: 4),
-                Text(text,
-                    style:
-                        const TextStyle(color: Colors.grey, fontSize: 13)),
-                const SizedBox(height: 4),
-                Row(children: [
-                  const Icon(Icons.access_time, size: 12, color: Colors.grey),
-                  const SizedBox(width: 3),
-                  Text(timeAgo(createdAt),
-                      style:
-                          const TextStyle(fontSize: 11, color: Colors.grey)),
-                ]),
+                GestureDetector(
+                  onTap: onOpenThread,
+                  child: text.isEmpty
+                      ? Text(tr('social_media_post', lang),
+                          style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 13,
+                              fontStyle: FontStyle.italic))
+                      : Text(text,
+                          maxLines: _maxTextLines,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                ),
+                _footer(createdAt),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Bottom sheet for writing and posting a status update.
+class _ComposeStatusSheet extends StatefulWidget {
+  const _ComposeStatusSheet({required this.onPost});
+
+  /// Posts the text; resolves to whether it went through.
+  final Future<bool> Function(String text) onPost;
+
+  @override
+  State<_ComposeStatusSheet> createState() => _ComposeStatusSheetState();
+}
+
+class _ComposeStatusSheetState extends State<_ComposeStatusSheet> {
+  final _controller = TextEditingController();
+  bool _posting = false;
+  bool _failed = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || _posting) return;
+    setState(() { _posting = true; _failed = false; });
+    final posted = await widget.onPost(text);
+    if (!mounted) return;
+    if (posted) {
+      Navigator.pop(context);
+      return;
+    }
+    // Keep the sheet and the text so nothing written is lost.
+    setState(() { _posting = false; _failed = true; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(tr('social_compose_title', lang),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  ),
+                  IconButton(
+                    tooltip: tr('close', lang),
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              TextField(
+                controller: _controller,
+                autofocus: true,
+                enabled: !_posting,
+                minLines: 3,
+                maxLines: 8,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: tr('social_compose_hint', lang),
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+              if (_failed) ...[
+                const SizedBox(height: 8),
+                Text(tr('save_failed', lang),
+                    style: TextStyle(color: Theme.of(context).colorScheme.error)),
+              ],
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ValueListenableBuilder<TextEditingValue>(
+                  valueListenable: _controller,
+                  builder: (context, value, _) => FilledButton(
+                    onPressed: _posting || value.text.trim().isEmpty ? null : _submit,
+                    child: _posting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(tr('social_post', lang)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

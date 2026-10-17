@@ -1,0 +1,320 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import '../services/anilist_service.dart';
+import '../services/api_cache.dart';
+
+/// One media type's lists: status keys (`CURRENT`, `COMPLETED`, …) and
+/// `custom:<name>` keys, each holding AniList list entries.
+typedef MediaLists = Map<String, List<Map<String, dynamic>>>;
+
+const customListPrefix = 'custom:';
+
+/// Single source of truth for the signed-in user's anime and manga lists,
+/// shared by the list tabs and the detail screen. It shows cached lists
+/// instantly, refreshes them from AniList, and applies edits locally from
+/// the mutation response instead of re-downloading the whole collection.
+class MediaListStore extends ChangeNotifier {
+  MediaListStore({
+    required AniListService service,
+    required ApiCache cache,
+    Duration persistDelay = const Duration(milliseconds: 800),
+  })  : _service = service,
+        _cache = cache,
+        _persistDelay = persistDelay;
+
+  final AniListService _service;
+  final ApiCache _cache;
+  // Edits are written to disk after this quiet period, so a burst of swipes
+  // encodes the whole list once instead of once per swipe.
+  final Duration _persistDelay;
+
+  final Map<String, MediaLists> _lists = {};
+  final Map<String, Object> _errors = {};
+  final Set<String> _loading = {};
+  final Set<String> _reloadRequested = {};
+  // Media removed while a load of their type runs. That load's response may
+  // predate the removal, so these are left out of it.
+  final Map<String, Set<int>> _removedDuringLoad = {};
+  final Set<int> _saving = {};
+  final Map<String, Timer> _persistTimers = {};
+  int? _userId;
+  // Bumped by reset() so work started for a previous session (e.g. a slow
+  // load from before an account switch) can't touch the current state.
+  int _generation = 0;
+
+  MediaLists? listsOf(String type) => _lists[type];
+  Object? errorOf(String type) => _errors[type];
+  bool isLoading(String type) => _loading.contains(type);
+  bool isSaving(int mediaId) => _saving.contains(mediaId);
+
+  /// Shows the cached lists for [userId] right away, then fetches fresh ones
+  /// (skipping the cache when [force] is set). A load requested while one is
+  /// running is queued so the newest server state always wins. Returns
+  /// whether fresh data arrived.
+  Future<bool> load(
+    String type, {
+    required int userId,
+    required String token,
+    bool force = false,
+  }) async {
+    if (_userId != userId) {
+      reset();
+      _userId = userId;
+    }
+    if (_loading.contains(type)) {
+      _reloadRequested.add(type);
+      return false;
+    }
+    final generation = _generation;
+    final removed = <int>{};
+    _removedDuringLoad[type] = removed;
+    _loading.add(type);
+    _errors.remove(type);
+    notifyListeners();
+
+    var gotFresh = false;
+    try {
+      await _cache.load<MediaLists>(
+        key: _cacheKey(userId, type),
+        fetch: () => _fetch(type, userId, token),
+        decode: _decodeLists,
+        force: force,
+        onData: (lists, {required isFresh}) {
+          if (generation != _generation) return;
+          // Cached data only fills an empty screen; it never replaces lists
+          // that are already in memory (and possibly edited since).
+          if (!isFresh && _lists[type] != null) return;
+          _lists[type] = removed.isEmpty ? lists : _without(lists, removed);
+          gotFresh = gotFresh || isFresh;
+          notifyListeners();
+        },
+      );
+    } on Exception catch (e) {
+      debugPrint('[MediaListStore] Loading $type failed: $e');
+      if (generation == _generation) _errors[type] = e;
+    } finally {
+      if (generation == _generation) {
+        _loading.remove(type);
+        _removedDuringLoad.remove(type);
+        // The cache got the response as AniList sent it; store the lists
+        // without the removed entries over it.
+        if (removed.isNotEmpty) _persist(type);
+        notifyListeners();
+      }
+    }
+
+    if (generation == _generation && _reloadRequested.remove(type)) {
+      final reloaded = await load(type, userId: userId, token: token, force: true);
+      return gotFresh || reloaded;
+    }
+    return gotFresh;
+  }
+
+  /// Shows the new progress immediately and saves only that field, so the
+  /// entry's score, notes and custom lists are never rewritten. Restores the
+  /// old value and returns false if AniList rejects it, or if a save for the
+  /// same entry is still running.
+  Future<bool> setProgress(
+    String type,
+    int mediaId,
+    int progress, {
+    required String token,
+  }) async {
+    final original = _findEntry(type, mediaId);
+    if (original == null || !_saving.add(mediaId)) return false;
+    _updateEntry(type, mediaId, (e) => {...e, 'progress': progress});
+    notifyListeners();
+    try {
+      final saved = await _service.saveListEntry(
+        mediaId: mediaId,
+        progress: progress,
+        token: token,
+      );
+      if (saved == null) {
+        _updateEntry(type, mediaId, (e) => {...e, 'progress': original['progress']});
+        return false;
+      }
+      _applySaved(type, mediaId, saved);
+      return true;
+    } finally {
+      _saving.remove(mediaId);
+      notifyListeners();
+      _persist(type);
+    }
+  }
+
+  /// Saves several fields of an entry already in the list (e.g. completing a
+  /// series) and applies AniList's response, moving the entry if its status
+  /// changed.
+  Future<bool> saveFields(
+    String type,
+    int mediaId, {
+    required String token,
+    String? status,
+    int? progress,
+    int? scoreRaw,
+  }) async {
+    if (_findEntry(type, mediaId) == null || !_saving.add(mediaId)) return false;
+    notifyListeners();
+    try {
+      final saved = await _service.saveListEntry(
+        mediaId: mediaId,
+        status: status,
+        progress: progress,
+        scoreRaw: scoreRaw,
+        token: token,
+      );
+      if (saved == null) return false;
+      _applySaved(type, mediaId, saved);
+      return true;
+    } finally {
+      _saving.remove(mediaId);
+      notifyListeners();
+      _persist(type);
+    }
+  }
+
+  /// Shows an entry saved elsewhere (e.g. from the entry editor) right away,
+  /// before the next refresh: copies the fields the lists show from AniList's
+  /// response and moves the entry if its status changed. Does nothing when
+  /// the entry isn't in the loaded lists.
+  void applySavedEntry(String type, int mediaId, Map<String, dynamic> saved) {
+    if (_findEntry(type, mediaId) == null) return;
+    _updateEntry(type, mediaId, (e) => {
+          ...e,
+          for (final field in const ['progress', 'score', 'notes', 'customLists'])
+            if (saved.containsKey(field)) field: saved[field],
+        });
+    final status = saved['status'];
+    if (status is String) _moveToStatus(type, mediaId, status);
+    notifyListeners();
+    _persist(type);
+  }
+
+  /// Removes an entry deleted elsewhere (e.g. from the detail screen). A
+  /// load already running doesn't bring it back.
+  void removeEntry(String type, int mediaId) {
+    _removedDuringLoad[type]?.add(mediaId);
+    final lists = _lists[type];
+    if (lists == null) return;
+    _lists[type] = _without(lists, {mediaId});
+    notifyListeners();
+    _persist(type);
+  }
+
+  /// Forgets everything, e.g. after logout.
+  void reset() {
+    _generation++;
+    for (final timer in _persistTimers.values) {
+      timer.cancel();
+    }
+    _persistTimers.clear();
+    _lists.clear();
+    _errors.clear();
+    _loading.clear();
+    _reloadRequested.clear();
+    _removedDuringLoad.clear();
+    _saving.clear();
+    _userId = null;
+    notifyListeners();
+  }
+
+  void _applySaved(String type, int mediaId, Map<String, dynamic> saved) {
+    _updateEntry(type, mediaId, (e) => {
+          ...e,
+          if (saved['progress'] != null) 'progress': saved['progress'],
+          if (saved['score'] != null) 'score': saved['score'],
+        });
+    final status = saved['status'];
+    if (status is String) _moveToStatus(type, mediaId, status);
+  }
+
+  void _moveToStatus(String type, int mediaId, String status) {
+    final lists = _lists[type];
+    if (lists == null) return;
+    final current = lists.entries
+        .where((list) =>
+            !list.key.startsWith(customListPrefix) &&
+            list.value.any((e) => _mediaIdOf(e) == mediaId))
+        .map((list) => list.key)
+        .firstOrNull;
+    if (current == null || current == status) return;
+    final entry = lists[current]!.firstWhere((e) => _mediaIdOf(e) == mediaId);
+    _lists[type] = {
+      ...lists,
+      current: [for (final e in lists[current]!) if (_mediaIdOf(e) != mediaId) e],
+      status: [entry, ...?lists[status]],
+    };
+  }
+
+  void _updateEntry(
+    String type,
+    int mediaId,
+    Map<String, dynamic> Function(Map<String, dynamic> entry) update,
+  ) {
+    final lists = _lists[type];
+    if (lists == null) return;
+    _lists[type] = {
+      for (final MapEntry(:key, :value) in lists.entries)
+        key: [for (final e in value) _mediaIdOf(e) == mediaId ? update(e) : e],
+    };
+  }
+
+  Map<String, dynamic>? _findEntry(String type, int mediaId) {
+    for (final list in _lists[type]?.values ?? const <List<Map<String, dynamic>>>[]) {
+      for (final entry in list) {
+        if (_mediaIdOf(entry) == mediaId) return entry;
+      }
+    }
+    return null;
+  }
+
+  void _persist(String type) {
+    _persistTimers[type]?.cancel();
+    _persistTimers[type] = Timer(_persistDelay, () {
+      _persistTimers.remove(type);
+      final userId = _userId;
+      final lists = _lists[type];
+      if (userId == null || lists == null) return;
+      unawaited(_cache.write(_cacheKey(userId, type), lists).onError<Exception>(
+            (e, _) => debugPrint('[MediaListStore] Caching $type failed: $e'),
+          ));
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final timer in _persistTimers.values) {
+      timer.cancel();
+    }
+    super.dispose();
+  }
+
+  Future<MediaLists> _fetch(String type, int userId, String token) async {
+    final raw = type == 'ANIME'
+        ? await _service.getUserAnimeList(userId, token)
+        : await _service.getUserMangaList(userId, token);
+    return {
+      for (final MapEntry(:key, :value) in raw.entries)
+        key: [for (final e in value) e as Map<String, dynamic>],
+    };
+  }
+
+  static String _cacheKey(int userId, String type) =>
+      ApiCache.userKey(userId, 'list:$type');
+
+  static MediaLists _decodeLists(Object? json) => {
+        for (final MapEntry(:key, :value) in (json as Map).entries)
+          key as String: [for (final e in value as List) e as Map<String, dynamic>],
+      };
+
+  static MediaLists _without(MediaLists lists, Set<int> mediaIds) => {
+        for (final MapEntry(:key, :value) in lists.entries)
+          key: [for (final e in value) if (!mediaIds.contains(_mediaIdOf(e))) e],
+      };
+
+  static int? _mediaIdOf(Map<String, dynamic> entry) =>
+      (entry['media'] as Map?)?['id'] as int? ?? entry['mediaId'] as int?;
+}

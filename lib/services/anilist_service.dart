@@ -1,35 +1,105 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import '../utils/refresh_notifier.dart' show authExpiredNotifier, rateLimitActiveNotifier;
 
+/// An AniList request that failed with an HTTP error or returned no data.
+class AniListRequestException implements Exception {
+  const AniListRequestException(this.message, {required this.statusCode});
+
+  final String message;
+  final int statusCode;
+
+  @override
+  String toString() => 'AniListRequestException($statusCode): $message';
+}
+
 class AniListService {
+  /// [retryDelay] replaces the real wait before a rate-limit retry (tests).
+  AniListService({http.Client? client, Future<void> Function(Duration)? retryDelay})
+      : _client = client ?? _sharedClient,
+        _retryDelay = retryDelay ?? Future.delayed;
+
   static const String _baseUrl = 'https://graphql.anilist.co';
+
+  // Without a timeout a stalled connection leaves screens loading forever.
+  static const _requestTimeout = Duration(seconds: 20);
+
+  // Shared across instances so connections are kept alive between requests.
+  static final http.Client _sharedClient = http.Client();
+  final http.Client _client;
+  final Future<void> Function(Duration) _retryDelay;
+
+  static const _minRetryAfter = 1;
+  static const _maxRetryAfter = 120;
+  static const _defaultRetryAfter = 60;
 
   Future<Map<String, String>> _headers([String? token]) => Future.value({
         'Content-Type': 'application/json',
         if (token != null) 'Authorization': 'Bearer $token',
       });
 
-  void _handle401(int statusCode) {
-    if (statusCode == 401) authExpiredNotifier.value++;
-  }
-
   static int _rateLimitCount = 0;
 
   // Sends a GraphQL request, retrying once after Retry-After seconds on 429.
   Future<http.Response> _post(String body, [String? token]) async {
     final headers = await _headers(token);
-    var response = await http.post(Uri.parse(_baseUrl), headers: headers, body: body);
+    var response = await _client
+        .post(Uri.parse(_baseUrl), headers: headers, body: body)
+        .timeout(_requestTimeout);
     if (response.statusCode == 429) {
       _rateLimitCount++;
       if (_rateLimitCount == 1) rateLimitActiveNotifier.value = true;
-      final retryAfter = int.tryParse(response.headers['retry-after'] ?? '') ?? 60;
-      await Future.delayed(Duration(seconds: retryAfter));
-      response = await http.post(Uri.parse(_baseUrl), headers: headers, body: body);
-      _rateLimitCount--;
-      if (_rateLimitCount == 0) rateLimitActiveNotifier.value = false;
+      final seconds = (int.tryParse(response.headers['retry-after'] ?? '') ?? _defaultRetryAfter)
+          .clamp(_minRetryAfter, _maxRetryAfter);
+      try {
+        await _retryDelay(Duration(seconds: seconds));
+        response = await _client
+            .post(Uri.parse(_baseUrl), headers: headers, body: body)
+            .timeout(_requestTimeout);
+      } finally {
+        _rateLimitCount--;
+        if (_rateLimitCount == 0) rateLimitActiveNotifier.value = false;
+      }
     }
+    // AniList no longer accepts this token (expired or revoked). Reported
+    // with the token so only the session still using it is logged out.
+    if (response.statusCode == 401 && token != null) authExpiredNotifier.report(token);
     return response;
+  }
+
+  /// Sends any GraphQL [query] and returns its `data` map. Throws
+  /// [AniListRequestException] for HTTP errors (a 401 also signals an
+  /// expired session) or a response without data; network errors and
+  /// timeouts propagate. Feature-specific query files build on this.
+  Future<Map<String, dynamic>> request(
+    String query,
+    Map<String, dynamic> variables, {
+    String? token,
+  }) async {
+    final response = await _post(jsonEncode({'query': query, 'variables': variables}), token);
+    if (response.statusCode != 200) {
+      throw AniListRequestException('HTTP ${response.statusCode}', statusCode: response.statusCode);
+    }
+    final body = jsonDecode(response.body);
+    final data = body is Map ? body['data'] : null;
+    if (data is Map<String, dynamic>) return data;
+    final errors = body is Map ? body['errors'] : null;
+    final message = errors is List && errors.isNotEmpty && errors.first is Map
+        ? '${(errors.first as Map)['message']}'
+        : 'No data';
+    throw AniListRequestException(message, statusCode: response.statusCode);
+  }
+
+  /// Runs a mutation, turning network errors and malformed responses into
+  /// [failure] so callers can revert optimistic UI instead of getting stuck.
+  Future<T> _mutate<T>(String name, T failure, Future<T> Function() run) async {
+    try {
+      return await run();
+    } on Exception catch (e) {
+      debugPrint('[AniList] $name failed: $e');
+      return failure;
+    }
   }
 
   Future<List<dynamic>> _query(String query,
@@ -40,9 +110,8 @@ class AniListService {
     );
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return data['data']['Page']['media'] ?? [];
+      return data['data']?['Page']?['media'] ?? [];
     }
-    _handle401(response.statusCode);
     return [];
   }
 
@@ -59,40 +128,10 @@ class AniListService {
     return (season, year);
   }
 
-  /// Returns airing episodes for this week that are on the user's CURRENT list.
-  Future<List<dynamic>> getWeeklySchedule(String token) async {
-    final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-    final weekEnd = now + 7 * 86400;
-    const query = '''
-      query(\$from: Int!, \$to: Int!) {
-        Page(perPage: 50) {
-          airingSchedules(airingAt_greater: \$from, airingAt_lesser: \$to, sort: TIME) {
-            airingAt episode
-            media {
-              id title { romaji english native }
-              coverImage { large }
-              mediaListEntry { status }
-            }
-          }
-        }
-      }
-    ''';
-    final response = await _post(
-      jsonEncode({'query': query, 'variables': {'from': now, 'to': weekEnd}}),
-      token,
-    );
-    if (response.statusCode != 200) return [];
-    final schedules = jsonDecode(response.body)['data']?['Page']?['airingSchedules'] as List<dynamic>? ?? [];
-    return schedules.where((s) {
-      final entry = s['media']?['mediaListEntry'];
-      return entry != null && entry['status'] == 'CURRENT';
-    }).toList();
-  }
-
   Future<List<dynamic>> getTrending() => _query('''
     query {
       Page(page: 1, perPage: 20) {
-        media(sort: TRENDING_DESC, type: ANIME) {
+        media(sort: TRENDING_DESC, type: ANIME, isAdult: false) {
           id title { romaji english native }
           coverImage { large } episodes averageScore genres
         }
@@ -105,7 +144,7 @@ class AniListService {
     return _query('''
       query(\$season: MediaSeason, \$seasonYear: Int) {
         Page(page: 1, perPage: 20) {
-          media(season: \$season, seasonYear: \$seasonYear, type: ANIME, sort: POPULARITY_DESC) {
+          media(season: \$season, seasonYear: \$seasonYear, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
             id title { romaji english native }
             coverImage { large } episodes averageScore genres
           }
@@ -129,7 +168,7 @@ class AniListService {
     return _query('''
       query(\$season: MediaSeason, \$seasonYear: Int) {
         Page(page: 1, perPage: 20) {
-          media(season: \$season, seasonYear: \$seasonYear, type: ANIME, sort: POPULARITY_DESC) {
+          media(season: \$season, seasonYear: \$seasonYear, type: ANIME, sort: POPULARITY_DESC, isAdult: false) {
             id title { romaji english native }
             coverImage { large } episodes averageScore genres
           }
@@ -141,7 +180,7 @@ class AniListService {
   Future<List<dynamic>> getTopAiring() => _query('''
     query {
       Page(page: 1, perPage: 20) {
-        media(status: RELEASING, sort: POPULARITY_DESC, type: ANIME) {
+        media(status: RELEASING, sort: POPULARITY_DESC, type: ANIME, isAdult: false) {
           id title { romaji english native }
           coverImage { large } episodes averageScore genres
         }
@@ -152,7 +191,7 @@ class AniListService {
   Future<List<dynamic>> getTrendingManga() => _query('''
     query {
       Page(page: 1, perPage: 20) {
-        media(sort: TRENDING_DESC, type: MANGA, format_not: NOVEL) {
+        media(sort: TRENDING_DESC, type: MANGA, format_not: NOVEL, isAdult: false) {
           id title { romaji english native }
           coverImage { large } chapters averageScore genres
         }
@@ -163,7 +202,7 @@ class AniListService {
   Future<List<dynamic>> getTopManga() => _query('''
     query {
       Page(page: 1, perPage: 20) {
-        media(sort: SCORE_DESC, type: MANGA, format_not: NOVEL) {
+        media(sort: SCORE_DESC, type: MANGA, format_not: NOVEL, isAdult: false) {
           id title { romaji english native }
           coverImage { large } chapters averageScore genres
         }
@@ -174,7 +213,7 @@ class AniListService {
   Future<List<dynamic>> getManhwa() => _query('''
     query {
       Page(page: 1, perPage: 20) {
-        media(sort: POPULARITY_DESC, type: MANGA, countryOfOrigin: "KR") {
+        media(sort: POPULARITY_DESC, type: MANGA, countryOfOrigin: "KR", isAdult: false) {
           id title { romaji english native }
           coverImage { large } chapters averageScore genres
         }
@@ -233,11 +272,11 @@ class AniListService {
       query(\$id: Int) {
         Media(id: \$id) {
           id title { romaji english native }
-          coverImage { large extraLarge } bannerImage
-          episodes chapters averageScore popularity favourites trending
+          coverImage { large extraLarge color } bannerImage
+          episodes chapters volumes averageScore popularity favourites trending
           genres status type format source duration synonyms
           description(asHtml: false)
-          studios { nodes { name isAnimationStudio } }
+          studios { nodes { id name isAnimationStudio } }
           startDate { year month day }
           endDate { year month day }
           season seasonYear
@@ -246,7 +285,9 @@ class AniListService {
           tags { name isMediaSpoiler }
           isFavourite
           mediaListEntry {
-            id status progress score(format: POINT_10_DECIMAL) notes customLists
+            id status progress progressVolumes score(format: POINT_10_DECIMAL)
+            repeat private hiddenFromStatusLists notes customLists
+            startedAt { year month day } completedAt { year month day }
           }
           relations {
             edges {
@@ -284,9 +325,8 @@ class AniListService {
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'id': id}}), token);
     if (response.statusCode == 200) {
-      return jsonDecode(response.body)['data']['Media'];
+      return jsonDecode(response.body)['data']?['Media'];
     }
-    _handle401(response.statusCode);
     return null;
   }
 
@@ -298,7 +338,7 @@ class AniListService {
           lists {
             name status isCustomList
             entries {
-              id mediaId progress score(format: POINT_10) notes customLists
+              id mediaId progress score(format: POINT_10_DECIMAL) notes customLists
               media {
                 id title { romaji english native }
                 coverImage { large }
@@ -312,7 +352,6 @@ class AniListService {
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode != 200) {
-      _handle401(response.statusCode);
       throw Exception('HTTP ${response.statusCode}');
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -336,7 +375,7 @@ class AniListService {
           lists {
             name status isCustomList
             entries {
-              id mediaId progress score(format: POINT_10) notes customLists
+              id mediaId progress score(format: POINT_10_DECIMAL) notes customLists
               media {
                 id title { romaji english native }
                 coverImage { large }
@@ -349,7 +388,6 @@ class AniListService {
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
     if (response.statusCode != 200) {
-      _handle401(response.statusCode);
       throw Exception('HTTP ${response.statusCode}');
     }
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -383,45 +421,6 @@ class AniListService {
         .toList();
   }
 
-  Future<({List<dynamic> activities, bool hasNextPage})> getActivityFeed(
-      String token,
-      {bool isFollowing = true, int? userId, int page = 1}) async {
-    final variables = <String, dynamic>{
-      'isFollowing': isFollowing,
-      'page': page,
-      'userId': ?userId,
-    };
-    final userFilter = userId != null ? ', userId: \$userId' : '';
-    final query = '''
-      query(\$isFollowing: Boolean, \$page: Int${userId != null ? ', \$userId: Int' : ''}) {
-        Page(page: \$page, perPage: 30) {
-          pageInfo { hasNextPage }
-          activities(isFollowing: \$isFollowing$userFilter, sort: ID_DESC) {
-            ... on ListActivity {
-              id type status progress createdAt
-              user { id name avatar { large } }
-              media { id title { romaji english native } coverImage { large } type }
-            }
-            ... on TextActivity {
-              id type text createdAt
-              user { id name avatar { large } }
-            }
-          }
-        }
-      }
-    ''';
-    final response = await _post(jsonEncode({'query': query, 'variables': variables}), token);
-    if (response.statusCode == 200) {
-      final page = jsonDecode(response.body)['data']?['Page'];
-      return (
-        activities: (page?['activities'] as List?) ?? [],
-        hasNextPage: page?['pageInfo']?['hasNextPage'] as bool? ?? false,
-      );
-    }
-    _handle401(response.statusCode);
-    return (activities: [], hasNextPage: false);
-  }
-
   /// Fetches user favourites (anime + characters) and bannerImage.
   Future<Map<String, dynamic>> getUserProfileStats(
       int userId, String token) async {
@@ -445,7 +444,6 @@ class AniListService {
       final body = jsonDecode(response.body);
       return {'user': body['data']?['User'] ?? {}};
     }
-    _handle401(response.statusCode);
     return {};
   }
 
@@ -478,7 +476,6 @@ class AniListService {
                 0,
       };
     }
-    _handle401(response.statusCode);
     return {'followers': 0, 'following': 0};
   }
 
@@ -494,7 +491,7 @@ class AniListService {
       }
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return []; }
+    if (response.statusCode != 200) return [];
     return (jsonDecode(response.body)['data']?['Page']?['followers'] as List<dynamic>?) ?? [];
   }
 
@@ -511,12 +508,13 @@ class AniListService {
       }
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return []; }
+    if (response.statusCode != 200) return [];
     final body = jsonDecode(response.body);
     return (body['data']?['Page']?['following'] as List<dynamic>?) ?? [];
   }
 
-  /// Fetches a public user profile (no token required).
+  /// Fetches another user's lists by status, without a token. Throws
+  /// [AniListRequestException] on errors (404 for a private user).
   Future<Map<String, List<dynamic>>> getPublicUserList(
       int userId, String type) async {
     const query = '''
@@ -537,16 +535,17 @@ class AniListService {
         }
       }
     ''';
-    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId, 'type': type}}));
-    if (response.statusCode != 200) { _handle401(response.statusCode); return {}; }
-    final raw = jsonDecode(response.body)['data']['MediaListCollection'];
-    if (raw == null) return {};
-    final lists = raw['lists'] as List;
+    // Throws AniListRequestException: 404 when the user is private or gone.
+    final data = await request(query, {'userId': userId, 'type': type});
+    final collection = data['MediaListCollection'];
+    final lists = collection is Map ? collection['lists'] : null;
     final Map<String, List<dynamic>> result = {};
-    for (final list in lists) {
-      if (list['isCustomList'] == true) continue;
-      final status = list['status'] as String;
-      result[status] = (list['entries'] as List).cast<Map<String, dynamic>>();
+    for (final list in lists is List ? lists : const []) {
+      if (list is! Map || list['isCustomList'] == true) continue;
+      final status = list['status'];
+      final entries = list['entries'];
+      if (status is! String || entries is! List) continue;
+      result[status] = entries.whereType<Map<String, dynamic>>().toList();
     }
     return result;
   }
@@ -581,7 +580,7 @@ class AniListService {
       }
     ''';
     final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return null; }
+    if (response.statusCode != 200) return null;
     return jsonDecode(response.body)['data']['User'] as Map<String, dynamic>?;
   }
 
@@ -607,8 +606,9 @@ class AniListService {
     return jsonDecode(response.body)['data']?['Page']?['activities'] as List? ?? [];
   }
 
-  /// Follows or unfollows a user. Returns whether the user is now being followed.
-  Future<bool> toggleFollow(int userId, String token) async {
+  /// Follows or unfollows a user. Returns whether the user is now being
+  /// followed, or null if the toggle failed.
+  Future<bool?> toggleFollow(int userId, String token) async {
     const mutation = '''
       mutation(\$userId: Int!) {
         ToggleFollow(userId: \$userId) {
@@ -616,66 +616,92 @@ class AniListService {
         }
       }
     ''';
-    final response = await _post(jsonEncode({'query': mutation, 'variables': {'userId': userId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
-    final data = jsonDecode(response.body)['data']?['ToggleFollow'];
-    return data?['isFollowing'] == true;
+    return _mutate<bool?>('ToggleFollow', null, () async {
+      final response = await _post(jsonEncode({'query': mutation, 'variables': {'userId': userId}}), token);
+      if (response.statusCode != 200) return null;
+      final isFollowing = jsonDecode(response.body)['data']?['ToggleFollow']?['isFollowing'];
+      return isFollowing is bool ? isFollowing : null;
+    });
   }
 
-  /// Returns a map of AniList status → entry count for the user's anime list.
-  Future<Map<String, int>> getUserListCounts(int userId, String token) async {
-    const query = '''
-      query(\$userId: Int!) {
-        MediaListCollection(userId: \$userId, type: ANIME) {
-          lists {
-            status
-            entries { mediaId }
-          }
-        }
-      }
-    ''';
-    final response = await _post(jsonEncode({'query': query, 'variables': {'userId': userId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return {}; }
-    final lists =
-        jsonDecode(response.body)['data']['MediaListCollection']['lists'] as List;
-    return {
-      for (final list in lists)
-        list['status'] as String: (list['entries'] as List).length,
-    };
-  }
+  static const _saveEntryArgTypes = {
+    'mediaId': 'Int',
+    'status': 'MediaListStatus',
+    'progress': 'Int',
+    'progressVolumes': 'Int',
+    'scoreRaw': 'Int',
+    'repeat': 'Int',
+    'private': 'Boolean',
+    'hiddenFromStatusLists': 'Boolean',
+    'notes': 'String',
+    'customLists': '[String]',
+    'startedAt': 'FuzzyDateInput',
+    'completedAt': 'FuzzyDateInput',
+  };
 
-  Future<bool> saveListEntry({
+  /// Creates or updates a list entry, sending only the fields that are
+  /// provided so a progress update never overwrites the score, notes or
+  /// custom lists. [scoreRaw] is on a 0–100 scale, which AniList converts to
+  /// the user's own score format. [startedAt] and [completedAt] are AniList
+  /// `FuzzyDateInput`s (`year`, `month`, `day`); missing parts are sent as
+  /// null, so an empty map clears the date. Returns the saved entry (`id`,
+  /// `status`, `progress`, 0–10 `score` and the other editable fields) or
+  /// null if AniList rejected the change.
+  Future<Map<String, dynamic>?> saveListEntry({
     required int mediaId,
-    required String status,
-    required int progress,
-    required double score,
     required String token,
+    String? status,
+    int? progress,
+    int? progressVolumes,
+    int? scoreRaw,
+    int? repeat,
+    bool? private,
+    bool? hiddenFromStatusLists,
     String? notes,
     List<String>? customLists,
+    Map<String, int?>? startedAt,
+    Map<String, int?>? completedAt,
   }) async {
-    const mutation = '''
-      mutation(\$mediaId: Int, \$status: MediaListStatus,
-               \$progress: Int, \$score: Float, \$notes: String, \$customLists: [String]) {
-        SaveMediaListEntry(mediaId: \$mediaId, status: \$status,
-                           progress: \$progress, score: \$score, notes: \$notes,
-                           customLists: \$customLists) {
-          id status progress score notes customLists
+    Map<String, int?> fuzzyDate(Map<String, int?> date) =>
+        {'year': date['year'], 'month': date['month'], 'day': date['day']};
+    final variables = <String, dynamic>{
+      'mediaId': mediaId,
+      'status': ?status,
+      'progress': ?progress,
+      'progressVolumes': ?progressVolumes,
+      'scoreRaw': ?scoreRaw,
+      'repeat': ?repeat,
+      'private': ?private,
+      'hiddenFromStatusLists': ?hiddenFromStatusLists,
+      'notes': ?notes,
+      'customLists': ?customLists,
+      if (startedAt != null) 'startedAt': fuzzyDate(startedAt),
+      if (completedAt != null) 'completedAt': fuzzyDate(completedAt),
+    };
+    final declarations = variables.keys
+        .map((name) => '\$$name: ${_saveEntryArgTypes[name]}')
+        .join(', ');
+    final arguments = variables.keys.map((name) => '$name: \$$name').join(', ');
+    final mutation = '''
+      mutation($declarations) {
+        SaveMediaListEntry($arguments) {
+          id status progress progressVolumes score(format: POINT_10_DECIMAL)
+          repeat private hiddenFromStatusLists notes customLists
+          startedAt { year month day } completedAt { year month day }
         }
       }
     ''';
-    final response = await _post(jsonEncode({
-      'query': mutation,
-      'variables': {
-        'mediaId': mediaId, 'status': status, 'progress': progress,
-        'score': score, 'notes': notes, 'customLists': customLists,
-      },
-    }), token);
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['data']?['SaveMediaListEntry'] != null;
-    }
-    _handle401(response.statusCode);
-    return false;
+    return _mutate<Map<String, dynamic>?>('SaveMediaListEntry', null, () async {
+      final response = await _post(
+        jsonEncode({'query': mutation, 'variables': variables}),
+        token,
+      );
+      if (response.statusCode == 200) {
+        final saved = jsonDecode(response.body)['data']?['SaveMediaListEntry'];
+        return saved is Map<String, dynamic> ? saved : null;
+      }
+      return null;
+    });
   }
 
   Future<bool> deleteListEntry({
@@ -689,17 +715,17 @@ class AniListService {
         }
       }
     ''';
-    final response = await _post(jsonEncode({
-      'query': mutation,
-      'variables': {'id': entryId},
-      }),
-    );
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      return data['data']?['DeleteMediaListEntry']?['deleted'] == true;
-    }
-    _handle401(response.statusCode);
-    return false;
+    return _mutate('DeleteMediaListEntry', false, () async {
+      final response = await _post(
+        jsonEncode({'query': mutation, 'variables': {'id': entryId}}),
+        token,
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['data']?['DeleteMediaListEntry']?['deleted'] == true;
+      }
+      return false;
+    });
   }
 
   /// Returns a map of "YYYY-MM-DD" → activity count for the past year.
@@ -725,7 +751,7 @@ class AniListService {
         jsonEncode({'query': query, 'variables': {'userId': userId, 'page': page}}),
         token,
       );
-      if (response.statusCode != 200) { _handle401(response.statusCode); break; }
+      if (response.statusCode != 200) break;
       final activities = jsonDecode(response.body)['data']['Page']
           ['activities'] as List<dynamic>;
       if (activities.isEmpty) break;
@@ -744,34 +770,6 @@ class AniListService {
     return result;
   }
 
-  Future<Map<String, dynamic>?> getCharacterDetail(int id, [String? token]) async {
-    const query = '''
-      query(\$id: Int!) {
-        Character(id: \$id) {
-          id
-          isFavourite
-          name { full native alternative }
-          image { large }
-          description(asHtml: false)
-          gender
-          age
-          bloodType
-          dateOfBirth { year month day }
-          media(perPage: 10, sort: POPULARITY_DESC) {
-            nodes {
-              id type
-              title { romaji english }
-              coverImage { medium }
-            }
-          }
-        }
-      }
-    ''';
-    final response = await _post(jsonEncode({'query': query, 'variables': {'id': id}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return null; }
-    return jsonDecode(response.body)['data']['Character'] as Map<String, dynamic>?;
-  }
-
   Future<bool> toggleCharacterFavourite({
     required int characterId,
     required String token,
@@ -783,24 +781,32 @@ class AniListService {
         }
       }
     ''';
-    final response = await _post(jsonEncode({'query': mutation, 'variables': {'characterId': characterId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
-    return true;
+    return _mutate('ToggleFavourite', false, () async {
+      final response = await _post(jsonEncode({'query': mutation, 'variables': {'characterId': characterId}}), token);
+      if (response.statusCode != 200) return false;
+      return jsonDecode(response.body)['data']?['ToggleFavourite'] != null;
+    });
   }
 
+  /// Toggles an anime or manga favourite. Returns whether AniList accepted it.
   Future<bool> toggleFavourite({
-    required int animeId,
+    required int mediaId,
     required String token,
+    bool isManga = false,
   }) async {
-    const mutation = '''
-      mutation(\$animeId: Int) {
-        ToggleFavourite(animeId: \$animeId) {
-          anime { nodes { id } }
+    final idArgument = isManga ? 'mangaId' : 'animeId';
+    final connection = isManga ? 'manga' : 'anime';
+    final mutation = '''
+      mutation(\$id: Int) {
+        ToggleFavourite($idArgument: \$id) {
+          $connection { nodes { id } }
         }
       }
     ''';
-    final response = await _post(jsonEncode({'query': mutation, 'variables': {'animeId': animeId}}), token);
-    if (response.statusCode != 200) { _handle401(response.statusCode); return false; }
-    return true;
+    return _mutate('ToggleFavourite', false, () async {
+      final response = await _post(jsonEncode({'query': mutation, 'variables': {'id': mediaId}}), token);
+      if (response.statusCode != 200) return false;
+      return jsonDecode(response.body)['data']?['ToggleFavourite'] != null;
+    });
   }
 }

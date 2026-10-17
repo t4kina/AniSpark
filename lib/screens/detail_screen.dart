@@ -1,20 +1,50 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../services/anilist_service.dart';
+import '../services/api_cache.dart';
 import '../services/auth_service.dart';
-import '../providers/anime_list_provider.dart';
-import '../models/anime.dart';
+import '../theme/app_motion.dart';
+import '../utils/haptics.dart';
 import '../utils/refresh_notifier.dart';
+import '../utils/external_url.dart';
+import '../utils/score_utils.dart';
+import '../widgets/overlay_button.dart';
+import '../widgets/skeletons.dart';
+import '../widgets/detail/detail_header.dart';
+import '../widgets/detail/following_section.dart';
+import '../widgets/detail/media_row.dart';
+import '../widgets/detail/reviews_section.dart';
+import '../widgets/detail/staff_section.dart';
+import '../widgets/detail/studio_links.dart';
+import '../utils/fuzzy_date.dart' show FuzzyDate, formatFuzzyDate;
+import '../widgets/entry_editor/entry_draft.dart' show entryStatusKey;
+import '../widgets/entry_editor/entry_editor_api.dart' show loadCustomListNames;
+import '../widgets/entry_editor/entry_editor_sheet.dart';
+import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pop_on_change.dart';
+import '../widgets/motion/pressable.dart';
+import '../widgets/motion/rounded_hero.dart';
+import '../widgets/motion/stretchy_banner.dart';
+import '../widgets/blurred_backdrop.dart';
 import '../utils/translations.dart';
 import '../providers/settings_provider.dart';
 import 'character_screen.dart';
 
 class DetailScreen extends StatefulWidget {
   final int animeId;
-  const DetailScreen({super.key, required this.animeId});
+
+  /// Tag of the cover [Hero] in the list this page was opened from (see
+  /// `coverHeroTag`), so that cover flies into place; null without one.
+  final String? heroTag;
+
+  /// The cover the opening list already showed, so the page can draw it
+  /// from the first frame (where the flying cover lands) while it loads.
+  final String? initialCoverUrl;
+
+  const DetailScreen({super.key, required this.animeId, this.heroTag, this.initialCoverUrl});
 
   @override
   State<DetailScreen> createState() => _DetailScreenState();
@@ -22,8 +52,20 @@ class DetailScreen extends StatefulWidget {
 
 class _DetailScreenState extends State<DetailScreen> {
   final _service = AniListService();
+
+  /// Drives the banner's stretch and parallax.
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// The cover's hero tag: the opening list's, so its cover flies in.
+  String get _coverTag => widget.heroTag ?? 'cover_${widget.animeId}';
   Map<String, dynamic>? _data;
-  List<String> _customListNames = [];
+  bool _customListsRequested = false;
   bool _loading = true;
   bool _togglingFav = false;
 
@@ -33,17 +75,84 @@ class _DetailScreenState extends State<DetailScreen> {
     _load();
   }
 
-  Future<void> _load() async {
+  // The response includes the viewer's list entry and favourite, so the
+  // cache key is per account. Null when signed in before the account id is
+  // known: there is no cache namespace for it yet.
+  String? _cacheKey(String? token, int? userId) => switch ((token, userId)) {
+        (null, _) => 'anon:media:${widget.animeId}',
+        (_, final int id) => ApiCache.userKey(id, 'media:${widget.animeId}'),
+        _ => null,
+      };
+
+  /// Shows the cached detail instantly (when this media was opened before)
+  /// and refreshes it. [force] skips the cache, e.g. right after an edit.
+  Future<void> _load({bool force = false}) async {
     final auth = context.read<AuthService>();
+    final cache = context.read<ApiCache>();
     final token = auth.isLoggedIn ? auth.token : null;
-    final data = await _service.getAnimeDetail(widget.animeId, token);
-    if (!mounted) return;
-    if (auth.isLoggedIn && auth.user?['id'] != null && token != null) {
-      final type = data?['type'] as String? ?? 'ANIME';
-      _customListNames = await _service.getCustomListNames(
-          auth.user!['id'] as int, type, token);
+    final userId = auth.isLoggedIn ? (auth.user?['id'] as int?) : null;
+    final key = _cacheKey(token, userId);
+
+    void show(Map<String, dynamic>? data, {required bool isFresh}) {
+      if (!mounted || data == null) return;
+      setState(() {
+        _data = data;
+        _loading = false;
+      });
+      if (userId != null && token != null) {
+        _preloadCustomListNames(userId, data['type'] as String? ?? 'ANIME', token);
+      }
     }
-    if (mounted) setState(() { if (data != null) _data = data; _loading = false; });
+
+    try {
+      if (key == null) {
+        show(await _service.getAnimeDetail(widget.animeId, token), isFresh: true);
+        return;
+      }
+      await cache.load<Map<String, dynamic>?>(
+        key: key,
+        force: force,
+        fetch: () => _service.getAnimeDetail(widget.animeId, token),
+        decode: (json) => json as Map<String, dynamic>?,
+        isValid: (data) => data != null,
+        onData: show,
+      );
+    } on Exception catch (e) {
+      debugPrint('[DetailScreen] Loading ${widget.animeId} failed: $e');
+    } finally {
+      if (mounted && _loading) setState(() => _loading = false);
+    }
+  }
+
+  /// Custom list names are only needed by the edit sheet, so they load in
+  /// the background instead of delaying the page; the sheet reads them from
+  /// the same cache.
+  void _preloadCustomListNames(int userId, String type, String token) {
+    if (_customListsRequested) return;
+    _customListsRequested = true;
+    unawaited(loadCustomListNames(
+      cache: context.read<ApiCache>(),
+      service: _service,
+      userId: userId,
+      type: type,
+      token: token,
+      onData: (_) {},
+    ));
+  }
+
+  /// Opens the full entry editor. It saves only what changed and keeps My
+  /// List in sync; the page reloads after a save or removal.
+  void _openEditor(BuildContext context) {
+    final media = EditorMedia.fromMedia(_data);
+    if (media == null) return;
+    showEntryEditor(
+      context,
+      media: media,
+      entry: _data?['mediaListEntry'] as Map<String, dynamic>?,
+      onChanged: (_) {
+        if (mounted) _load(force: true);
+      },
+    );
   }
 
   Future<void> _toggleFav() async {
@@ -51,24 +160,35 @@ class _DetailScreenState extends State<DetailScreen> {
     final auth = context.read<AuthService>();
     if (!auth.isLoggedIn) return;
     final wasFav = _data!['isFavourite'] == true;
+    if (!wasFav) lightHaptic();
     setState(() { _togglingFav = true; _data!['isFavourite'] = !wasFav; });
-    final ok = await _service.toggleFavourite(animeId: widget.animeId, token: auth.token!);
+    final ok = await _service.toggleFavourite(
+      mediaId: widget.animeId,
+      isManga: _data!['type'] == 'MANGA',
+      token: auth.token!,
+    );
     if (mounted) {
       setState(() {
         _togglingFav = false;
         if (!ok) _data!['isFavourite'] = wasFav; // revert on failure
       });
-      if (ok) profileRefreshNotifier.value++;
+      if (ok) {
+        profileRefreshNotifier.value++;
+        // Keep the cached copy in sync so the next visit doesn't flash the old state.
+        final key = _cacheKey(auth.token, auth.user?['id'] as int?);
+        if (key != null) unawaited(context.read<ApiCache>().write(key, _data));
+      }
     }
   }
 
   void _copyLink() {
     final type = (_data?['type'] as String? ?? 'ANIME').toLowerCase();
     final url = 'https://anilist.co/$type/${widget.animeId}';
+    final lang = context.read<SettingsProvider>().language;
     Clipboard.setData(ClipboardData(text: url));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text('Link copied to clipboard'),
+        content: Text(tr('detail_link_copied', lang)),
         duration: const Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -76,488 +196,588 @@ class _DetailScreenState extends State<DetailScreen> {
     );
   }
 
-  String _toAniListStatus(String local) => switch (local) {
-    'watching'      => 'CURRENT',
-    'completed'     => 'COMPLETED',
-    'plan_to_watch' => 'PLANNING',
-    'dropped'       => 'DROPPED',
-    'on_hold'       => 'PAUSED',
-    'rewatching'    => 'REPEATING',
-    _               => 'PLANNING',
-  };
-
-  String _fromAniListStatus(String s) => switch (s) {
-    'CURRENT'   => 'watching',
-    'COMPLETED' => 'completed',
-    'PLANNING'  => 'plan_to_watch',
-    'DROPPED'   => 'dropped',
-    'PAUSED'    => 'on_hold',
-    'REPEATING' => 'rewatching',
-    _           => 'plan_to_watch',
-  };
-
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    if (_data == null) return const Scaffold(body: Center(child: Text('Failed to load')));
+    final settings = context.watch<SettingsProvider>();
+    final data = _data;
+    // The page's frame (banner, cover, back button) is up from the first
+    // frame, so a cover flying in from a list lands on it while the rest
+    // loads; only a failed load replaces the whole page.
+    return FadeSwitcher(
+      child: !_loading && data == null
+          ? _buildError(settings.language)
+          : _buildPage(context, data, settings),
+    );
+  }
 
-    final provider = context.watch<AnimeListProvider>();
-    final settings = context.read<SettingsProvider>();
-    final d = _data!;
+  Widget _buildError(String lang) => Scaffold(
+        key: const ValueKey('error'),
+        appBar: AppBar(),
+        body: Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
+              const SizedBox(height: 12),
+              Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: () {
+                  setState(() => _loading = true);
+                  _load(force: true);
+                },
+                icon: const Icon(Icons.refresh),
+                label: Text(tr('retry', lang)),
+              ),
+            ],
+          ),
+        ),
+      );
 
+  /// The page, with skeletons cross-fading to what [d] (null while loading)
+  /// fills in. The cover stays the same widget throughout, so its flight in
+  /// from a list is never cut short by the data arriving.
+  Widget _buildPage(BuildContext context, Map<String, dynamic>? d, SettingsProvider settings) {
+    // Keyed so a failed load cross-fades with the whole page. The page uses
+    // the app's accent colour, like every other screen.
+    return KeyedSubtree(
+      key: const ValueKey('page'),
+      child: Scaffold(
+        body: Stack(
+          children: [
+            CustomScrollView(
+              controller: _scroll,
+              slivers: [
+                SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      DetailHeader(
+                        banner: StretchyBanner(
+                          controller: _scroll,
+                          child: FadeSwitcher(child: _buildBanner(context, d)),
+                        ),
+                        cover: _buildCover(context, d),
+                        info: FadeSwitcher(
+                          child: d == null ? const DetailInfoSkeleton() : _buildInfo(d, settings),
+                        ),
+                      ),
+                      FadeSwitcher(
+                        child: d == null ? const DetailBodySkeleton() : _buildBody(context, d, settings),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            _buildOverlayButtons(context, d, settings.language),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The header background. From the first frame it is the cover the page
+  /// opened with, blurred (the list already decoded it), so a cover flying
+  /// in never lands on an empty band; the real banner then fades in over it
+  /// once downloaded (at once when it's cached). It stays one widget while
+  /// loading and after, so nothing is swapped. Without any cover yet, a
+  /// shimmer.
+  Widget _buildBanner(BuildContext context, Map<String, dynamic>? d) {
+    final surface = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final cover = widget.initialCoverUrl ?? (d?['coverImage']?['large'] as String?);
+    final banner = d?['bannerImage'] as String?;
+    if (cover == null && banner == null) {
+      return d == null ? const Skeleton(child: SkeletonBox(height: DetailHeader.bannerHeight, radius: 0)) : surface;
+    }
+    return Stack(
+      key: const ValueKey('banner'),
+      fit: StackFit.expand,
+      children: [
+        if (cover != null)
+          BlurredBackdrop(url: cover, decodeWidth: DetailCoverImage.previewCacheWidth)
+        else
+          surface,
+        if (banner != null)
+          CachedNetworkImage(
+            imageUrl: banner,
+            fit: BoxFit.cover,
+            // Banners are ~1900 px wide; decode them at the screen's width.
+            memCacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round(),
+            fadeInDuration: AppMotion.of(context, AppMotion.long),
+            fadeOutDuration: Duration.zero,
+            placeholder: (_, _) => const SizedBox.shrink(),
+            errorWidget: (_, _, _) => const SizedBox.shrink(),
+          ),
+      ],
+    );
+  }
+
+  /// The cover, in the hero the opening list's cover flies into: the list's
+  /// cover at first, sharpened by the full-size one once [d] has loaded.
+  Widget _buildCover(BuildContext context, Map<String, dynamic>? d) {
+    final full = d == null ? null : (d['coverImage']?['extraLarge'] ?? d['coverImage']?['large']) as String?;
+    // Always tappable (doing nothing without a cover yet): adding the
+    // gesture later would rebuild the hero mid-flight.
+    return Pressable(
+      onTap: () {
+        final url = full ?? widget.initialCoverUrl;
+        if (url != null) _openCover(context, url);
+      },
+      child: RoundedHero(
+        tag: _coverTag,
+        borderRadius: DetailHeader.coverRadius,
+        child: DetailCoverImage(previewUrl: widget.initialCoverUrl, url: full),
+      ),
+    );
+  }
+
+  /// Title, studio, next episode and the score and ranking stats.
+  Widget _buildInfo(Map<String, dynamic> d, SettingsProvider settings) {
+    final lang = settings.language;
     final title = settings.resolveTitle(d['title'] as Map<String, dynamic>?);
-    final cover = d['coverImage']?['extraLarge'] ?? d['coverImage']?['large'];
-    final banner = d['bannerImage'] as String?;
     final score = d['averageScore'] as int?;
+    final nextAiring = d['nextAiringEpisode'] as Map<String, dynamic>?;
+    final rankings = (d['rankings'] as List? ?? []).cast<Map<String, dynamic>>();
+    final studios = (d['studios']?['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
+    final hasAnimationStudio = studios.any((s) => s['isAnimationStudio'] == true);
+    final highestRated = _topRanking(rankings, 'RATED');
+    final mostPopular = _topRanking(rankings, 'POPULAR');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            children: [
+              Text(title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              if (hasAnimationStudio) ...[
+                const SizedBox(height: 6),
+                StudioLinks(
+                  studios: studios,
+                  isAnimationStudio: true,
+                  alignment: WrapAlignment.center,
+                ),
+              ],
+              if (nextAiring != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  trf('detail_episode_airs_in', lang, {
+                    'n': '${nextAiring['episode']}',
+                    'time': _airingCountdown(nextAiring['airingAt'] as int, lang),
+                  }),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.grey, fontSize: 13),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              _statCell(tr('detail_average_score', lang),
+                  score != null ? '$score%' : '—',
+                  score != null && score >= 70 ? Colors.green : Colors.grey),
+              if (highestRated != null) ...[
+                _vDivider(),
+                _statCell(tr('detail_highest_rated', lang), '#${highestRated['rank']}', null,
+                    sub: _rankingSub(highestRated, lang)),
+              ],
+              if (mostPopular != null) ...[
+                _vDivider(),
+                _statCell(tr('detail_most_popular', lang), '#${mostPopular['rank']}', null,
+                    sub: _rankingSub(mostPopular, lang)),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  /// The all-time [type] ranking, else the best seasonal or yearly one.
+  Map<String, dynamic>? _topRanking(List<Map<String, dynamic>> rankings, String type) {
+    final allTime = rankings.where((r) => r['type'] == type && r['allTime'] == true);
+    if (allTime.isNotEmpty) return allTime.first;
+    final others = rankings.where((r) => r['type'] == type && r['allTime'] != true).toList()
+      ..sort((a, b) => (a['rank'] as int).compareTo(b['rank'] as int));
+    return others.isEmpty ? null : others.first;
+  }
+
+  /// Everything under the header, from the list buttons down.
+  Widget _buildBody(BuildContext context, Map<String, dynamic> d, SettingsProvider settings) {
+    final lang = settings.language;
     final popularity = d['popularity'] as int?;
     final favourites = d['favourites'] as int?;
     final trending = d['trending'] as int?;
+    final isManga = d['type'] == 'MANGA';
     final episodes = d['episodes'] as int?;
+    final chapters = d['chapters'] as int?;
+    final volumes = d['volumes'] as int?;
+    final progressTotal = isManga ? chapters : episodes;
+    final progressUnit = tr(isManga ? 'detail_unit_ch' : 'detail_unit_ep', lang).toUpperCase();
     final duration = d['duration'] as int?;
     final format = d['format'] as String?;
     final genres = (d['genres'] as List? ?? []).cast<String>();
     final description = (d['description'] ?? '').replaceAll(RegExp(r'<[^>]*>'), '') as String;
-    final nextAiring = d['nextAiringEpisode'] as Map<String, dynamic>?;
-    final rankings = (d['rankings'] as List? ?? []).cast<Map<String, dynamic>>();
     final tags = (d['tags'] as List? ?? []).cast<Map<String, dynamic>>();
     final relations = (d['relations']?['edges'] as List? ?? []).cast<Map<String, dynamic>>();
     final characters = (d['characters']?['edges'] as List? ?? []).cast<Map<String, dynamic>>();
-    final recommendations = (d['recommendations']?['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
+    final recommendations = [
+      for (final node in (d['recommendations']?['nodes'] as List? ?? []).cast<Map<String, dynamic>>())
+        ?_recommendationItem(node, settings),
+    ];
     final trailer = d['trailer'] as Map<String, dynamic>?;
     final externalLinks = (d['externalLinks'] as List? ?? []).cast<Map<String, dynamic>>();
     final streamingEps = (d['streamingEpisodes'] as List? ?? []).cast<Map<String, dynamic>>();
     final synonyms = (d['synonyms'] as List? ?? []).cast<String>();
     final studios = (d['studios']?['nodes'] as List? ?? []).cast<Map<String, dynamic>>();
-    final animationStudios = studios.where((s) => s['isAnimationStudio'] == true).map((s) => s['name'] as String).toList();
-    final producers = studios.where((s) => s['isAnimationStudio'] != true).map((s) => s['name'] as String).toList();
+    final hasProducers = studios.any((s) => s['isAnimationStudio'] != true);
 
     final listEntry = d['mediaListEntry'] as Map<String, dynamic>?;
-    final inList = listEntry != null || provider.isInList(widget.animeId);
+    final inList = listEntry != null;
+    final listStatus = listEntry?['status'] as String? ?? 'PLANNING';
+    final listProgress = (listEntry?['progress'] as num?)?.toInt() ?? 0;
+    final listScore = (listEntry?['score'] as num?)?.toDouble() ?? 0;
 
-    String listStatus = 'plan_to_watch';
-    int listProgress = 0;
-    double listScore = 0;
-    if (listEntry != null) {
-      listStatus = _fromAniListStatus(listEntry['status'] as String? ?? 'PLANNING');
-      listProgress = (listEntry['progress'] as num?)?.toInt() ?? 0;
-      listScore = (listEntry['score'] as num?)?.toDouble() ?? 0;
-    } else if (provider.isInList(widget.animeId)) {
-      final a = provider.getAnime(widget.animeId);
-      if (a != null) {
-        listStatus = a.status;
-        listProgress = a.episodesWatched;
-        listScore = (a.userScore ?? 0).toDouble();
-      }
-    }
-
-    final allTimeRated = rankings.where((r) => r['type'] == 'RATED' && r['allTime'] == true).toList();
-    final allTimePopular = rankings.where((r) => r['type'] == 'POPULAR' && r['allTime'] == true).toList();
-    final yearRated = rankings.where((r) => r['type'] == 'RATED' && r['allTime'] != true).toList()
-      ..sort((a, b) => (a['rank'] as int).compareTo(b['rank'] as int));
-    final yearPopular = rankings.where((r) => r['type'] == 'POPULAR' && r['allTime'] != true).toList()
-      ..sort((a, b) => (a['rank'] as int).compareTo(b['rank'] as int));
-    final highestRated = allTimeRated.isNotEmpty ? allTimeRated.first : (yearRated.isNotEmpty ? yearRated.first : null);
-    final mostPopular = allTimePopular.isNotEmpty ? allTimePopular.first : (yearPopular.isNotEmpty ? yearPopular.first : null);
-
-    final startDate = d['startDate'];
-    final endDate = d['endDate'];
-    final startStr = _dateStr(startDate);
-    final endStr = _dateStr(endDate);
+    final startStr = formatFuzzyDate(FuzzyDate.fromJson(d['startDate']), lang);
+    final endStr = formatFuzzyDate(FuzzyDate.fromJson(d['endDate']), lang);
     final airingRange = [startStr, endStr].where((s) => s.isNotEmpty).join(' - ');
 
     final season = d['season'] as String?;
     final seasonYear = d['seasonYear'] as int?;
     final seasonStr = season != null && seasonYear != null
-        ? '${_seasonLabel(season)} $seasonYear' : null;
+        ? _seasonYear(season, seasonYear, lang) : null;
 
     final totalDuration = (episodes != null && duration != null) ? episodes * duration : null;
-    final watched = listProgress;
     final remaining = (episodes != null && duration != null)
-        ? (episodes - watched) * duration : null;
+        ? (episodes - listProgress) * duration : null;
+    final scoreFormat = scoreFormatOf(context.select<AuthService, Map<String, dynamic>?>((a) => a.user));
 
-    return Scaffold(
-      body: Stack(
-        children: [
-          CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SizedBox(height: 16),
 
-                // ── HEADER CARD ──
-                Container(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(24),
-                      bottomRight: Radius.circular(24),
+        // ── Action buttons ──
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              _actionBtn(
+                context,
+                inList
+                    ? tr(entryStatusKey(listStatus, manga: isManga), lang).toUpperCase()
+                    : tr('add_to_list', lang).toUpperCase(),
+                icon: inList ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
+                sublabel: tr('status', lang).toUpperCase(),
+                onTap: () => _openEditor(context),
+              ),
+              const SizedBox(width: 8),
+              _actionBtn(
+                context,
+                progressTotal != null
+                    ? '$listProgress / $progressTotal $progressUnit'
+                    : '$listProgress $progressUnit',
+                icon: Icons.play_circle_outline_rounded,
+                sublabel: tr('progress', lang).toUpperCase(),
+                onTap: () => _openEditor(context),
+              ),
+              const SizedBox(width: 8),
+              _actionBtn(
+                context,
+                listScore == 0 ? tr('detail_not_scored', lang) : formatScore(listScore, scoreFormat),
+                icon: listScore == 0 ? Icons.star_outline_rounded : Icons.star_rounded,
+                sublabel: tr('detail_score', lang),
+                onTap: () => _openEditor(context),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 20),
+        const Divider(height: 1),
+
+        // ── Summary ──
+        if (description.isNotEmpty) ...[
+          _SummarySection(description: description),
+          const Divider(height: 1),
+        ],
+
+        // ── Series Info grid ──
+        _sectionPad(Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle(tr('detail_series_info', lang)),
+            const SizedBox(height: 12),
+            _infoGrid([
+              if (format != null) _InfoItem(tr('detail_type', lang), _formatLabel(format, lang)),
+              if (airingRange.isNotEmpty) _InfoItem(tr(isManga ? 'detail_published' : 'detail_airing', lang), airingRange),
+              if (episodes != null) _InfoItem(tr('detail_episodes', lang), '$episodes'),
+              if (chapters != null) _InfoItem(tr('detail_chapters', lang), '$chapters'),
+              if (volumes != null) _InfoItem(tr('detail_volumes', lang), '$volumes'),
+              if (duration != null) _InfoItem(tr('detail_runtime', lang), trf('detail_per_episode', lang, {'time': _durationStr(duration, lang)})),
+              if (totalDuration != null) _InfoItem(tr('detail_total_duration', lang), _durationStr(totalDuration, lang)),
+              if (remaining != null && remaining > 0) _InfoItem(tr('detail_time_remaining', lang), _durationStr(remaining, lang)),
+              if (seasonStr != null) _InfoItem(tr('detail_season', lang), seasonStr),
+              if (popularity != null) _InfoItem(tr('popularity', lang).toUpperCase(), trf('detail_on_user_lists', lang, {'n': _fmt(popularity)})),
+              if (favourites != null) _InfoItem(tr('detail_favorites', lang), _fmt(favourites)),
+              if (trending != null) _InfoItem(tr('trending_sort', lang).toUpperCase(), trf('detail_trending_updates', lang, {'n': trending})),
+            ]),
+          ],
+        )),
+
+        // ── Titles ──
+        _sectionPad(Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _sectionTitle(tr('detail_titles', lang)),
+            const SizedBox(height: 10),
+            if (d['title']?['romaji'] != null) _titleRow(tr('detail_title_romaji', lang), d['title']['romaji'] as String),
+            if (d['title']?['english'] != null) _titleRow(tr('detail_title_english', lang), d['title']['english'] as String),
+            if (d['title']?['native'] != null) _titleRow(tr('detail_title_native', lang), d['title']['native'] as String),
+            if (synonyms.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              _titleRow(tr('detail_other_names', lang), synonyms.join('\n')),
+            ],
+          ],
+        )),
+        const Divider(height: 1),
+
+        // ── Tags ──
+        if (tags.isNotEmpty) ...[
+          _TagsSection(tags: tags),
+          const Divider(height: 1),
+        ],
+
+        // ── Genres ──
+        if (genres.isNotEmpty) ...[
+          _sectionPad(Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionTitle(tr('detail_genres', lang)),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: genres.map((g) => _chip(context, g)).toList(),
+              ),
+            ],
+          )),
+          const Divider(height: 1),
+        ],
+
+        // ── Producers ──
+        if (hasProducers) ...[
+          _sectionPad(Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _sectionTitle(tr('detail_producers', lang)),
+              const SizedBox(height: 10),
+              StudioLinks(studios: studios, isAnimationStudio: false),
+            ],
+          )),
+          const Divider(height: 1),
+        ],
+
+        // ── Relations ──
+        if (relations.isNotEmpty) ...[
+          _sectionPad(_sectionTitle(tr('detail_relations', lang))),
+          DetailMediaRow(
+            heroScope: 'detail-${widget.animeId}-relations',
+            items: [for (final edge in relations) _relationItem(edge, settings)],
+            onOpen: _openMedia,
+          ),
+          const Divider(height: 1),
+        ],
+
+        // ── Characters ──
+        if (characters.isNotEmpty) ...[
+          _sectionPad(_sectionTitle(tr('characters', lang).toUpperCase())),
+          _CharactersSection(
+            characters: characters,
+            onTap: (id, name, img) => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => CharacterScreen(
+                    characterId: id, name: name, imageUrl: img))),
+          ),
+          const Divider(height: 1),
+        ],
+
+        // ── Staff ── (brings its own title and divider; hides when empty)
+        StaffSection(edges: (d['staff']?['edges'] as List?) ?? const []),
+
+        // ── Recommended ──
+        if (recommendations.isNotEmpty) ...[
+          _sectionPad(_sectionTitle(tr('detail_recommended', lang))),
+          DetailMediaRow(
+            heroScope: 'detail-${widget.animeId}-recommended',
+            height: 195,
+            items: recommendations,
+            onOpen: _openMedia,
+          ),
+          const Divider(height: 1),
+        ],
+
+        // ── Following ── (hides itself when logged out or empty)
+        FollowingSection(mediaId: widget.animeId, isManga: isManga),
+
+        // ── Trailer ──
+        if (trailer != null && trailer['site'] == 'youtube') ...[
+          _TrailerSection(
+            trailerId: trailer['id'] as String,
+            onOpenUrl: _openUrl,
+          ),
+          const Divider(height: 1),
+        ],
+
+        // ── Episodes ──
+        if (streamingEps.isNotEmpty) ...[
+          _StreamingEpisodesSection(
+            episodes: streamingEps,
+            onOpenUrl: _openUrl,
+          ),
+          const Divider(height: 1),
+        ],
+
+        // ── Reviews ── (hides itself when there are none)
+        ReviewsSection(mediaId: widget.animeId),
+
+        // ── External links ──
+        if (externalLinks.isNotEmpty)
+          _ExternalLinksSection(links: externalLinks, onOpenUrl: _openUrl),
+
+        const SizedBox(height: 32),
+      ],
+    );
+  }
+
+  /// Back, and once the page has loaded share, favourite and edit, over the
+  /// banner (44px touch targets around 36px circles, so offsets are 4px
+  /// smaller than the visible spacing).
+  Widget _buildOverlayButtons(BuildContext context, Map<String, dynamic>? d, String lang) {
+    final isFav = d?['isFavourite'] == true;
+    return Positioned(
+      top: MediaQuery.of(context).padding.top + 2,
+      left: 8,
+      right: 8,
+      // The buttons' blurs read the banner once, together.
+      child: BackdropGroup(
+        child: Row(
+          children: [
+            overlayBtn(
+              icon: Icons.arrow_back,
+              tooltip: tr('tooltip_back', lang),
+              onPressed: () => Navigator.pop(context),
+            ),
+            const Spacer(),
+            FadeSwitcher(
+              child: d == null
+                  ? const SizedBox(key: ValueKey('loading'), height: 44)
+                  : Row(
+                      key: const ValueKey('actions'),
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        overlayBtn(
+                          icon: Icons.ios_share_rounded,
+                          tooltip: tr('tooltip_share', lang),
+                          onPressed: _copyLink,
+                        ),
+                        // Pops when it becomes a favourite, not when it stops.
+                        PopOnChange(
+                          value: isFav,
+                          when: (value) => value == true,
+                          child: overlayBtn(
+                            icon: isFav ? Icons.favorite : Icons.favorite_border,
+                            color: isFav ? Colors.red : Colors.white,
+                            tooltip: tr('tooltip_favourite', lang),
+                            onPressed: _toggleFav,
+                          ),
+                        ),
+                        overlayBtn(
+                          icon: Icons.more_horiz,
+                          tooltip: tr('tooltip_edit_entry', lang),
+                          onPressed: () => _openEditor(context),
+                        ),
+                      ],
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.14),
-                        blurRadius: 18,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    clipBehavior: Clip.none,
-                    alignment: Alignment.topCenter,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Banner image
-                          SizedBox(
-                            height: 200,
-                            width: double.infinity,
-                            child: ClipRRect(
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(0),
-                                topRight: Radius.circular(0),
-                              ),
-                              child: banner != null
-                                  ? CachedNetworkImage(imageUrl: banner, fit: BoxFit.cover)
-                                  : Container(color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                            ),
-                          ),
-                          // Space for cover overflow below banner
-                          const SizedBox(height: 80),
-                          // Title + studio + airing
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 24),
-                            child: Column(
-                              children: [
-                                Text(title,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-                                if (animationStudios.isNotEmpty) ...[
-                                  const SizedBox(height: 6),
-                                  Text(animationStudios.first,
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(color: Colors.grey, fontSize: 14)),
-                                ],
-                                if (nextAiring != null) ...[
-                                  const SizedBox(height: 8),
-                                  Text(
-                                    'Episode ${nextAiring['episode']} airs en ${_airingCountdown(nextAiring['airingAt'] as int)}',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(color: Colors.grey, fontSize: 13),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          // Stats row
-                          IntrinsicHeight(
-                            child: Row(
-                              children: [
-                                _statCell('AVERAGE SCORE',
-                                    score != null ? '$score%' : '—',
-                                    score != null && score >= 70 ? Colors.green : Colors.grey),
-                                if (highestRated != null) ...[
-                                  _vDivider(),
-                                  _statCell('HIGHEST RATED', '#${highestRated['rank']}', null,
-                                      sub: _rankingSub(highestRated)),
-                                ],
-                                if (mostPopular != null) ...[
-                                  _vDivider(),
-                                  _statCell('MOST POPULAR', '#${mostPopular['rank']}', null,
-                                      sub: _rankingSub(mostPopular)),
-                                ],
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
-                      // Gradient: banner fades into surface color
-                      Positioned(
-                        top: 110, left: 0, right: 0,
-                        child: Container(
-                          height: 90,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Theme.of(context).colorScheme.surface.withValues(alpha: 0),
-                                Theme.of(context).colorScheme.surface,
-                              ],
-                              stops: const [0.3, 1.0],
-                            ),
-                          ),
-                        ),
-                      ),
-                      // Cover image straddling banner / content
-                      Positioned(
-                        top: 80,
-                        child: GestureDetector(
-                          onTap: cover != null ? () => _openCover(context, cover!) : null,
-                          child: Hero(
-                            tag: 'cover_${widget.animeId}',
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(10),
-                              child: cover != null
-                                  ? CachedNetworkImage(
-                                      imageUrl: cover,
-                                      width: 130,
-                                      height: 190,
-                                      fit: BoxFit.cover,
-                                      memCacheWidth: 260,
-                                    )
-                                  : Container(width: 130, height: 190,
-                                      color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // ── Action buttons ──
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Row(
-                    children: [
-                      _actionBtn(
-                        context,
-                        inList ? _statusLabel(listStatus) : 'ADD TO LIST',
-                        icon: inList ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
-                        sublabel: 'STATUS',
-                        onTap: () => _showEditModal(context, provider, listStatus, listProgress, listScore),
-                      ),
-                      const SizedBox(width: 8),
-                      _actionBtn(
-                        context,
-                        episodes != null
-                            ? '$listProgress / $episodes EP'
-                            : '$listProgress EP',
-                        icon: Icons.play_circle_outline_rounded,
-                        sublabel: 'PROGRESS',
-                        onTap: () => _showEditModal(context, provider, listStatus, listProgress, listScore),
-                      ),
-                      const SizedBox(width: 8),
-                      _actionBtn(
-                        context,
-                        listScore == 0 ? 'NOT SCORED' : listScore.toStringAsFixed(1),
-                        icon: listScore == 0 ? Icons.star_outline_rounded : Icons.star_rounded,
-                        sublabel: 'SCORE',
-                        onTap: () => _showEditModal(context, provider, listStatus, listProgress, listScore),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 20),
-                const Divider(height: 1),
-
-                // ── Summary ──
-                if (description.isNotEmpty) ...[
-                  _SummarySection(description: description),
-                  const Divider(height: 1),
-                ],
-
-                // ── Series Info grid ──
-                _sectionPad(Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionTitle('SERIES INFO'),
-                    const SizedBox(height: 12),
-                    _infoGrid([
-                      if (format != null) _InfoItem('TYPE', _formatLabel(format)),
-                      if (airingRange.isNotEmpty) _InfoItem('AIRING', airingRange),
-                      if (episodes != null) _InfoItem('EPISODES', '$episodes'),
-                      if (duration != null) _InfoItem('RUNTIME', '${_durationStr(duration, settings.language)} per episode'),
-                      if (totalDuration != null) _InfoItem('ESTIMATED TOTAL DURATION', _durationStr(totalDuration, settings.language)),
-                      if (remaining != null && remaining > 0) _InfoItem('TIME REMAINING TO FINISH', _durationStr(remaining, settings.language)),
-                      if (seasonStr != null) _InfoItem('SEASON', seasonStr),
-                      if (popularity != null) _InfoItem('POPULARITY', 'On ${_fmt(popularity)} user\'s lists'),
-                      if (favourites != null) _InfoItem('FAVORITES', _fmt(favourites)),
-                      if (trending != null) _InfoItem('TRENDING', '$trending recent user list updates'),
-                    ]),
-                  ],
-                )),
-
-                // ── Titles ──
-                _sectionPad(Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _sectionTitle('TITLES'),
-                    const SizedBox(height: 10),
-                    if (d['title']?['romaji'] != null) _titleRow('ROMAJI', d['title']['romaji'] as String),
-                    if (d['title']?['english'] != null) _titleRow('ENGLISH', d['title']['english'] as String),
-                    if (d['title']?['native'] != null) _titleRow('NATIVE', d['title']['native'] as String),
-                    if (synonyms.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      _titleRow('OTHER NAMES', synonyms.join('\n')),
-                    ],
-                  ],
-                )),
-                const Divider(height: 1),
-
-                // ── Tags ──
-                if (tags.isNotEmpty) ...[
-                  _TagsSection(tags: tags),
-                  const Divider(height: 1),
-                ],
-
-                // ── Genres ──
-                if (genres.isNotEmpty) ...[
-                  _sectionPad(Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _sectionTitle('GENRES'),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: genres.map((g) => _chip(context, g)).toList(),
-                      ),
-                    ],
-                  )),
-                  const Divider(height: 1),
-                ],
-
-                // ── Producers ──
-                if (producers.isNotEmpty) ...[
-                  _sectionPad(Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _sectionTitle('PRODUCERS'),
-                      const SizedBox(height: 10),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: producers.map((p) => _chip(context, p)).toList(),
-                      ),
-                    ],
-                  )),
-                  const Divider(height: 1),
-                ],
-
-                // ── Relations ──
-                if (relations.isNotEmpty) ...[
-                  _sectionPad(_sectionTitle('RELATIONS')),
-                  _RelationsSection(
-                    relations: relations,
-                    onTap: (id) => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => DetailScreen(animeId: id))),
-                  ),
-                  const Divider(height: 1),
-                ],
-
-                // ── Characters ──
-                if (characters.isNotEmpty) ...[
-                  _sectionPad(_sectionTitle('CHARACTERS')),
-                  _CharactersSection(
-                    characters: characters,
-                    onTap: (id, name, img) => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => CharacterScreen(
-                            characterId: id, name: name, imageUrl: img))),
-                  ),
-                  const Divider(height: 1),
-                ],
-
-                // ── Recommended ──
-                if (recommendations.isNotEmpty) ...[
-                  _sectionPad(_sectionTitle('RECOMMENDED')),
-                  _RecommendedSection(
-                    recommendations: recommendations,
-                    onTap: (id) => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => DetailScreen(animeId: id))),
-                  ),
-                  const Divider(height: 1),
-                ],
-
-                // ── Trailer ──
-                if (trailer != null && trailer['site'] == 'youtube') ...[
-                  _TrailerSection(
-                    trailerId: trailer['id'] as String,
-                    onOpenUrl: _openUrl,
-                  ),
-                  const Divider(height: 1),
-                ],
-
-                // ── Episodes ──
-                if (streamingEps.isNotEmpty) ...[
-                  _StreamingEpisodesSection(
-                    episodes: streamingEps,
-                    onOpenUrl: _openUrl,
-                  ),
-                  const Divider(height: 1),
-                ],
-
-                // ── External links ──
-                if (externalLinks.isNotEmpty)
-                  _ExternalLinksSection(links: externalLinks, onOpenUrl: _openUrl),
-
-                const SizedBox(height: 32),
-              ],
             ),
-          ),
-        ],
+          ],
+        ),
       ),
+    );
+  }
 
-          // ── Overlay buttons ──
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 6,
-            left: 12,
-            right: 12,
-            child: Row(
-              children: [
-                _overlayBtn(
-                  icon: Icons.arrow_back,
-                  onPressed: () => Navigator.pop(context),
-                ),
-                const Spacer(),
-                _overlayBtn(
-                  icon: Icons.ios_share_rounded,
-                  onPressed: _copyLink,
-                ),
-                const SizedBox(width: 8),
-                _overlayBtn(
-                  icon: d['isFavourite'] == true ? Icons.favorite : Icons.favorite_border,
-                  color: d['isFavourite'] == true ? Colors.red : Colors.white,
-                  onPressed: _toggleFav,
-                ),
-                const SizedBox(width: 8),
-                _overlayBtn(
-                  icon: Icons.more_horiz,
-                  onPressed: () => _showEditModal(context, provider, listStatus, listProgress, listScore),
-                ),
-              ],
-            ),
-          ),
-        ],
+  /// [media]'s title in the user's title language (English, Romaji or
+  /// Native), like the page's own title.
+  static String _titleOf(Map<String, dynamic> media, SettingsProvider settings) {
+    final title = media['title'];
+    return settings.resolveTitle(title is Map<String, dynamic> ? title : null);
+  }
+
+  DetailMediaItem _relationItem(Map<String, dynamic> edge, SettingsProvider settings) {
+    final node = edge['node'] as Map<String, dynamic>? ?? {};
+    return DetailMediaItem(
+      id: node['id'] as int?,
+      title: _titleOf(node, settings),
+      coverUrl: node['coverImage']?['large'] as String?,
+      subtitle: Text(
+        _relationLabel(edge['relationType'] as String? ?? '', settings.language),
+        style: const TextStyle(fontSize: 10, color: Colors.grey),
+      ),
+    );
+  }
+
+  /// Null when AniList sent the recommendation without its media.
+  DetailMediaItem? _recommendationItem(Map<String, dynamic> node, SettingsProvider settings) {
+    final rec = node['mediaRecommendation'] as Map<String, dynamic>?;
+    if (rec == null) return null;
+    final rating = node['rating'] as int? ?? 0;
+    return DetailMediaItem(
+      id: rec['id'] as int?,
+      title: _titleOf(rec, settings),
+      coverUrl: rec['coverImage']?['large'] as String?,
+      subtitle: Row(children: [
+        const Icon(Icons.thumb_up_outlined, size: 10, color: Colors.grey),
+        const SizedBox(width: 3),
+        Text('$rating', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+      ]),
+    );
+  }
+
+  String _relationLabel(String s, String lang) => switch (s) {
+    'PREQUEL' => tr('detail_relation_prequel', lang),
+    'SEQUEL' => tr('detail_relation_sequel', lang),
+    'SIDE_STORY' => tr('detail_relation_side_story', lang),
+    'PARENT' => tr('detail_relation_parent', lang),
+    'ALTERNATIVE' => tr('detail_relation_alternative', lang),
+    'SUMMARY' => tr('detail_relation_summary', lang),
+    'SPIN_OFF' => tr('detail_relation_spin_off', lang),
+    'ADAPTATION' => tr('detail_relation_adaptation', lang),
+    'SOURCE' => tr('detail_relation_source', lang),
+    'CHARACTER' => tr('detail_relation_character', lang),
+    _ => s,
+  };
+
+  /// Opens another media from the Relations or Recommended rows, its cover
+  /// flying from the row.
+  void _openMedia(DetailMediaItem item, String heroTag) {
+    final id = item.id;
+    if (id == null) return;
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DetailScreen(animeId: id, heroTag: heroTag, initialCoverUrl: item.coverUrl),
       ),
     );
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
-
-  static Widget _overlayBtn({
-    required IconData icon,
-    Color color = Colors.white,
-    required VoidCallback onPressed,
-  }) =>
-      GestureDetector(
-        onTap: onPressed,
-        child: Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.45),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(icon, color: color, size: 20),
-        ),
-      );
 
   Widget _statCell(String label, String value, Color? valueColor, {String? sub}) =>
       Expanded(
@@ -680,11 +900,15 @@ class _DetailScreenState extends State<DetailScreen> {
         child: Text(label, style: const TextStyle(fontSize: 11)),
       );
 
-  String _airingCountdown(int airingAt) {
+  String _airingCountdown(int airingAt, String lang) {
     final diff = DateTime.fromMillisecondsSinceEpoch(airingAt * 1000).difference(DateTime.now());
-    if (diff.inDays > 0) return '${diff.inDays}d ${diff.inHours % 24}h';
-    if (diff.inHours > 0) return '${diff.inHours}h ${diff.inMinutes % 60}m';
-    return '${diff.inMinutes}m';
+    if (diff.inDays > 0) {
+      return trf('detail_countdown_dh', lang, {'d': diff.inDays, 'h': diff.inHours % 24});
+    }
+    if (diff.inHours > 0) {
+      return trf('detail_countdown_hm', lang, {'h': diff.inHours, 'm': diff.inMinutes % 60});
+    }
+    return trf('detail_countdown_m', lang, {'m': diff.inMinutes});
   }
 
   String _durationStr(int minutes, String lang) {
@@ -704,244 +928,50 @@ class _DetailScreenState extends State<DetailScreen> {
     return '$n';
   }
 
-  String _dateStr(Map<String, dynamic>? d) {
-    if (d == null) return '';
-    final y = d['year']; final m = d['month']; final day = d['day'];
-    if (y == null) return '';
-    if (m == null) return '$y';
-    final months = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
-    final mStr = (m as int) >= 1 && m <= 12 ? months[m - 1] : '$m';
-    if (day == null) return '$mStr $y';
-    return '$day $mStr $y';
-  }
-
-  String _formatLabel(String f) => switch (f) {
-    'TV' => 'TV', 'MOVIE' => 'Movie', 'OVA' => 'OVA',
-    'ONA' => 'ONA', 'SPECIAL' => 'Special', 'MUSIC' => 'Music',
-    'TV_SHORT' => 'TV Short', _ => f,
+  // TV, OVA and ONA read the same in every language, so they fall through.
+  String _formatLabel(String f, String lang) => switch (f) {
+    'MOVIE' => tr('movie', lang),
+    'SPECIAL' => tr('special', lang),
+    'MUSIC' => tr('detail_format_music', lang),
+    'TV_SHORT' => tr('detail_format_tv_short', lang),
+    'MANGA' => tr('source_manga', lang),
+    'NOVEL' => tr('source_light_novel', lang),
+    'ONE_SHOT' => tr('detail_format_one_shot', lang),
+    _ => f,
   };
 
-  String _statusLabel(String s) {
-    final manga = (_data?['type'] as String?) == 'MANGA';
-    return switch (s) {
-      'watching'      => manga ? 'READING' : 'WATCHING',
-      'completed'     => 'COMPLETED',
-      'plan_to_watch' => manga ? 'PLAN TO READ' : 'PLAN TO WATCH',
-      'dropped'       => 'DROPPED',
-      'on_hold'       => 'ON HOLD',
-      'rewatching'    => manga ? 'REREADING' : 'REWATCHING',
-      _               => s.toUpperCase(),
-    };
-  }
-
-  String _seasonLabel(String s) => switch (s) {
-    'WINTER' => 'Winter', 'SPRING' => 'Spring',
-    'SUMMER' => 'Summer', 'FALL' => 'Fall', _ => s,
+  String _seasonLabel(String s, String lang) => switch (s) {
+    'WINTER' => tr('detail_season_winter', lang),
+    'SPRING' => tr('detail_season_spring', lang),
+    'SUMMER' => tr('detail_season_summer', lang),
+    'FALL' => tr('detail_season_fall', lang),
+    _ => s,
   };
 
-  String _rankingSub(Map<String, dynamic>? r) {
-    if (r == null) return 'All Time';
-    if (r['allTime'] == true) return 'All Time';
+  String _seasonYear(String season, Object year, String lang) =>
+      trf('detail_season_year', lang, {'season': _seasonLabel(season, lang), 'year': year});
+
+  String _rankingSub(Map<String, dynamic>? r, String lang) {
+    final allTime = tr('detail_all_time', lang);
+    if (r == null) return allTime;
+    if (r['allTime'] == true) return allTime;
     final season = r['season'] as String?;
     final year = r['year'];
-    if (season != null && year != null) return '${_seasonLabel(season)} $year';
+    if (season != null && year != null) return _seasonYear(season, year, lang);
     if (year != null) return '$year';
-    return 'All Time';
+    return allTime;
   }
 
   void _openCover(BuildContext context, String imageUrl) {
     Navigator.push(context, PageRouteBuilder(
       opaque: false,
       barrierColor: Colors.black87,
-      pageBuilder: (_, _, _) => _CoverViewer(tag: 'cover_${widget.animeId}', imageUrl: imageUrl),
+      pageBuilder: (_, _, _) => _CoverViewer(tag: _coverTag, imageUrl: imageUrl),
       transitionsBuilder: (_, animation, _, child) => FadeTransition(opacity: animation, child: child),
     ));
   }
 
-  Future<void> _openUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
-  void _showEditModal(BuildContext context, AnimeListProvider provider,
-      String initialStatus, int initialProgress, double initialScore) {
-    final anime = Anime.fromApi(_data!);
-    final resolvedTitle = context.read<SettingsProvider>().resolveTitle(_data!['title'] as Map<String, dynamic>?);
-    final totalEps = (_data!['episodes'] ?? _data!['chapters']) as int?;
-    final isManga = (_data!['type'] as String?) == 'MANGA';
-
-    String selectedStatus = initialStatus;
-    int progress = initialProgress;
-    double score = initialScore;
-    final initialNotes = (_data!['mediaListEntry']?['notes'] as String?) ?? '';
-    final notesController = TextEditingController(text: initialNotes);
-
-    // Parse current custom lists from entry data
-    final rawCustom = _data!['mediaListEntry']?['customLists'];
-    final initialCustom = <String>{};
-    if (rawCustom is Map) {
-      for (final e in rawCustom.entries) {
-        if (e.value == true) initialCustom.add(e.key as String);
-      }
-    }
-    final selectedCustomLists = Set<String>.from(initialCustom);
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (sheetContext) => StatefulBuilder(
-        builder: (ctx, setModal) => Padding(
-          padding: EdgeInsets.only(left: 24, right: 24, top: 24, bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(child: Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)))),
-              Text(resolvedTitle, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 16),
-              const Text('Status', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 8, children: [
-                _statusChip(ctx, isManga ? 'Reading' : 'Watching', 'watching', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, 'Completed', 'completed', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, isManga ? 'Plan to Read' : 'Plan to Watch', 'plan_to_watch', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, 'On Hold', 'on_hold', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, 'Dropped', 'dropped', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-                _statusChip(ctx, isManga ? 'Rereading' : 'Rewatching', 'rewatching', selectedStatus, (v) => setModal(() => selectedStatus = v)),
-              ]),
-              const SizedBox(height: 16),
-              const Text('Progress', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 8),
-              Row(children: [
-                _counterBtn(ctx, Icons.remove, () { if (progress > 0) setModal(() => progress--); }),
-                const SizedBox(width: 12),
-                Expanded(child: Text(totalEps != null ? '$progress / $totalEps ep' : '$progress ep',
-                    textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
-                const SizedBox(width: 12),
-                _counterBtn(ctx, Icons.add, () { if (totalEps == null || progress < totalEps) setModal(() => progress++); }),
-              ]),
-              const SizedBox(height: 16),
-              const Text('Score (0–10)', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 8),
-              Row(children: [
-                _counterBtn(ctx, Icons.remove, () { if (score > 0) setModal(() => score = (score - 0.5).clamp(0, 10)); }),
-                const SizedBox(width: 12),
-                Expanded(child: Text(score == 0 ? '—' : score.toStringAsFixed(1),
-                    textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold))),
-                const SizedBox(width: 12),
-                _counterBtn(ctx, Icons.add, () { if (score < 10) setModal(() => score = (score + 0.5).clamp(0, 10)); }),
-              ]),
-              if (_customListNames.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const Text('Custom Lists', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 4,
-                  children: _customListNames.map((name) {
-                    final selected = selectedCustomLists.contains(name);
-                    return Builder(builder: (c) => FilterChip(
-                      label: Text(name, style: TextStyle(fontSize: 12, color: selected ? Colors.white : null)),
-                      selected: selected,
-                      selectedColor: Theme.of(c).colorScheme.primary,
-                      checkmarkColor: Colors.white,
-                      onSelected: (v) => setModal(() {
-                        if (v) { selectedCustomLists.add(name); } else { selectedCustomLists.remove(name); }
-                      }),
-                    ));
-                  }).toList(),
-                ),
-              ],
-              const SizedBox(height: 16),
-              const Text('Notes', style: TextStyle(color: Colors.grey, fontSize: 12)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: notesController,
-                maxLines: 3,
-                minLines: 1,
-                style: const TextStyle(fontSize: 13),
-                decoration: InputDecoration(
-                  hintText: 'Personal notes…',
-                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 13),
-                  filled: true,
-                  fillColor: Theme.of(ctx).colorScheme.surfaceContainerHighest,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(children: [
-                Expanded(child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                      backgroundColor: Theme.of(context).colorScheme.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-                  onPressed: () async {
-                    anime.status = selectedStatus;
-                    anime.episodesWatched = progress;
-                    anime.userScore = score.round();
-                    provider.addAnime(anime);
-                    final auth = context.read<AuthService>();
-                    if (auth.isLoggedIn) {
-                      await _service.saveListEntry(
-                          mediaId: anime.id, status: _toAniListStatus(selectedStatus),
-                          progress: progress, score: score, token: auth.token!,
-                          notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
-                          customLists: selectedCustomLists.toList());
-                      _load();
-                      listRefreshNotifier.value++;
-                    }
-                    if (!context.mounted) return;
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${anime.title} saved!')));
-                  },
-                  child: const Text('Save', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                )),
-                if (provider.isInList(widget.animeId)) ...[
-                  const SizedBox(width: 12),
-                  IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.red),
-                    onPressed: () { provider.removeAnime(widget.animeId); Navigator.pop(context); },
-                  ),
-                ],
-              ]),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _counterBtn(BuildContext context, IconData icon, VoidCallback onTap) =>
-      GestureDetector(
-        onTap: onTap,
-        child: Container(
-          width: 36, height: 36,
-          decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(8)),
-          child: Icon(icon, size: 18),
-        ),
-      );
-
-  Widget _statusChip(BuildContext context, String label, String value, String selected, Function(String) onTap) {
-    final isSelected = value == selected;
-    return GestureDetector(
-      onTap: () => onTap(value),
-      child: Chip(
-        label: Text(label),
-        backgroundColor: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.surfaceContainerHighest,
-        labelStyle: TextStyle(color: isSelected ? Colors.white : null, fontSize: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-      ),
-    );
-  }
+  Future<void> _openUrl(String url) => openExternalUrl(url);
 }
 
 // ── Extracted section widgets ─────────────────────────────────────────────
@@ -957,33 +987,45 @@ class _SummarySectionState extends State<_SummarySection> {
   bool _expanded = false;
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('SUMMARY',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+          Text(tr('detail_summary', lang),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                   color: Colors.grey, letterSpacing: 0.5)),
           const SizedBox(height: 8),
-          GestureDetector(
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Text(
-              widget.description,
-              style: const TextStyle(color: Colors.grey, height: 1.6, fontSize: 13),
-              maxLines: _expanded ? null : 4,
-              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+          // Opens and closes smoothly instead of jumping.
+          AnimatedSize(
+            duration: AppMotion.of(context, AppMotion.medium),
+            curve: AppMotion.standard,
+            alignment: AlignmentDirectional.topStart,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: () => setState(() => _expanded = !_expanded),
+                  child: Text(
+                    widget.description,
+                    style: const TextStyle(color: Colors.grey, height: 1.6, fontSize: 13),
+                    maxLines: _expanded ? null : 4,
+                    overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                  ),
+                ),
+                if (!_expanded)
+                  GestureDetector(
+                    onTap: () => setState(() => _expanded = true),
+                    child: Builder(builder: (ctx) => Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(tr('detail_read_more', lang),
+                          style: TextStyle(color: Theme.of(ctx).colorScheme.primary, fontSize: 12)),
+                    )),
+                  ),
+              ],
             ),
           ),
-          if (!_expanded)
-            GestureDetector(
-              onTap: () => setState(() => _expanded = true),
-              child: Builder(builder: (ctx) => Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text('Read more',
-                    style: TextStyle(color: Theme.of(ctx).colorScheme.primary, fontSize: 12)),
-              )),
-            ),
         ],
       ),
     );
@@ -1028,6 +1070,7 @@ class _TagsSectionState extends State<_TagsSection> {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     final spoilerCount = widget.tags.where((t) => t['isMediaSpoiler'] == true).length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -1036,89 +1079,43 @@ class _TagsSectionState extends State<_TagsSection> {
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text('TAGS',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+              Expanded(
+                child: Text(tr('detail_tags', lang),
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                         color: Colors.grey, letterSpacing: 0.5)),
               ),
               if (spoilerCount > 0)
                 _smallBtn(
-                  _showSpoilers ? 'Hide Spoiler Tag' : 'Show $spoilerCount Spoiler Tag',
+                  _showSpoilers
+                      ? tr('detail_hide_spoiler_tags', lang)
+                      : trf('detail_show_spoiler_tags', lang, {'n': spoilerCount}),
                   () => setState(() => _showSpoilers = !_showSpoilers),
                 ),
               const SizedBox(width: 8),
               _smallBtn(
-                _showAll ? 'Show Less' : 'Show All ${widget.tags.length} Tags',
+                _showAll
+                    ? tr('detail_show_less', lang)
+                    : trf('detail_show_all_tags', lang, {'n': widget.tags.length}),
                 () => setState(() => _showAll = !_showAll),
               ),
             ],
           ),
           const SizedBox(height: 10),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: widget.tags
-                .where((t) => _showAll || t['isMediaSpoiler'] != true || _showSpoilers)
-                .take(_showAll ? 999 : 9)
-                .map((t) => _tagChip(t['name'] as String, t['isMediaSpoiler'] == true))
-                .toList(),
+          AnimatedSize(
+            duration: AppMotion.of(context, AppMotion.medium),
+            curve: AppMotion.standard,
+            alignment: AlignmentDirectional.topStart,
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: widget.tags
+                  .where((t) => _showAll || t['isMediaSpoiler'] != true || _showSpoilers)
+                  .take(_showAll ? 999 : 9)
+                  .map((t) => _tagChip(t['name'] as String, t['isMediaSpoiler'] == true))
+                  .toList(),
+            ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _RelationsSection extends StatelessWidget {
-  final List<Map<String, dynamic>> relations;
-  final void Function(int id) onTap;
-  const _RelationsSection({required this.relations, required this.onTap});
-
-  String _relationLabel(String s) => switch (s) {
-    'PREQUEL' => 'Prequel', 'SEQUEL' => 'Sequel', 'SIDE_STORY' => 'Side Story',
-    'PARENT' => 'Parent', 'ALTERNATIVE' => 'Alternative', 'SUMMARY' => 'Summary',
-    'SPIN_OFF' => 'Spin Off', 'ADAPTATION' => 'Adaptation', 'SOURCE' => 'Source',
-    'CHARACTER' => 'Character', _ => s,
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 200,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        itemCount: relations.length,
-        itemBuilder: (_, i) {
-          final node = relations[i]['node'] as Map<String, dynamic>? ?? {};
-          final relType = _relationLabel(relations[i]['relationType'] as String? ?? '');
-          final relTitle = (node['title']?['english'] ?? node['title']?['romaji'] ?? '') as String;
-          final relCover = node['coverImage']?['large'] as String?;
-          final relId = node['id'] as int?;
-          return GestureDetector(
-            onTap: relId != null ? () => onTap(relId) : null,
-            child: Container(
-              width: 110,
-              margin: const EdgeInsets.only(right: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: relCover != null
-                        ? CachedNetworkImage(imageUrl: relCover, width: 110, height: 150, fit: BoxFit.cover)
-                        : Container(width: 110, height: 150,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(relTitle, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-                  Text(relType, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                ],
-              ),
-            ),
-          );
-        },
       ),
     );
   }
@@ -1129,8 +1126,18 @@ class _CharactersSection extends StatelessWidget {
   final void Function(int id, String name, String? imageUrl) onTap;
   const _CharactersSection({required this.characters, required this.onTap});
 
+  String _roleLabel(String role, String lang) => switch (role) {
+    'MAIN' => tr('detail_role_main', lang),
+    'SUPPORTING' => tr('detail_role_supporting', lang),
+    'BACKGROUND' => tr('detail_role_background', lang),
+    _ => role.toLowerCase(),
+  };
+
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
+    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final fadeIn = AppMotion.of(context, AppMotion.short);
     return SizedBox(
       height: 180,
       child: ListView.builder(
@@ -1143,81 +1150,40 @@ class _CharactersSection extends StatelessWidget {
           final charId = node['id'] as int?;
           final name = node['name']?['full'] as String? ?? '';
           final img = node['image']?['medium'] as String?;
-          final role = (edge['role'] as String? ?? '').toLowerCase();
-          return GestureDetector(
-            onTap: charId != null ? () => onTap(charId, name, img) : null,
-            child: Container(
-              width: 80,
-              margin: const EdgeInsets.only(right: 10),
-              child: Column(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(6),
-                    child: img != null
-                        ? CachedNetworkImage(imageUrl: img, width: 80, height: 110,
-                            fit: BoxFit.cover, memCacheWidth: 160)
-                        : Container(width: 80, height: 110,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(name, maxLines: 2, overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
-                  Text(role, style: const TextStyle(fontSize: 9, color: Colors.grey)),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _RecommendedSection extends StatelessWidget {
-  final List<Map<String, dynamic>> recommendations;
-  final void Function(int id) onTap;
-  const _RecommendedSection({required this.recommendations, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 195,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-        itemCount: recommendations.length,
-        itemBuilder: (_, i) {
-          final rec = recommendations[i]['mediaRecommendation'] as Map<String, dynamic>?;
-          if (rec == null) return const SizedBox.shrink();
-          final recId = rec['id'] as int?;
-          final recTitle = (rec['title']?['english'] ?? rec['title']?['romaji'] ?? '') as String;
-          final recCover = rec['coverImage']?['large'] as String?;
-          final rating = recommendations[i]['rating'] as int? ?? 0;
-          return GestureDetector(
-            onTap: recId != null ? () => onTap(recId) : null,
-            child: Container(
-              width: 110,
-              margin: const EdgeInsets.only(right: 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: recCover != null
-                        ? CachedNetworkImage(imageUrl: recCover, width: 110, height: 150, fit: BoxFit.cover)
-                        : Container(width: 110, height: 150,
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(recTitle, maxLines: 1, overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500)),
-                  Row(children: [
-                    const Icon(Icons.thumb_up_outlined, size: 10, color: Colors.grey),
-                    const SizedBox(width: 3),
-                    Text('$rating', style: const TextStyle(fontSize: 10, color: Colors.grey)),
-                  ]),
-                ],
+          final role = _roleLabel(edge['role'] as String? ?? '', lang);
+          return Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: Pressable(
+              onTap: charId != null ? () => onTap(charId, name, img) : null,
+              child: SizedBox(
+                width: 80,
+                child: Column(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(6),
+                      child: SizedBox(
+                        width: 80,
+                        height: 110,
+                        child: img != null
+                            ? CachedNetworkImage(
+                                imageUrl: img,
+                                fit: BoxFit.cover,
+                                memCacheWidth: 160,
+                                fadeInDuration: fadeIn,
+                                fadeOutDuration: Duration.zero,
+                                placeholder: (_, _) => placeholder,
+                                errorWidget: (_, _, _) => placeholder,
+                              )
+                            : placeholder,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(name, maxLines: 2, overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
+                    Text(role, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+                  ],
+                ),
               ),
             ),
           );
@@ -1234,16 +1200,19 @@ class _TrailerSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('TRAILER',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+          Text(tr('detail_trailer', lang),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                   color: Colors.grey, letterSpacing: 0.5)),
           const SizedBox(height: 10),
-          GestureDetector(
+          Pressable(
+            // A full-width card only needs a hint of a press.
+            pressedScale: 0.98,
             onTap: () => onOpenUrl('https://www.youtube.com/watch?v=$trailerId'),
             child: Stack(
               alignment: Alignment.center,
@@ -1255,6 +1224,8 @@ class _TrailerSection extends StatelessWidget {
                     width: double.infinity,
                     height: 200,
                     fit: BoxFit.cover,
+                    fadeInDuration: AppMotion.of(context, AppMotion.short),
+                    fadeOutDuration: Duration.zero,
                   ),
                 ),
                 Container(
@@ -1279,10 +1250,13 @@ class _StreamingEpisodesSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lang = context.watch<SettingsProvider>().language;
     final site = episodes.isNotEmpty ? episodes.first['site'] as String? : null;
     final title = site != null
-        ? 'EPISODES (AVAILABLE ON ${site.toUpperCase()})'
-        : 'EPISODES';
+        ? trf('detail_streaming_episodes_on', lang, {'site': site.toUpperCase()})
+        : tr('detail_streaming_episodes', lang);
+    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
+    final fadeIn = AppMotion.of(context, AppMotion.short);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1304,25 +1278,38 @@ class _StreamingEpisodesSection extends StatelessWidget {
               final thumb = ep['thumbnail'] as String?;
               final epTitle = ep['title'] as String? ?? '';
               final url = ep['url'] as String?;
-              return GestureDetector(
-                onTap: url != null ? () => onOpenUrl(url) : null,
-                child: Container(
-                  width: 160,
-                  margin: const EdgeInsets.only(right: 10),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: thumb != null
-                            ? CachedNetworkImage(imageUrl: thumb, width: 160, height: 110, fit: BoxFit.cover)
-                            : Container(width: 160, height: 110,
-                                color: Theme.of(context).colorScheme.surfaceContainerHighest),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(epTitle, maxLines: 2, overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 11)),
-                    ],
+              return Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: Pressable(
+                  onTap: url != null ? () => onOpenUrl(url) : null,
+                  child: SizedBox(
+                    width: 160,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: SizedBox(
+                            width: 160,
+                            height: 110,
+                            child: thumb != null
+                                ? CachedNetworkImage(
+                                    imageUrl: thumb,
+                                    fit: BoxFit.cover,
+                                    memCacheWidth: 320,
+                                    fadeInDuration: fadeIn,
+                                    fadeOutDuration: Duration.zero,
+                                    placeholder: (_, _) => placeholder,
+                                    errorWidget: (_, _, _) => placeholder,
+                                  )
+                                : placeholder,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(epTitle, maxLines: 2, overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 11)),
+                      ],
+                    ),
                   ),
                 ),
               );
@@ -1342,13 +1329,14 @@ class _ExternalLinksSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final lang = context.watch<SettingsProvider>().language;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('EXTERNAL AND STREAMING LINKS',
-              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+          Text(tr('detail_external_links', lang),
+              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
                   color: Colors.grey, letterSpacing: 0.5)),
           const SizedBox(height: 10),
           Wrap(
