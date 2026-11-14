@@ -14,6 +14,7 @@ import '../utils/tab_reselect.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
+import '../widgets/sheet_list_surface.dart';
 import '../main.dart' show MainNavigation;
 import 'settings_screen.dart';
 import 'user_profile_screen.dart';
@@ -973,11 +974,13 @@ class _FollowSheetState extends State<_FollowSheet> {
                   : (_users == null || _users!.isEmpty)
                       ? Center(child: Text(tr('profile_nobody_here', lang),
                           style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))))
-                      : ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                          itemCount: _users!.length,
-                          itemBuilder: (_, i) => _UserTile(user: _users![i]),
+                      : SheetListSurface(
+                          child: ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            itemCount: _users!.length,
+                            itemBuilder: (_, i) => _UserTile(user: _users![i]),
+                          ),
                         ),
             ),
           ],

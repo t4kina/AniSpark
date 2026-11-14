@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
 import '../theme/app_motion.dart';
+import 'sheet_list_surface.dart';
 import '../utils/translations.dart' show tr;
 
 /// AniList genre names (sent to the API as is) and their display keys,
@@ -194,22 +195,24 @@ class _GenreFilterSheetState extends State<GenreFilterSheet> {
           ),
           const Divider(height: 1),
           Expanded(
-            child: ListView(
-              controller: scrollCtrl,
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-              children: [
-                Text(
-                  tr('genre', lang).toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey,
-                    letterSpacing: 0.8,
+            child: SheetListSurface(
+              child: ListView(
+                controller: scrollCtrl,
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                children: [
+                  Text(
+                    tr('genre', lang).toUpperCase(),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey,
+                      letterSpacing: 0.8,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                GenreChips(selected: _draft, onToggle: _toggle, selectedColor: widget.selectedColor),
-              ],
+                  const SizedBox(height: 8),
+                  GenreChips(selected: _draft, onToggle: _toggle, selectedColor: widget.selectedColor),
+                ],
+              ),
             ),
           ),
         ],

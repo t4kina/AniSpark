@@ -14,6 +14,7 @@ import '../widgets/overlay_button.dart';
 import '../widgets/profile/affinity_card.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
+import '../widgets/sheet_list_surface.dart';
 import 'detail_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
@@ -823,12 +824,14 @@ class _UserListSheetState extends State<_UserListSheet>
                                 style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))),
                           );
                         }
-                        return ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                          itemCount: entries.length,
-                          itemBuilder: (_, i) =>
-                              _EntryTile(entry: entries[i], isAnime: isAnime),
+                        return SheetListSurface(
+                          child: ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            itemCount: entries.length,
+                            itemBuilder: (_, i) =>
+                                _EntryTile(entry: entries[i], isAnime: isAnime),
+                          ),
                         );
                       }).toList(),
                     ),
