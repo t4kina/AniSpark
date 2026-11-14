@@ -88,4 +88,22 @@ void main() {
     );
     expect(image.memCacheWidth, 120);
   });
+
+  testWidgets('a user name dims while it is pressed and reports the tap', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: Center(child: TappableUserName(onTap: () => taps++, child: const Text('Faye')))),
+    ));
+    double opacity() =>
+        tester.widget<Opacity>(find.ancestor(of: find.text('Faye'), matching: find.byType(Opacity)).first).opacity;
+
+    final gesture = await tester.startGesture(tester.getCenter(find.text('Faye')));
+    await tester.pumpAndSettle();
+    expect(opacity(), lessThan(0.6));
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(opacity(), 1);
+    expect(taps, 1);
+  });
 }

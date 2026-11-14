@@ -13,6 +13,7 @@ import '../providers/settings_provider.dart' show SettingsProvider, accentColorO
 import '../services/auth_service.dart';
 import '../utils/translations.dart';
 import '../utils/refresh_notifier.dart';
+import '../widgets/motion/pressable.dart';
 import '../widgets/option_sheet.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../services/notification_service.dart';
@@ -538,7 +539,7 @@ class SettingsScreen extends StatelessWidget {
                 alignment: WrapAlignment.center,
                 children: accentColorOptions.entries.map((e) {
                   final isSelected = settings.accentColorName == e.key;
-                  return GestureDetector(
+                  return Pressable(
                     onTap: () {
                       selectionHaptic();
                       context.read<SettingsProvider>().setAccentColor(e.key);

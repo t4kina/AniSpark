@@ -66,4 +66,24 @@ void main() {
     final chip = find.widgetWithText(FilterOptionChip, _en('search_genre_action'));
     expect(tester.getSize(chip).height, greaterThanOrEqualTo(44));
   });
+
+  testWidgets('an option shrinks under the finger and reports the tap', (tester) async {
+    var taps = 0;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(body: Center(child: FilterOptionChip(label: 'Drama', selected: false, onTap: () => taps++))),
+    ));
+    double scale() => tester
+        .widget<Transform>(find.ancestor(of: find.text('Drama'), matching: find.byType(Transform)).first)
+        .transform
+        .entry(0, 0);
+
+    final gesture = await tester.startGesture(tester.getCenter(find.text('Drama')));
+    await tester.pumpAndSettle();
+    expect(scale(), lessThan(1));
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(scale(), 1);
+    expect(taps, 1);
+  });
 }

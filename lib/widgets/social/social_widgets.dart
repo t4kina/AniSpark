@@ -10,6 +10,7 @@ import '../../utils/haptics.dart';
 import '../../utils/translations.dart' show tr;
 import '../motion/animated_count.dart';
 import '../motion/pop_on_change.dart';
+import '../motion/pressable.dart';
 import '../user_avatar.dart';
 
 /// Opens the profile of an AniList `user` object (`{id, name, avatar}`).
@@ -126,8 +127,7 @@ class ProfileAvatar extends StatelessWidget {
     return Semantics(
       button: true,
       label: user?['name'] as String?,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: Pressable(
         onTap: () => openUserProfile(context, user),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minWidth: _minTapSize, minHeight: _minTapSize),
@@ -157,8 +157,7 @@ class TappableUserName extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: Pressable.dim(
         onTap: onTap,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: _minTapSize),

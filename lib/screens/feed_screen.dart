@@ -15,6 +15,7 @@ import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pop_on_change.dart';
+import '../widgets/motion/pressable.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
@@ -433,7 +434,7 @@ class _FeedScreenState extends State<FeedScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: GestureDetector(
+        title: Pressable.dim(
           onTap: _showFeedPicker,
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -647,7 +648,7 @@ class _ActivityCard extends StatelessWidget {
           ),
           if (coverImage != null) ...[
             const SizedBox(width: 10),
-            GestureDetector(
+            Pressable(
               onTap: mediaId != null ? () => openMediaDetail(context, mediaId) : null,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(6),
@@ -691,7 +692,7 @@ class _ActivityCard extends StatelessWidget {
                           fontSize: 13)),
                 ),
                 const SizedBox(height: 4),
-                GestureDetector(
+                Pressable.dim(
                   onTap: onOpenThread,
                   child: text.isEmpty
                       ? Text(tr('social_media_post', lang),

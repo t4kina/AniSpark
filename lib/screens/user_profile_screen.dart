@@ -10,6 +10,7 @@ import '../utils/haptics.dart';
 import '../utils/score_utils.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/pressable.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/profile/affinity_card.dart';
 import '../widgets/profile/favourite_cards.dart';
@@ -493,7 +494,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ),
             if (about.length > 120) ...[
               const SizedBox(height: 6),
-              GestureDetector(
+              Pressable.dim(
                 onTap: () => setState(() => _bioExpanded = !_bioExpanded),
                 child: Text(
                   tr(_bioExpanded ? 'uprof_show_less' : 'uprof_show_more', lang),
@@ -576,7 +577,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      child: GestureDetector(
+      child: Pressable(
         onTap: mediaId != null && isAnime
             ? () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => DetailScreen(animeId: mediaId)))
@@ -893,7 +894,8 @@ class _EntryTile extends StatelessWidget {
     final unit = tr(isAnime ? 'uprof_ep_short' : 'uprof_ch_short', lang);
     final progressFraction = (total != null && total > 0) ? (progress / total).clamp(0.0, 1.0) : null;
 
-    return GestureDetector(
+    return Pressable(
+      pressedScale: 0.98,
       onTap: id != null
           ? () => Navigator.push(context,
               MaterialPageRoute(builder: (_) => DetailScreen(animeId: id)))

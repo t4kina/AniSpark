@@ -241,7 +241,8 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: GestureDetector(
+            child: Pressable(
+              pressedScale: 0.98,
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SearchScreen()),
@@ -394,7 +395,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             if (seeAll != null)
-              GestureDetector(
+              Pressable.dim(
                 onTap: seeAll,
                 child: Builder(builder: (ctx) => Text(
                   tr('home_see_all', lang),

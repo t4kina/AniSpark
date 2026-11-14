@@ -136,7 +136,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
                 children: _genreKeys.entries.map((genre) {
                   final g = genre.key;
                   final selected = _activeGenres.contains(g);
-                  return GestureDetector(
+                  return Pressable(
                     onTap: () {
                       setState(() {
                         if (selected) {
@@ -1328,7 +1328,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                 const SizedBox(height: 12),
 
                 // Score button
-                GestureDetector(
+                Pressable(
                   onTap: _openScorePicker,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 13),
@@ -1504,7 +1504,7 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               // Minus
-              GestureDetector(
+              Pressable(
                 onTap: () => _adjust(-0.5),
                 child: Container(
                   width: 64,
@@ -1547,7 +1547,7 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
               ),
               const SizedBox(width: 16),
               // Plus
-              GestureDetector(
+              Pressable(
                 onTap: () => _adjust(0.5),
                 child: Container(
                   width: 64,

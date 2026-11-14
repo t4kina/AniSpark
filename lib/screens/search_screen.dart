@@ -464,7 +464,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     color: cs.onSurface.withValues(alpha: 0.55),
                     letterSpacing: 0.3)),
             const Spacer(),
-            GestureDetector(
+            Pressable.dim(
               onTap: _clearRecentSearches,
               child: Text(tr('search_clear_all', lang),
                   style: TextStyle(fontSize: 12, color: cs.primary)),
@@ -476,7 +476,7 @@ class _SearchScreenState extends State<SearchScreen> {
           spacing: 8,
           runSpacing: 8,
           children: _recentSearches.map((q) {
-            return GestureDetector(
+            return Pressable(
               onTap: () {
                 _controller.text = q;
                 _controller.selection = TextSelection.fromPosition(
@@ -500,7 +500,7 @@ class _SearchScreenState extends State<SearchScreen> {
                         style: TextStyle(
                             fontSize: 13, color: cs.onSurface.withValues(alpha: 0.85))),
                     const SizedBox(width: 4),
-                    GestureDetector(
+                    Pressable.dim(
                       onTap: () => _removeRecentSearch(q),
                       child: Icon(Icons.close_rounded, size: 14,
                           color: cs.onSurface.withValues(alpha: 0.35)),

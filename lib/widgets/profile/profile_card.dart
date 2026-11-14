@@ -269,9 +269,8 @@ class _ProfileCardState extends State<ProfileCard> {
         ? Text(text, style: countStyle)
         : Semantics(
             button: true,
-            child: GestureDetector(
+            child: Pressable.dim(
               onTap: () => widget.onCountTap!(type),
-              behavior: HitTestBehavior.opaque,
               child: Text(text, style: countStyle),
             ),
           );

@@ -810,7 +810,7 @@ class _DetailScreenState extends State<DetailScreen> {
   }) {
     final cs = Theme.of(context).colorScheme;
     return Expanded(
-      child: GestureDetector(
+      child: Pressable(
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
@@ -1011,7 +1011,7 @@ class _SummarySectionState extends State<_SummarySection> {
                   ),
                 ),
                 if (!_expanded)
-                  GestureDetector(
+                  Pressable.dim(
                     onTap: () => setState(() => _expanded = true),
                     child: Builder(builder: (ctx) => Padding(
                       padding: const EdgeInsets.only(top: 4),
@@ -1052,7 +1052,7 @@ class _TagsSectionState extends State<_TagsSection> {
             style: TextStyle(fontSize: 11, color: spoiler ? Colors.orange : null)),
       );
 
-  Widget _smallBtn(String label, VoidCallback onTap) => GestureDetector(
+  Widget _smallBtn(String label, VoidCallback onTap) => Pressable(
         onTap: onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1333,7 +1333,7 @@ class _ExternalLinksSection extends StatelessWidget {
             children: links.map((link) {
               final site = link['site'] as String? ?? '';
               final url = link['url'] as String? ?? '';
-              return GestureDetector(
+              return Pressable(
                 onTap: () => onOpenUrl(url),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
