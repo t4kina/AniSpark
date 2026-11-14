@@ -18,6 +18,7 @@ import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
 import '../widgets/social/social_widgets.dart';
+import '../widgets/load_error_view.dart';
 
 /// An activity with its replies and a field to reply.
 class ActivityThreadScreen extends StatefulWidget {
@@ -337,13 +338,7 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
     }
     if (activity == null) {
       if (_loading) return const FeedSkeleton(key: ValueKey('thread-skeleton'), cards: 3);
-      return _CenteredMessage(
-        key: const ValueKey('thread-error'),
-        icon: Icons.wifi_off_rounded,
-        text: tr('load_error', lang),
-        onRetry: _load,
-        retryLabel: tr('retry', lang),
-      );
+      return LoadErrorView(key: const ValueKey('thread-error'), onRetry: _load);
     }
     // Header, replies status row, the replies and a paging indicator.
     final itemCount = 2 + _replies.length + (_hasMore ? 1 : 0);
@@ -693,14 +688,12 @@ class _LockedNotice extends StatelessWidget {
       );
 }
 
-/// Full-screen message, with a retry button when [retryLabel] is given.
+/// Full-screen message.
 class _CenteredMessage extends StatelessWidget {
-  const _CenteredMessage({super.key, required this.icon, required this.text, this.onRetry, this.retryLabel});
+  const _CenteredMessage({super.key, required this.icon, required this.text});
 
   final IconData icon;
   final String text;
-  final VoidCallback? onRetry;
-  final String? retryLabel;
 
   @override
   Widget build(BuildContext context) => Center(
@@ -712,10 +705,6 @@ class _CenteredMessage extends StatelessWidget {
               Icon(icon, size: 48, color: Colors.grey),
               const SizedBox(height: 12),
               Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-              if (retryLabel case final label?) ...[
-                const SizedBox(height: 16),
-                FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: Text(label)),
-              ],
             ],
           ),
         ),

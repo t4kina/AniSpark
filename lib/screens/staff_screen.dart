@@ -10,7 +10,7 @@ import '../services/api_cache.dart';
 import '../services/people_api.dart';
 import '../utils/review_text.dart';
 import '../utils/translations.dart';
-import '../widgets/detail/load_error_view.dart';
+import '../widgets/load_error_view.dart';
 import '../widgets/detail/section_title.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';

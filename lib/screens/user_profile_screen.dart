@@ -17,6 +17,7 @@ import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
 import '../widgets/sheet_list_surface.dart';
 import 'detail_screen.dart';
+import '../widgets/load_error_view.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final int userId;
@@ -269,7 +270,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   Widget _buildContent(String lang) {
     final p = _profile;
-    if (p == null) return _LoadErrorView(key: const ValueKey('uprof-error'), onRetry: _retry);
+    if (p == null) return LoadErrorView(key: const ValueKey('uprof-error'), onRetry: _retry);
 
     final banner = p['bannerImage'] as String?;
     final avatar = p['avatar']?['large'] as String? ?? widget.avatarUrl;
@@ -814,7 +815,7 @@ class _UserListSheetState extends State<_UserListSheet>
                       ),
                     )
                   : _hasError
-                  ? _LoadErrorView(onRetry: _retry)
+                  ? LoadErrorView(onRetry: _retry)
                   : TabBarView(
                       controller: _tabs,
                       children: _statuses.map((s) {
@@ -839,34 +840,6 @@ class _UserListSheetState extends State<_UserListSheet>
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _LoadErrorView extends StatelessWidget {
-  final VoidCallback onRetry;
-
-  const _LoadErrorView({super.key, required this.onRetry});
-
-  @override
-  Widget build(BuildContext context) {
-    final lang = context.watch<SettingsProvider>().language;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text(tr('load_error', lang),
-              style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh),
-            label: Text(tr('retry', lang)),
-          ),
-        ],
       ),
     );
   }

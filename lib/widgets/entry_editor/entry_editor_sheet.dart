@@ -20,6 +20,7 @@ import 'entry_draft.dart';
 import 'entry_editor_api.dart';
 import 'entry_editor_fields.dart';
 import 'score_scale.dart';
+import '../load_error_view.dart';
 
 export 'entry_editor_api.dart' show EditorMedia;
 
@@ -326,7 +327,7 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
         child: Center(child: CircularProgressIndicator()),
       );
     } else if (_lookupFailed || draft == null) {
-      body = _LookupError(lang: lang, onRetry: _retryLookUp);
+      body = LoadErrorView(key: const ValueKey('entry-editor-lookup-error'), onRetry: _retryLookUp);
     } else {
       body = _form(draft, lang, scale);
     }
@@ -696,31 +697,4 @@ class _Header extends StatelessWidget {
       ),
     );
   }
-}
-
-class _LookupError extends StatelessWidget {
-  const _LookupError({required this.lang, required this.onRetry});
-
-  final String lang;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        key: const ValueKey('entry-editor-lookup-error'),
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 40, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('load_error', lang), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
-            ),
-          ],
-        ),
-      );
 }

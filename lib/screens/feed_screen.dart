@@ -23,6 +23,7 @@ import '../widgets/skeletons.dart';
 import '../widgets/social/social_widgets.dart';
 import 'activity_thread_screen.dart';
 import 'notifications_screen.dart';
+import '../widgets/load_error_view.dart';
 
 enum _FeedType { following, global, personal }
 
@@ -461,23 +462,10 @@ class _FeedScreenState extends State<FeedScreen>
   Widget _body(String lang) {
     if (_loading) return const FeedSkeleton(key: ValueKey('feed-skeleton'));
     if (_hasError) {
-      return Center(
+      return LoadErrorView(
         key: const ValueKey('feed-error'),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('feed_load_error', lang),
-                style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
-            ),
-          ],
-        ),
+        onRetry: _load,
+        message: tr('feed_load_error', lang),
       );
     }
     if (_activities.isEmpty) {

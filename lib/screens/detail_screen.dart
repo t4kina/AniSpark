@@ -33,6 +33,7 @@ import '../widgets/blurred_backdrop.dart';
 import '../utils/translations.dart';
 import '../providers/settings_provider.dart';
 import 'character_screen.dart';
+import '../widgets/load_error_view.dart';
 
 class DetailScreen extends StatefulWidget {
   final int animeId;
@@ -206,32 +207,19 @@ class _DetailScreenState extends State<DetailScreen> {
     // loads; only a failed load replaces the whole page.
     return FadeSwitcher(
       child: !_loading && data == null
-          ? _buildError(settings.language)
+          ? _buildError()
           : _buildPage(context, data, settings),
     );
   }
 
-  Widget _buildError(String lang) => Scaffold(
+  Widget _buildError() => Scaffold(
         key: const ValueKey('error'),
         appBar: AppBar(),
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-              const SizedBox(height: 12),
-              Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: () {
-                  setState(() => _loading = true);
-                  _load(force: true);
-                },
-                icon: const Icon(Icons.refresh),
-                label: Text(tr('retry', lang)),
-              ),
-            ],
-          ),
+        body: LoadErrorView(
+          onRetry: () {
+            setState(() => _loading = true);
+            _load(force: true);
+          },
         ),
       );
 

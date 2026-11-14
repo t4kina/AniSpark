@@ -24,11 +24,13 @@ import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/option_sheet.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import '../widgets/entry_editor/entry_editor_sheet.dart';
 import '../widgets/motion/swipe_action.dart';
 import '../widgets/motion/pressable.dart';
 import 'settings_screen.dart';
 import '../services/notification_service.dart';
+import '../widgets/load_error_view.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
 
@@ -577,7 +579,7 @@ class _MediaListState extends State<_MediaList>
         (store) => (store.listsOf(widget.type), store.isLoading(widget.type), store.errorOf(widget.type)));
 
     if (!isLoggedIn) {
-      return _ListMessage(
+      return StateMessage(
         key: const ValueKey('list-logged-out'),
         icon: Icons.list_alt_outlined,
         message: tr('list_connect_prompt', lang),
@@ -587,16 +589,7 @@ class _MediaListState extends State<_MediaList>
       if (loading || error == null) {
         return const ListSkeleton(key: ValueKey('list-skeleton'));
       }
-      return _ListMessage(
-        key: const ValueKey('list-error'),
-        icon: Icons.wifi_off_rounded,
-        message: tr('load_error', lang),
-        action: FilledButton.icon(
-          onPressed: _load,
-          icon: const Icon(Icons.refresh),
-          label: Text(tr('retry', lang)),
-        ),
-      );
+      return LoadErrorView(key: const ValueKey('list-error'), onRetry: _load);
     }
     if (lists.isEmpty) {
       final isAnime = widget.type == 'ANIME';
@@ -797,29 +790,6 @@ class _MediaListState extends State<_MediaList>
       ),
     );
   }
-}
-
-class _ListMessage extends StatelessWidget {
-  final IconData icon;
-  final String message;
-  final Widget? action;
-  const _ListMessage({super.key, required this.icon, required this.message, this.action});
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 52, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(message, style: const TextStyle(color: Colors.grey)),
-            if (action != null) ...[
-              const SizedBox(height: 16),
-              action!,
-            ],
-          ],
-        ),
-      );
 }
 
 // ─── Swipeable Row ──────────────────────────────────────────────────────────

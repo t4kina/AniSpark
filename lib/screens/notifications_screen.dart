@@ -14,6 +14,7 @@ import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
 import '../widgets/social/social_widgets.dart';
 import 'activity_thread_screen.dart';
+import '../widgets/load_error_view.dart';
 
 /// The viewer's AniList notifications, newest first. Opening it marks them
 /// all read on AniList.
@@ -207,23 +208,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
     if (_loading) return const FeedSkeleton(key: ValueKey('inbox-skeleton'), cards: 8);
     if (_items.isEmpty && _hasError) {
-      return Center(
-        key: const ValueKey('inbox-error'),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
-            ),
-          ],
-        ),
-      );
+      return LoadErrorView(key: const ValueKey('inbox-error'), onRetry: _load);
     }
     // The first page cascades in once; refreshes and later pages don't.
     return EntranceGate(

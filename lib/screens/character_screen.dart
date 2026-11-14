@@ -23,6 +23,7 @@ import '../utils/fuzzy_date.dart' show fuzzyDateLabel;
 import '../widgets/people/people_labels.dart';
 import '../widgets/people/people_routes.dart';
 import '../widgets/people/person_card.dart';
+import '../widgets/load_error_view.dart';
 
 class CharacterScreen extends StatefulWidget {
   final int characterId;
@@ -239,7 +240,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
 
   Widget _buildContent() {
     final d = _data;
-    if (d == null) return _buildError();
+    if (d == null) return LoadErrorView(onRetry: _retry);
 
     final settings = context.watch<SettingsProvider>();
     final lang = settings.language;
@@ -437,27 +438,6 @@ class _CharacterScreenState extends State<CharacterScreen> {
 
         const SliverToBoxAdapter(child: SizedBox(height: 40)),
       ],
-    );
-  }
-
-  Widget _buildError() {
-    final lang = context.watch<SettingsProvider>().language;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text(tr('load_error', lang),
-              style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: _retry,
-            icon: const Icon(Icons.refresh),
-            label: Text(tr('retry', lang)),
-          ),
-        ],
-      ),
     );
   }
 

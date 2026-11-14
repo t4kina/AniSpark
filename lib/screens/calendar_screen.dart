@@ -22,6 +22,7 @@ import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/skeletons.dart';
 import 'detail_screen.dart';
+import '../widgets/load_error_view.dart';
 
 /// Episodes airing today and over the next six days, grouped by local day.
 /// Logged-in users can narrow it to what they're watching or planning, and
@@ -243,7 +244,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Widget _buildState(String lang, {required bool myListOnly}) {
     if (_loading) return const _CalendarSkeleton();
-    if (_hasError) return _buildError(lang);
+    if (_hasError) return LoadErrorView(onRetry: _load);
     final now = DateTime.now();
     final today = localDay(now);
     final days = groupByLocalDay([
@@ -334,23 +335,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
             ),
           ],
         ],
-      );
-
-  Widget _buildError(String lang) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
-            ),
-          ],
-        ),
       );
 }
 

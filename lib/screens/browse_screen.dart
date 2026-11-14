@@ -13,6 +13,7 @@ import '../widgets/motion/pressable.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/load_error_view.dart';
 
 /// A Discover row's "See all": the row's [query] as a grid that loads more
 /// as it scrolls, under a bar of sort, rating, genre and format filters.
@@ -402,7 +403,10 @@ class _BrowseScreenState extends State<BrowseScreen> with PagedLoading<BrowseScr
         return const _GridSkeleton(key: ValueKey('loading'));
       }
       if (_firstFailed || _paged.failed) {
-        return KeyedSubtree(key: const ValueKey('error'), child: _buildError(lang));
+        return LoadErrorView(
+          key: const ValueKey('error'),
+          onRetry: _firstFailed ? _retryFirstPage : () => _loadMore(retry: true),
+        );
       }
       return KeyedSubtree(key: ValueKey('empty-${_query.filterKey}'), child: _buildEmpty(lang));
     }
@@ -443,23 +447,6 @@ class _BrowseScreenState extends State<BrowseScreen> with PagedLoading<BrowseScr
       onRetry: () => _loadMore(retry: true),
     );
   }
-
-  Widget _buildError(String lang) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _firstFailed ? _retryFirstPage : () => _loadMore(retry: true),
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
-            ),
-          ],
-        ),
-      );
 
   Widget _buildEmpty(String lang) {
     final filtered = !_query.isDefault;

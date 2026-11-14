@@ -18,6 +18,7 @@ import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/option_sheet.dart';
 import '../widgets/skeletons.dart';
 import 'detail_screen.dart';
+import '../widgets/load_error_view.dart';
 
 /// Browses the anime of any season, sorted and filtered by format, loading
 /// more as the grid scrolls.
@@ -417,7 +418,7 @@ class _SeasonScreenState extends State<SeasonScreen> {
 
   Widget _buildState(String lang) {
     if (_loadingFirst && _pages.isEmpty) return const _GridSkeleton();
-    if (_hasError) return _buildError(lang);
+    if (_hasError) return LoadErrorView(onRetry: () => _loadPage(1));
     final items = _items;
     final selection = _selectionKey;
     // The first page cascades in; later pages are past the staggered items.
@@ -479,23 +480,6 @@ class _SeasonScreenState extends State<SeasonScreen> {
       ),
     );
   }
-
-  Widget _buildError(String lang) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () => _loadPage(1),
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
-            ),
-          ],
-        ),
-      );
 }
 
 /// Grid cover with score, title, format and episode count.

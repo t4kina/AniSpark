@@ -6,7 +6,7 @@ import '../services/api_cache.dart';
 import '../services/media_extras_api.dart';
 import '../utils/review_text.dart';
 import '../utils/translations.dart';
-import '../widgets/detail/load_error_view.dart';
+import '../widgets/load_error_view.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/user_avatar.dart';
 import '../widgets/skeletons.dart';

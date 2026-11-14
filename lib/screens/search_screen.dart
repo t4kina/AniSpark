@@ -15,6 +15,7 @@ import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/option_sheet.dart';
 import 'detail_screen.dart';
+import '../widgets/load_error_view.dart';
 
 /// SharedPreferences key of the recent searches; cleared on logout.
 const recentSearchesPrefsKey = 'recent_searches';
@@ -394,7 +395,9 @@ class _SearchScreenState extends State<SearchScreen> {
     if (_loading) {
       return const Center(key: ValueKey('loading'), child: CircularProgressIndicator());
     }
-    if (_hasError) return KeyedSubtree(key: const ValueKey('error'), child: _buildError());
+    if (_hasError) {
+      return LoadErrorView(key: const ValueKey('error'), onRetry: () => _search(_controller.text.trim()));
+    }
     if (!_searched) return KeyedSubtree(key: const ValueKey('start'), child: _buildEmptyState(lang));
     if (_results.isEmpty) {
       return Center(key: const ValueKey('no-results'), child: Text(tr('no_results', lang)));
@@ -411,27 +414,6 @@ class _SearchScreenState extends State<SearchScreen> {
           index: i,
           child: _ResultCard(data: results[i], heroScope: heroScope),
         ),
-      ),
-    );
-  }
-
-  Widget _buildError() {
-    final lang = context.watch<SettingsProvider>().language;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text(tr('load_error', lang),
-              style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () => _search(_controller.text.trim()),
-            icon: const Icon(Icons.refresh),
-            label: Text(tr('retry', lang)),
-          ),
-        ],
       ),
     );
   }
