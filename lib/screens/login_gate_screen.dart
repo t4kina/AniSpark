@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/auth_service.dart';
 import '../utils/translations.dart' show tr;
+import '../widgets/app_button.dart';
 
 /// Shown instead of the app's tabs while signed out (see AuthGate), so the
 /// bottom navigation only appears after logging in.
@@ -40,7 +41,7 @@ class _LoginGateScreenState extends State<LoginGateScreen> {
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
-    final accent = Theme.of(context).colorScheme.primary;
+
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -65,29 +66,15 @@ class _LoginGateScreenState extends State<LoginGateScreen> {
                   style: const TextStyle(color: Colors.grey, height: 1.5),
                 ),
                 const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: accent,
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: accent.withValues(alpha: 0.6),
-                      disabledForegroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    ),
-                    onPressed: _loggingIn ? null : _login,
-                    icon: _loggingIn
-                        ? const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Icon(Icons.login),
-                    label: Text(
-                      tr('login_with_anilist', lang),
-                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ),
+                AppButton(
+                  label: tr('login_with_anilist', lang),
+                  icon: Icons.login,
+                  large: true,
+                  expand: true,
+                  // Busy also ignores taps, which is what keeps a second
+                  // OAuth flow from starting.
+                  busy: _loggingIn,
+                  onPressed: _login,
                 ),
               ],
             ),
