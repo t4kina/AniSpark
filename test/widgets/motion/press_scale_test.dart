@@ -9,7 +9,6 @@ Widget _app(Widget child, {bool reduceMotion = false}) => MaterialApp(
       ),
     );
 
-double _scaleOf(WidgetTester tester) => tester.widget<AnimatedScale>(find.byType(AnimatedScale)).scale;
 
 double _shownScale(WidgetTester tester) => tester
     .widget<Transform>(find.ancestor(of: find.text('cover'), matching: find.byType(Transform)).first)
@@ -21,7 +20,7 @@ void main() {
     final pressed = ValueNotifier(false);
     addTearDown(pressed.dispose);
     await tester.pumpWidget(_app(PressScale(pressed: pressed, child: const Text('cover'))));
-    expect(_scaleOf(tester), 1);
+    expect(_shownScale(tester), 1);
 
     pressed.value = true;
     await tester.pumpAndSettle();
