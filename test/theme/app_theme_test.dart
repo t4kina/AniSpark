@@ -38,6 +38,27 @@ void main() {
       expect(theme.dialogTheme.backgroundColor, isNull);
     });
 
+    testWidgets('a row darkens under the finger, without a ripple', (tester) async {
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(MaterialApp(
+          key: UniqueKey(),
+          theme: buildAppTheme(brightness, accent),
+          home: Scaffold(body: ListTile(title: const Text('row'), onTap: () {})),
+        ));
+        final theme = Theme.of(tester.element(find.text('row')));
+        expect(theme.splashColor, Colors.transparent);
+
+        final gesture = await tester.startGesture(tester.getCenter(find.text('row')));
+        await tester.pumpAndSettle();
+        final ink = Material.of(tester.element(find.text('row'))) as RenderObject;
+        expect(ink, paints..rect(color: theme.highlightColor), reason: '$brightness');
+        expect(theme.highlightColor.a, inExclusiveRange(0.04, 0.12), reason: 'a tint, not a block of colour');
+
+        await gesture.up();
+        await tester.pumpAndSettle();
+      }
+    });
+
     test('colours the selected navigation item with the accent', () {
       final theme = buildAppTheme(Brightness.dark, accent);
 

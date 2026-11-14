@@ -7,7 +7,8 @@ import 'app_layout.dart';
 ///
 /// Both share the same structure; only the palette differs. Ink ripples
 /// stay transparent: tappable cards give feedback by shrinking instead
-/// (see `Pressable`).
+/// (see `Pressable`), and rows (`ListTile`, `InkWell`) by darkening under
+/// the finger, with no ripple.
 ThemeData buildAppTheme(Brightness brightness, Color accent) {
   final isLight = brightness == Brightness.light;
   final background = isLight ? const Color(0xFFD8D8DC) : const Color(0xFF111113);
@@ -21,7 +22,7 @@ ThemeData buildAppTheme(Brightness brightness, Color accent) {
     extensions: [isLight ? const AppColors.light() : const AppColors.dark()],
     visualDensity: VisualDensity.compact,
     splashColor: Colors.transparent,
-    highlightColor: Colors.transparent,
+    highlightColor: isLight ? const Color(0x12000000) : const Color(0x16FFFFFF),
     scaffoldBackgroundColor: background,
     colorScheme: isLight
         ? ColorScheme.light(
