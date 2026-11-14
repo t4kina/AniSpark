@@ -27,6 +27,8 @@ ThemeData buildAppTheme(Brightness brightness, Color accent) {
     colorScheme: isLight
         ? ColorScheme.light(
             primary: accent,
+            // Every accent is saturated enough to carry white, in both themes.
+            onPrimary: Colors.white,
             surface: surface,
             surfaceContainerHighest: const Color(0xFFD0D0D4),
             outline: const Color(0xFFB8B8BC),
@@ -35,6 +37,7 @@ ThemeData buildAppTheme(Brightness brightness, Color accent) {
           )
         : ColorScheme.dark(
             primary: accent,
+            onPrimary: Colors.white,
             surface: surface,
             surfaceContainerLow: surface,
             surfaceContainerHighest: const Color(0xFF2C2C2E),
