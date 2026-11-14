@@ -14,6 +14,7 @@ import '../utils/tab_reselect.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
+import '../widgets/sheet_list_surface.dart';
 import '../main.dart' show MainNavigation;
 import 'settings_screen.dart';
 import 'user_profile_screen.dart';
@@ -351,6 +352,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      // Dragged all the way up it stops under the status bar, with nothing
+      // behind it showing above.
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _FollowSheet(
         title: title,
@@ -941,7 +945,7 @@ class _FollowSheetState extends State<_FollowSheet> {
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
       minChildSize: 0.4,
-      maxChildSize: 0.92,
+      maxChildSize: 1,
       builder: (_, scrollController) => Container(
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
@@ -970,11 +974,13 @@ class _FollowSheetState extends State<_FollowSheet> {
                   : (_users == null || _users!.isEmpty)
                       ? Center(child: Text(tr('profile_nobody_here', lang),
                           style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))))
-                      : ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                          itemCount: _users!.length,
-                          itemBuilder: (_, i) => _UserTile(user: _users![i]),
+                      : SheetListSurface(
+                          child: ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                            itemCount: _users!.length,
+                            itemBuilder: (_, i) => _UserTile(user: _users![i]),
+                          ),
                         ),
             ),
           ],

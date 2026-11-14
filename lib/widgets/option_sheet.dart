@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../utils/haptics.dart';
+import 'sheet_list_surface.dart';
 
 /// A rounded bottom sheet with a drag handle, a title and one row per
 /// option — the same picker style Settings uses (see `_showPicker` there),
@@ -38,26 +39,28 @@ Future<void> showOptionSheet<T>({
             Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
             Flexible(
-              child: ListView(
-                shrinkWrap: true,
-                children: options.map((opt) {
-                  final selected = opt == current;
-                  return Builder(builder: (ctx) {
-                    final color = selected ? Theme.of(ctx).colorScheme.primary : null;
-                    return ListTile(
-                      leading: iconOf == null
-                          ? null
-                          : Icon(iconOf(opt), size: 18, color: color ?? Colors.grey),
-                      title: Text(labelOf(opt), style: TextStyle(color: color, fontSize: 14)),
-                      trailing: selected ? Icon(Icons.check, size: 18, color: color) : null,
-                      onTap: () {
-                        selectionHaptic();
-                        onSelected(opt);
-                        Navigator.pop(context);
-                      },
-                    );
-                  });
-                }).toList(),
+              child: SheetListSurface(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: options.map((opt) {
+                    final selected = opt == current;
+                    return Builder(builder: (ctx) {
+                      final color = selected ? Theme.of(ctx).colorScheme.primary : null;
+                      return ListTile(
+                        leading: iconOf == null
+                            ? null
+                            : Icon(iconOf(opt), size: 18, color: color ?? Colors.grey),
+                        title: Text(labelOf(opt), style: TextStyle(color: color, fontSize: 14)),
+                        trailing: selected ? Icon(Icons.check, size: 18, color: color) : null,
+                        onTap: () {
+                          selectionHaptic();
+                          onSelected(opt);
+                          Navigator.pop(context);
+                        },
+                      );
+                    });
+                  }).toList(),
+                ),
               ),
             ),
           ],

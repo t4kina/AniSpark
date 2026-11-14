@@ -14,6 +14,7 @@ import '../widgets/overlay_button.dart';
 import '../widgets/profile/affinity_card.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
+import '../widgets/sheet_list_surface.dart';
 import 'detail_screen.dart';
 
 class UserProfileScreen extends StatefulWidget {
@@ -628,6 +629,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      // Dragged all the way up it stops under the status bar, with nothing
+      // behind it showing above.
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _UserListSheet(
         userId: widget.userId,
@@ -727,7 +731,7 @@ class _UserListSheetState extends State<_UserListSheet>
     return DraggableScrollableSheet(
       initialChildSize: 0.75,
       minChildSize: 0.4,
-      maxChildSize: 0.95,
+      maxChildSize: 1,
       builder: (_, scrollController) => Container(
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
@@ -820,12 +824,14 @@ class _UserListSheetState extends State<_UserListSheet>
                                 style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))),
                           );
                         }
-                        return ListView.builder(
-                          controller: scrollController,
-                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                          itemCount: entries.length,
-                          itemBuilder: (_, i) =>
-                              _EntryTile(entry: entries[i], isAnime: isAnime),
+                        return SheetListSurface(
+                          child: ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                            itemCount: entries.length,
+                            itemBuilder: (_, i) =>
+                                _EntryTile(entry: entries[i], isAnime: isAnime),
+                          ),
                         );
                       }).toList(),
                     ),

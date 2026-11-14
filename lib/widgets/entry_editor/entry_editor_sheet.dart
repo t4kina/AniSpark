@@ -14,6 +14,7 @@ import '../../utils/haptics.dart';
 import '../../utils/score_utils.dart';
 import '../../utils/translations.dart';
 import '../motion/pop_on_change.dart';
+import '../sheet_list_surface.dart';
 import 'entry_draft.dart';
 import 'entry_editor_api.dart';
 import 'entry_editor_fields.dart';
@@ -436,7 +437,8 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
     const gap = SizedBox(height: 18);
     final cs = Theme.of(context).colorScheme;
 
-    return SingleChildScrollView(
+    // The switch rows paint their backgrounds on the nearest Material.
+    return SheetListSurface(child: SingleChildScrollView(
       key: const ValueKey('entry-editor-form'),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -599,7 +601,7 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
           ),
         ],
       ),
-    );
+    ));
   }
 }
 
