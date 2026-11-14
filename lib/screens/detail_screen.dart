@@ -17,6 +17,7 @@ import '../widgets/detail/detail_header.dart';
 import '../widgets/detail/following_section.dart';
 import '../widgets/detail/media_row.dart';
 import '../widgets/detail/reviews_section.dart';
+import '../widgets/detail/section_title.dart';
 import '../widgets/detail/staff_section.dart';
 import '../widgets/detail/studio_links.dart';
 import '../utils/fuzzy_date.dart' show FuzzyDate, formatFuzzyDate;
@@ -514,7 +515,7 @@ class _DetailScreenState extends State<DetailScreen> {
         _sectionPad(Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionTitle(tr('detail_series_info', lang)),
+            DetailSectionTitle(tr('detail_series_info', lang)),
             const SizedBox(height: 12),
             _infoGrid([
               if (format != null) _InfoItem(tr('detail_type', lang), _formatLabel(format, lang)),
@@ -537,7 +538,7 @@ class _DetailScreenState extends State<DetailScreen> {
         _sectionPad(Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionTitle(tr('detail_titles', lang)),
+            DetailSectionTitle(tr('detail_titles', lang)),
             const SizedBox(height: 10),
             if (d['title']?['romaji'] != null) _titleRow(tr('detail_title_romaji', lang), d['title']['romaji'] as String),
             if (d['title']?['english'] != null) _titleRow(tr('detail_title_english', lang), d['title']['english'] as String),
@@ -561,7 +562,7 @@ class _DetailScreenState extends State<DetailScreen> {
           _sectionPad(Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionTitle(tr('detail_genres', lang)),
+              DetailSectionTitle(tr('detail_genres', lang)),
               const SizedBox(height: 10),
               Wrap(
                 spacing: 6,
@@ -578,7 +579,7 @@ class _DetailScreenState extends State<DetailScreen> {
           _sectionPad(Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionTitle(tr('detail_producers', lang)),
+              DetailSectionTitle(tr('detail_producers', lang)),
               const SizedBox(height: 10),
               StudioLinks(studios: studios, isAnimationStudio: false),
             ],
@@ -588,7 +589,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
         // ── Relations ──
         if (relations.isNotEmpty) ...[
-          _sectionPad(_sectionTitle(tr('detail_relations', lang))),
+          _sectionPad(DetailSectionTitle(tr('detail_relations', lang))),
           DetailMediaRow(
             heroScope: 'detail-${widget.animeId}-relations',
             items: [for (final edge in relations) _relationItem(edge, settings)],
@@ -599,7 +600,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
         // ── Characters ──
         if (characters.isNotEmpty) ...[
-          _sectionPad(_sectionTitle(tr('characters', lang).toUpperCase())),
+          _sectionPad(DetailSectionTitle(tr('characters', lang).toUpperCase())),
           _CharactersSection(
             characters: characters,
             onTap: (id, name, img) => Navigator.push(context,
@@ -614,7 +615,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
         // ── Recommended ──
         if (recommendations.isNotEmpty) ...[
-          _sectionPad(_sectionTitle(tr('detail_recommended', lang))),
+          _sectionPad(DetailSectionTitle(tr('detail_recommended', lang))),
           DetailMediaRow(
             heroScope: 'detail-${widget.animeId}-recommended',
             height: 195,
@@ -847,9 +848,6 @@ class _DetailScreenState extends State<DetailScreen> {
   Widget _sectionPad(Widget child) =>
       Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 16), child: child);
 
-  Widget _sectionTitle(String t) => Text(t,
-      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-          color: Colors.grey, letterSpacing: 0.5));
 
   Widget _infoGrid(List<_InfoItem> items) {
     final rows = <Widget>[];
@@ -993,9 +991,7 @@ class _SummarySectionState extends State<_SummarySection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(tr('detail_summary', lang),
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: Colors.grey, letterSpacing: 0.5)),
+          DetailSectionTitle(tr('detail_summary', lang)),
           const SizedBox(height: 8),
           // Opens and closes smoothly instead of jumping.
           AnimatedSize(
@@ -1080,9 +1076,7 @@ class _TagsSectionState extends State<_TagsSection> {
           Row(
             children: [
               Expanded(
-                child: Text(tr('detail_tags', lang),
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                        color: Colors.grey, letterSpacing: 0.5)),
+                child: DetailSectionTitle(tr('detail_tags', lang)),
               ),
               if (spoilerCount > 0)
                 _smallBtn(
@@ -1206,9 +1200,7 @@ class _TrailerSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(tr('detail_trailer', lang),
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: Colors.grey, letterSpacing: 0.5)),
+          DetailSectionTitle(tr('detail_trailer', lang)),
           const SizedBox(height: 10),
           Pressable(
             // A full-width card only needs a hint of a press.
@@ -1262,9 +1254,7 @@ class _StreamingEpisodesSection extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Text(title,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: Colors.grey, letterSpacing: 0.5)),
+          child: DetailSectionTitle(title),
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -1335,9 +1325,7 @@ class _ExternalLinksSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(tr('detail_external_links', lang),
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: Colors.grey, letterSpacing: 0.5)),
+          DetailSectionTitle(tr('detail_external_links', lang)),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,

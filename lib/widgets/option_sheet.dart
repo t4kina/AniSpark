@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_layout.dart';
+import '../theme/app_text.dart';
 import '../utils/haptics.dart';
 import 'sheet_list_surface.dart';
 
@@ -18,9 +21,7 @@ Future<void> showOptionSheet<T>({
   return showModalBottomSheet(
     context: context,
     backgroundColor: Theme.of(context).colorScheme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+    shape: const RoundedRectangleBorder(borderRadius: AppRadius.sheet),
     builder: (_) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
@@ -36,7 +37,7 @@ Future<void> showOptionSheet<T>({
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text(title, style: AppText.headline),
             const SizedBox(height: 12),
             Flexible(
               child: SheetListSurface(
@@ -49,8 +50,8 @@ Future<void> showOptionSheet<T>({
                       return ListTile(
                         leading: iconOf == null
                             ? null
-                            : Icon(iconOf(opt), size: 18, color: color ?? Colors.grey),
-                        title: Text(labelOf(opt), style: TextStyle(color: color, fontSize: 14)),
+                            : Icon(iconOf(opt), size: 18, color: color ?? ctx.colors.textSecondary),
+                        title: Text(labelOf(opt), style: AppText.body.copyWith(color: color)),
                         trailing: selected ? Icon(Icons.check, size: 18, color: color) : null,
                         onTap: () {
                           selectionHaptic();

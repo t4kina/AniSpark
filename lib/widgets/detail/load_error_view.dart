@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/settings_provider.dart';
+import '../../theme/app_colors.dart';
+import '../../theme/app_layout.dart';
+import '../../theme/app_text.dart';
 import '../../utils/translations.dart';
 
 /// Full-page "couldn't load" message with a retry button.
@@ -13,20 +16,21 @@ class LoadErrorView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
+    final secondary = context.colors.textSecondary;
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpace.xl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
+            Icon(Icons.wifi_off_rounded, size: 48, color: secondary),
+            const SizedBox(height: AppSpace.md),
             Text(
               tr('load_error', lang),
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.grey),
+              style: AppText.body.copyWith(color: secondary),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             FilledButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh),
