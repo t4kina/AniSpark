@@ -11,6 +11,7 @@ import '../utils/activity_status.dart';
 import '../utils/activity_text.dart' show relativeTime;
 import '../utils/refresh_notifier.dart';
 import '../theme/app_motion.dart';
+import '../widgets/app_button.dart';
 import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/motion/fade_switcher.dart';
@@ -798,15 +799,10 @@ class _ComposeStatusSheetState extends State<_ComposeStatusSheet> {
                 alignment: Alignment.centerRight,
                 child: ValueListenableBuilder<TextEditingValue>(
                   valueListenable: _controller,
-                  builder: (context, value, _) => FilledButton(
-                    onPressed: _posting || value.text.trim().isEmpty ? null : _submit,
-                    child: _posting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(tr('social_post', lang)),
+                  builder: (context, value, _) => AppButton(
+                    label: tr('social_post', lang),
+                    busy: _posting,
+                    onPressed: value.text.trim().isEmpty ? null : _submit,
                   ),
                 ),
               ),

@@ -197,4 +197,29 @@ void main() {
     );
     expect(tester.getTopLeft(card).dy, lessThan(tester.getTopLeft(find.text('post 1')).dy));
   });
+
+  testWidgets('the post button waits until something is written', (tester) async {
+    var posts = 0;
+    await pumpFeed(tester, (request) {
+      if (isFeedPage(request, 1)) return jsonResponse(_feedPage([_textActivity(1)]));
+      if (request.query.contains('SaveTextActivity')) {
+        posts++;
+        return jsonResponse({'data': {'SaveTextActivity': _textActivity(99)}});
+      }
+      return jsonResponse({'data': {'Viewer': {'id': 1, 'unreadNotificationCount': 0}}});
+    });
+    await tester.tap(find.byIcon(Icons.edit_outlined));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Post'), warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(posts, 0);
+    expect(find.byType(TextField), findsOneWidget, reason: 'the composer is still open');
+
+    await tester.enterText(find.byType(TextField), 'post 99');
+    await tester.pump();
+    await tester.tap(find.text('Post'));
+    await tester.pumpAndSettle();
+    expect(posts, 1);
+  });
 }

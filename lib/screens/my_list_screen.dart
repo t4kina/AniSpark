@@ -15,6 +15,7 @@ import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
 import '../utils/tab_reselect.dart';
 import '../theme/app_motion.dart';
+import '../widgets/app_button.dart';
 import '../widgets/motion/animated_count.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
@@ -630,30 +631,10 @@ class _MediaListState extends State<_MediaList>
                     height: 1.5),
               ),
               const SizedBox(height: 24),
-              GestureDetector(
-                onTap: () => MainNavigation.navigateToTab(2),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: cs.primary,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.explore_outlined,
-                          color: Colors.white, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        tr(isAnime ? 'list_discover_anime' : 'list_discover_manga', lang),
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14),
-                      ),
-                    ],
-                  ),
-                ),
+              AppButton(
+                label: tr(isAnime ? 'list_discover_anime' : 'list_discover_manga', lang),
+                icon: Icons.explore_outlined,
+                onPressed: () => MainNavigation.navigateToTab(2),
               ),
             ],
           ),
@@ -1374,38 +1355,13 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                 // Complete button
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-                  child: GestureDetector(
-                    onTap: _completing ? null : _complete,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: _completing
-                            ? Colors.white.withValues(alpha: 0.08)
-                            : Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-                      ),
-                      child: Center(
-                        child: _completing
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                tr(isAnime ? 'list_complete_series' : 'list_complete_manga', lang),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                      ),
-                    ),
+                  child: AppButton(
+                    label: tr(isAnime ? 'list_complete_series' : 'list_complete_manga', lang),
+                    kind: AppButtonKind.glass,
+                    large: true,
+                    expand: true,
+                    busy: _completing,
+                    onPressed: _complete,
                   ),
                 ),
               ],
@@ -1562,27 +1518,14 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
             ],
           ),
           const SizedBox(height: 28),
-          SizedBox(
-            width: double.infinity,
-            height: 54,
-            child: FilledButton(
-              onPressed: () {
-                _applyText();
-                widget.onUpdate(_score);
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18)),
-              ),
-              child: Text(
-                tr('list_update', lang),
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white),
-              ),
-            ),
+          AppButton(
+            label: tr('list_update', lang),
+            large: true,
+            expand: true,
+            onPressed: () {
+              _applyText();
+              widget.onUpdate(_score);
+            },
           ),
         ],
       ),

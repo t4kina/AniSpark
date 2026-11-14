@@ -13,6 +13,7 @@ import '../../theme/app_motion.dart';
 import '../../utils/haptics.dart';
 import '../../utils/score_utils.dart';
 import '../../utils/translations.dart';
+import '../app_button.dart';
 import '../motion/pop_on_change.dart';
 import '../sheet_list_surface.dart';
 import 'entry_draft.dart';
@@ -380,31 +381,13 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
         Row(
           children: [
             Expanded(
-              child: FilledButton(
+              child: AppButton(
                 key: const ValueKey('entry-editor-save'),
-                onPressed: _busy ? null : _save,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                // The label cross-fades to a spinner while saving.
-                child: AnimatedSwitcher(
-                  duration: AppMotion.of(context, AppMotion.short),
-                  switchInCurve: AppMotion.enter,
-                  switchOutCurve: AppMotion.exit,
-                  child: _busy
-                      ? const SizedBox(
-                          key: ValueKey('entry-editor-saving'),
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : Text(
-                          tr('save', lang),
-                          key: const ValueKey('entry-editor-save-label'),
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                ),
+                label: tr('save', lang),
+                large: true,
+                expand: true,
+                busy: _busy,
+                onPressed: _save,
               ),
             ),
             if (!_isNew) ...[

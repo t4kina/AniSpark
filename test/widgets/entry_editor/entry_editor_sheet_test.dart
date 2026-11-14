@@ -699,6 +699,23 @@ void main() {
     expect(find.text("Couldn't save. Please try again."), findsOneWidget);
     expect(_key('entry-editor-form'), findsOneWidget);
     expect(_results, isEmpty);
+    expect(_inside('entry-editor-save', find.byType(CircularProgressIndicator)), findsNothing,
+        reason: 'the button offers the save again');
+  });
+
+  testWidgets('the save button carries the wait itself', (tester) async {
+    await _open(tester, api, entry: _entry());
+    final size = tester.getSize(_key('entry-editor-save'));
+    expect(_inside('entry-editor-save', find.byType(CircularProgressIndicator)), findsNothing);
+
+    await tester.tap(_inside('entry-editor-progress', find.byIcon(Icons.add)));
+    await tester.pump();
+    await tester.tap(_key('entry-editor-save'));
+    await tester.pump();
+
+    expect(_inside('entry-editor-save', find.byType(CircularProgressIndicator)), findsOneWidget);
+    expect(tester.getSize(_key('entry-editor-save')), size);
+    await tester.pumpAndSettle();
   });
 
   testWidgets(
