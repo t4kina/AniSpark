@@ -17,6 +17,7 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import '../widgets/social/social_widgets.dart';
 import '../widgets/load_error_view.dart';
 
@@ -330,10 +331,10 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
   /// cross-fades.
   Widget _content(Map<String, dynamic>? activity, String lang) {
     if (_notFound) {
-      return _CenteredMessage(
+      return StateMessage(
         key: const ValueKey('thread-not-found'),
         icon: Icons.speaker_notes_off_outlined,
-        text: tr('social_activity_not_found', lang),
+        message: tr('social_activity_not_found', lang),
       );
     }
     if (activity == null) {
@@ -682,29 +683,6 @@ class _LockedNotice extends StatelessWidget {
               const Icon(Icons.lock_outline, size: 16, color: Colors.grey),
               const SizedBox(width: 6),
               Text(tr('social_replies_locked', lang), style: const TextStyle(color: Colors.grey)),
-            ],
-          ),
-        ),
-      );
-}
-
-/// Full-screen message.
-class _CenteredMessage extends StatelessWidget {
-  const _CenteredMessage({super.key, required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 48, color: Colors.grey),
-              const SizedBox(height: 12),
-              Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
             ],
           ),
         ),

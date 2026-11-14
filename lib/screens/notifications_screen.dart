@@ -12,6 +12,7 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import '../widgets/social/social_widgets.dart';
 import 'activity_thread_screen.dart';
 import '../widgets/load_error_view.dart';
@@ -200,10 +201,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   /// Each state is keyed so switching between them cross-fades.
   Widget _body(String lang, bool loggedIn) {
     if (!loggedIn) {
-      return _CenteredMessage(
+      return StateMessage(
         key: const ValueKey('inbox-logged-out'),
         icon: Icons.notifications_off_outlined,
-        text: tr('feed_connect_from_profile', lang),
+        message: tr('feed_connect_from_profile', lang),
       );
     }
     if (_loading) return const FeedSkeleton(key: ValueKey('inbox-skeleton'), cards: 8);
@@ -219,12 +220,24 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         child: RefreshIndicator(
           onRefresh: () => _load(force: true),
           child: _items.isEmpty
-              ? ListView(
+              // Fills the page, so it is centred and can still be pulled.
+              ? CustomScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    const SizedBox(height: 120),
-                    _CenteredMessage(icon: Icons.notifications_none, text: tr('inbox_empty', lang)),
-                    if (_hasMore) _footer(lang),
+                  slivers: [
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          StateMessage(
+                            key: const ValueKey('inbox-empty'),
+                            icon: Icons.notifications_none,
+                            message: tr('inbox_empty', lang),
+                          ),
+                          if (_hasMore) _footer(lang),
+                        ],
+                      ),
+                    ),
                   ],
                 )
               : ListView.separated(
@@ -387,26 +400,4 @@ class _NotificationTile extends StatelessWidget {
       ),
     );
   }
-}
-
-class _CenteredMessage extends StatelessWidget {
-  const _CenteredMessage({super.key, required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 48, color: Colors.grey),
-              const SizedBox(height: 12),
-              Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-            ],
-          ),
-        ),
-      );
 }

@@ -12,7 +12,9 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart';
+import '../widgets/app_button.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import '../widgets/load_error_view.dart';
 
 /// A Discover row's "See all": the row's [query] as a grid that loads more
@@ -450,45 +452,17 @@ class _BrowseScreenState extends State<BrowseScreen> with PagedLoading<BrowseScr
 
   Widget _buildEmpty(String lang) {
     final filtered = !_query.isDefault;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              filtered ? Icons.filter_alt_off_outlined : Icons.search_off_rounded,
-              size: 48,
-              color: Colors.grey,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              tr(filtered ? 'browse_empty' : 'no_results', lang),
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-            if (filtered) ...[
-              const SizedBox(height: 6),
-              Text(
-                tr('browse_empty_hint', lang),
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.tonalIcon(
-                key: const ValueKey('browse-empty-clear'),
-                // Tinted like the active filters it clears.
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                ),
-                onPressed: _clearFilters,
-                icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
-                label: Text(tr('browse_clear_filters', lang)),
-              ),
-            ],
-          ],
-        ),
+    if (!filtered) return StateMessage(icon: Icons.search_off_rounded, message: tr('no_results', lang));
+    return StateMessage(
+      icon: Icons.filter_alt_off_outlined,
+      title: tr('browse_empty', lang),
+      message: tr('browse_empty_hint', lang),
+      action: AppButton(
+        key: const ValueKey('browse-empty-clear'),
+        kind: AppButtonKind.tonal,
+        label: tr('browse_clear_filters', lang),
+        icon: Icons.filter_alt_off_outlined,
+        onPressed: _clearFilters,
       ),
     );
   }

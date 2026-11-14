@@ -7,6 +7,7 @@ import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/services/social_api.dart';
+import 'package:anispark/widgets/state_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -239,5 +240,22 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -3000));
     await tester.pump();
     expect(find.text('45m ago'), findsNothing);
+  });
+
+  testWidgets('an empty inbox says so in the middle of the page and can still be pulled', (tester) async {
+    await pumpInbox(tester, (_) => jsonResponse(_page([])));
+
+    final message = find.byType(StateMessage);
+    expect(find.descendant(of: message, matching: find.text('No notifications yet')), findsOneWidget);
+    expect(
+      tester.getCenter(message).dy,
+      moreOrLessEquals(tester.getCenter(find.byType(RefreshIndicator)).dy, epsilon: 1),
+    );
+
+    final requests = log.length;
+    await tester.fling(message, const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+
+    expect(log.length, greaterThan(requests));
   });
 }

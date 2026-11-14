@@ -17,6 +17,7 @@ import '../widgets/people/paged_items.dart';
 import '../widgets/people/people_labels.dart';
 import '../widgets/people/people_routes.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 
 /// A studio's page: its productions as a cover grid, most popular first,
 /// those it was the main studio of before the rest, loading more on scroll.
@@ -231,7 +232,7 @@ class _StudioScreenState extends State<StudioScreen> with PagedLoading {
       if (_main.items.isEmpty && _other.items.isEmpty)
         SliverFillRemaining(
           hasScrollBody: false,
-          child: Center(child: Text(tr('nothing_here', lang), style: const TextStyle(color: Colors.grey))),
+          child: StateMessage(icon: Icons.inbox_outlined, message: tr('nothing_here', lang)),
         ),
       if (showsTitles && _main.items.isNotEmpty) _title(tr('studio_main_productions', lang)),
       _grid(_main.items, lang, heroScope: 'studio-${widget.studioId}-main'),

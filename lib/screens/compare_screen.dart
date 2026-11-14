@@ -12,6 +12,7 @@ import '../widgets/motion/press_scale.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/profile/affinity_ring.dart';
+import '../widgets/state_message.dart';
 import 'detail_screen.dart';
 
 const _rowHeight = 76.0;
@@ -115,8 +116,9 @@ class _CompareScreenState extends State<CompareScreen> {
             if (titles.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(
-                  child: Text(tr('affinity_no_titles_in_common', lang), style: const TextStyle(color: Colors.grey)),
+                child: StateMessage(
+                  icon: Icons.people_outline_rounded,
+                  message: tr('affinity_no_titles_in_common', lang),
                 ),
               )
             else

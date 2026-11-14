@@ -7,6 +7,8 @@ import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/browse_api.dart';
 import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/app_button.dart';
+import 'package:anispark/widgets/state_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -267,6 +269,8 @@ void main() {
     await tester.tap(find.text(_en('apply')));
     await settle(tester);
 
+    expect(find.widgetWithText(StateMessage, _en('browse_empty')), findsOneWidget);
+    expect(find.widgetWithText(AppButton, _en('browse_clear_filters')), findsOneWidget);
     expect(find.byKey(const ValueKey('browse-empty-clear')), findsOneWidget);
     expect(find.text('Show 1'), findsNothing);
 

@@ -17,6 +17,7 @@ import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/option_sheet.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import 'detail_screen.dart';
 import '../widgets/load_error_view.dart';
 
@@ -434,9 +435,7 @@ class _SeasonScreenState extends State<SeasonScreen> {
             if (items.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(
-                  child: Text(tr('no_results', lang), style: const TextStyle(color: Colors.grey)),
-                ),
+                child: StateMessage(icon: Icons.search_off_rounded, message: tr('no_results', lang)),
               )
             else
               SliverPadding(

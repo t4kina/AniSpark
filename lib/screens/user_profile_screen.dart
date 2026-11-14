@@ -16,6 +16,7 @@ import '../widgets/profile/affinity_card.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
 import '../widgets/sheet_list_surface.dart';
+import '../widgets/state_message.dart';
 import 'detail_screen.dart';
 import '../widgets/load_error_view.dart';
 
@@ -803,17 +804,7 @@ class _UserListSheetState extends State<_UserListSheet>
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _isPrivate
-                  ? Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.lock_outline, size: 40, color: cs.onSurface.withValues(alpha: 0.4)),
-                          const SizedBox(height: 8),
-                          Text(tr('affinity_private', lang),
-                              style: TextStyle(color: cs.onSurface.withValues(alpha: 0.6))),
-                        ],
-                      ),
-                    )
+                  ? StateMessage(icon: Icons.lock_outline, message: tr('affinity_private', lang))
                   : _hasError
                   ? LoadErrorView(onRetry: _retry)
                   : TabBarView(
@@ -821,10 +812,7 @@ class _UserListSheetState extends State<_UserListSheet>
                       children: _statuses.map((s) {
                         final entries = _lists?[s] ?? [];
                         if (entries.isEmpty) {
-                          return Center(
-                            child: Text(tr('nothing_here', lang),
-                                style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))),
-                          );
+                          return StateMessage(icon: Icons.inbox_outlined, message: tr('nothing_here', lang));
                         }
                         return SheetListSurface(
                           child: ListView.builder(

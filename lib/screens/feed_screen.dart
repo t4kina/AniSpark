@@ -20,6 +20,7 @@ import '../widgets/motion/pressable.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import '../widgets/social/social_widgets.dart';
 import 'activity_thread_screen.dart';
 import 'notifications_screen.dart';
@@ -469,10 +470,11 @@ class _FeedScreenState extends State<FeedScreen>
       );
     }
     if (_activities.isEmpty) {
-      return Center(
-          key: const ValueKey('feed-empty'),
-          child: Text(tr('no_activity', lang),
-              style: const TextStyle(color: Colors.grey)));
+      return StateMessage(
+        key: const ValueKey('feed-empty'),
+        icon: Icons.forum_outlined,
+        message: tr('no_activity', lang),
+      );
     }
     // A fresh list cascades in; afterwards only a newly posted status does.
     return EntranceGate(

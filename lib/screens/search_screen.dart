@@ -14,6 +14,7 @@ import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/option_sheet.dart';
+import '../widgets/state_message.dart';
 import 'detail_screen.dart';
 import '../widgets/load_error_view.dart';
 
@@ -400,7 +401,11 @@ class _SearchScreenState extends State<SearchScreen> {
     }
     if (!_searched) return KeyedSubtree(key: const ValueKey('start'), child: _buildEmptyState(lang));
     if (_results.isEmpty) {
-      return Center(key: const ValueKey('no-results'), child: Text(tr('no_results', lang)));
+      return StateMessage(
+        key: const ValueKey('no-results'),
+        icon: Icons.search_off_rounded,
+        message: tr('no_results', lang),
+      );
     }
     final heroScope = 'search-$_resultsVersion';
     final results = _results;
@@ -420,17 +425,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildEmptyState(String lang) {
     if (_recentSearches.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.search, size: 64, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('search_for', lang),
-                style: const TextStyle(color: Colors.grey)),
-          ],
-        ),
-      );
+      return StateMessage(icon: Icons.search, message: tr('search_for', lang));
     }
 
     final cs = Theme.of(context).colorScheme;

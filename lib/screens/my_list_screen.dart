@@ -593,44 +593,15 @@ class _MediaListState extends State<_MediaList>
     }
     if (lists.isEmpty) {
       final isAnime = widget.type == 'ANIME';
-      final cs = Theme.of(context).colorScheme;
-      return Center(
+      return StateMessage(
         key: const ValueKey('list-empty'),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                isAnime ? Icons.movie_filter_outlined : Icons.menu_book_outlined,
-                size: 64,
-                color: cs.onSurface.withValues(alpha: 0.2),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                tr(isAnime ? 'list_empty_anime' : 'list_empty_manga', lang),
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface.withValues(alpha: 0.55)),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                tr(isAnime ? 'list_empty_anime_hint' : 'list_empty_manga_hint', lang),
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 13,
-                    color: cs.onSurface.withValues(alpha: 0.35),
-                    height: 1.5),
-              ),
-              const SizedBox(height: 24),
-              AppButton(
-                label: tr(isAnime ? 'list_discover_anime' : 'list_discover_manga', lang),
-                icon: Icons.explore_outlined,
-                onPressed: () => MainNavigation.navigateToTab(2),
-              ),
-            ],
-          ),
+        icon: isAnime ? Icons.movie_filter_outlined : Icons.menu_book_outlined,
+        title: tr(isAnime ? 'list_empty_anime' : 'list_empty_manga', lang),
+        message: tr(isAnime ? 'list_empty_anime_hint' : 'list_empty_manga_hint', lang),
+        action: AppButton(
+          label: tr(isAnime ? 'list_discover_anime' : 'list_discover_manga', lang),
+          icon: Icons.explore_outlined,
+          onPressed: () => MainNavigation.navigateToTab(2),
         ),
       );
     }
@@ -680,23 +651,12 @@ class _MediaListState extends State<_MediaList>
     // and replaying its cascade on every keystroke.
     final noMatch = items.isNotEmpty
         ? null
-        : Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off_rounded, size: 52,
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
-            const SizedBox(height: 12),
-            Text(
-              widget.searchQuery.isNotEmpty
-                  ? trf('list_no_results_for', lang, {'query': widget.searchQuery})
-                  : tr('list_no_genre_match', lang),
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-                  fontSize: 13)),
-          ],
-        ),
-      );
+        : StateMessage(
+            icon: Icons.search_off_rounded,
+            message: widget.searchQuery.isNotEmpty
+                ? trf('list_no_results_for', lang, {'query': widget.searchQuery})
+                : tr('list_no_genre_match', lang),
+          );
 
     // The first rows cascade in when the list first appears; rows built
     // later (scrolling, filtering, expanding a section) appear at once.

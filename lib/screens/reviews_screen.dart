@@ -11,6 +11,7 @@ import '../widgets/detail/review_card.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import 'review_screen.dart';
 
 /// Every review of a media, most liked first, loading more on scroll.
@@ -103,7 +104,7 @@ class _ReviewsScreenState extends State<ReviewsScreen> {
     if (_reviews.isEmpty) {
       if (_loading) return const _ReviewsSkeleton();
       if (_failed) return LoadErrorView(onRetry: _loadMore);
-      return Center(child: Text(tr('nothing_here', lang), style: const TextStyle(color: Colors.grey)));
+      return StateMessage(icon: Icons.rate_review_outlined, message: tr('nothing_here', lang));
     }
     // The first page cascades in; later pages are past the staggered cards.
     return EntranceGate(

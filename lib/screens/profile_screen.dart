@@ -15,6 +15,7 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
 import '../widgets/sheet_list_surface.dart';
+import '../widgets/state_message.dart';
 import '../main.dart' show MainNavigation;
 import 'settings_screen.dart';
 import 'user_profile_screen.dart';
@@ -943,7 +944,8 @@ class _FollowSheetState extends State<_FollowSheet> {
   /// The most of the screen the sheet takes; past it the list scrolls.
   static const _maxHeightFraction = 0.7;
 
-  /// Room for the spinner or "nobody here" while there's no list.
+  /// Room for the spinner while there's no list: about what "nobody here"
+  /// takes, so the sheet barely moves between the two.
   static const _placeholderHeight = 160.0;
 
   /// Like the app's other pickers (the Sort sheet): as tall as its people,
@@ -957,13 +959,7 @@ class _FollowSheetState extends State<_FollowSheet> {
     if (_loading) {
       body = const SizedBox(height: _placeholderHeight, child: Center(child: CircularProgressIndicator()));
     } else if (_users == null || _users!.isEmpty) {
-      body = SizedBox(
-        height: _placeholderHeight,
-        child: Center(
-          child: Text(tr('profile_nobody_here', lang),
-              style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))),
-        ),
-      );
+      body = StateMessage(icon: Icons.people_outline_rounded, message: tr('profile_nobody_here', lang));
     } else {
       body = Flexible(
         child: SheetListSurface(

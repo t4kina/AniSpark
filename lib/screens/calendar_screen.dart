@@ -20,7 +20,9 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/app_button.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import 'detail_screen.dart';
 import '../widgets/load_error_view.dart';
 
@@ -314,26 +316,24 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _ => tr(_weekdayKeys[day.weekday - 1], lang),
       };
 
-  Widget _buildEmpty(String lang, {required bool myListOnly}) => ListView(
+  /// Fills the page, so it is centred and can still be pulled to refresh.
+  Widget _buildEmpty(String lang, {required bool myListOnly}) => CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(32, 96, 32, 32),
-        children: [
-          const Icon(Icons.event_busy_outlined, size: 48, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text(
-            tr(myListOnly ? 'cal_empty_my_list' : 'cal_empty_all', lang),
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.grey),
-          ),
-          if (myListOnly) ...[
-            const SizedBox(height: 12),
-            Center(
-              child: TextButton(
-                onPressed: () => setState(() => _myListOnly = false),
-                child: Text(tr('cal_show_all', lang)),
-              ),
+        slivers: [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: StateMessage(
+              icon: Icons.event_busy_outlined,
+              message: tr(myListOnly ? 'cal_empty_my_list' : 'cal_empty_all', lang),
+              action: myListOnly
+                  ? AppButton(
+                      kind: AppButtonKind.tonal,
+                      label: tr('cal_show_all', lang),
+                      onPressed: () => setState(() => _myListOnly = false),
+                    )
+                  : null,
             ),
-          ],
+          ),
         ],
       );
 }

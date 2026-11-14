@@ -5,6 +5,7 @@ import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/utils/tab_reselect.dart';
+import 'package:anispark/widgets/app_button.dart';
 import 'package:anispark/widgets/motion/animated_count.dart';
 import 'package:anispark/widgets/motion/staggered_entrance.dart';
 import 'package:flutter/material.dart';
@@ -141,6 +142,7 @@ void main() {
     await tester.pump();
     // The list is swapped for the no-match message at once, not faded out.
     expect(find.byType(ListView), findsNothing);
+    expect(find.text('No results for "zzz"'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), '');
     await tester.pump();
@@ -211,5 +213,16 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
     expect(find.byType(SnackBar), findsNothing);
+  });
+
+  testWidgets('an empty list says so and offers a way to fill it', (tester) async {
+    await pumpList(tester);
+
+    final empty = find.byKey(const ValueKey('list-empty'));
+    expect(find.descendant(of: empty, matching: find.text('Your manga list is empty')), findsOneWidget);
+    expect(
+      find.descendant(of: empty, matching: find.widgetWithText(AppButton, 'Discover Manga')),
+      findsOneWidget,
+    );
   });
 }
