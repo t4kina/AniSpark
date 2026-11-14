@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import '../services/anilist_service.dart';
@@ -23,6 +22,7 @@ import 'detail_screen.dart';
 import 'search_screen.dart';
 import 'season_screen.dart';
 import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// The bottom-navigation tab that shows Discover.
 const _discoverTab = 2;
@@ -469,7 +469,6 @@ class _HomeScreenState extends State<HomeScreen> {
           final timeLabel = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
           // A show can air more than once this week, so the scope is per card.
           final heroTag = id == null ? null : coverHeroTag('home-week-$i', id);
-          final placeholder = ColoredBox(color: Theme.of(ctx).colorScheme.surfaceContainerHighest);
 
           return Pressable(
             onTap: id != null
@@ -495,17 +494,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: RoundedHero(
                       tag: heroTag,
                       borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
-                      child: cover != null
-                          ? CachedNetworkImage(
-                              imageUrl: cover,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 140,
-                              fadeInDuration: AppMotion.of(ctx, AppMotion.short),
-                              fadeOutDuration: Duration.zero,
-                              placeholder: (_, _) => placeholder,
-                              errorWidget: (_, _, _) => placeholder,
-                            )
-                          : placeholder,
+                      child: AppImage(url: cover, cacheWidth: 140),
                     ),
                   ),
                   Expanded(

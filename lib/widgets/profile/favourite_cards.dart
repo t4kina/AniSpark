@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +7,7 @@ import '../../screens/detail_screen.dart';
 import '../motion/cover_hero.dart';
 import '../motion/pressable.dart';
 import '../motion/rounded_hero.dart';
+import '../app_image.dart';
 
 /// A favourite anime or manga in a profile's horizontal row: shrinks while
 /// pressed and its cover flies into the detail page. [heroScope] must be
@@ -29,15 +29,7 @@ class FavouriteMediaCard extends StatelessWidget {
     final cover = RoundedHero(
       tag: heroTag,
       borderRadius: BorderRadius.circular(8),
-      child: image != null
-          ? CachedNetworkImage(
-              imageUrl: image,
-              width: 100,
-              height: 140,
-              fit: BoxFit.cover,
-              memCacheWidth: 200,
-            )
-          : Container(width: 100, height: 140, color: Theme.of(context).colorScheme.surfaceContainerHighest),
+      child: AppImage(url: image, cacheWidth: 200, width: 100, height: 140),
     );
     return Padding(
       padding: const EdgeInsets.only(right: 10),
@@ -97,15 +89,7 @@ class FavouriteCharacterCard extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 160,
-                      )
-                    : Container(width: 80, height: 80, color: Theme.of(context).colorScheme.surfaceContainerHighest),
+                child: AppImage(url: image, cacheWidth: 160, width: 80, height: 80),
               ),
               const SizedBox(height: 4),
               Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),

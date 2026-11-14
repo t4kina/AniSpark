@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
@@ -25,6 +24,7 @@ import '../widgets/skeletons.dart';
 import '../widgets/state_message.dart';
 import 'detail_screen.dart';
 import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// Episodes airing today and over the next six days, grouped by local day.
 /// Logged-in users can narrow it to what they're watching or planning, and
@@ -444,19 +444,15 @@ class _EpisodeRow extends StatelessWidget {
               child: RoundedHero(
                 tag: heroTag,
                 borderRadius: const BorderRadius.all(Radius.circular(6)),
-                child: cover == null
-                    ? placeholder
-                    : CachedNetworkImage(
-                        imageUrl: cover,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 92,
-                        color: dim,
-                        colorBlendMode: dim == null ? null : BlendMode.modulate,
-                        fadeInDuration: AppMotion.of(context, AppMotion.short),
-                        fadeOutDuration: Duration.zero,
-                        placeholder: (_, _) => placeholder,
-                        errorWidget: (_, _, _) => placeholder,
-                      ),
+                child: AppImage(
+                  url: cover,
+                  cacheWidth: 92,
+                  color: dim,
+                  colorBlendMode: dim == null ? null : BlendMode.modulate,
+                  // A dimmed cover is see-through, and so is what stands in for it.
+                  fill: false,
+                  placeholder: placeholder,
+                ),
               ),
             ),
             const SizedBox(width: 12),

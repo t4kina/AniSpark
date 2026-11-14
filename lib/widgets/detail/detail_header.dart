@@ -1,7 +1,6 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '../../theme/app_motion.dart';
+import '../app_image.dart';
 
 /// The top card of the media detail page: [banner], the [cover] straddling
 /// its bottom edge and [info] (title, studios, stats) under it. The page
@@ -89,37 +88,20 @@ class DetailCoverImage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
-    final fadeIn = AppMotion.of(context, AppMotion.short);
     final preview = previewUrl;
     final full = url;
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (preview == null)
-          placeholder
-        else
-          CachedNetworkImage(
-            imageUrl: preview,
-            fit: BoxFit.cover,
-            memCacheWidth: previewCacheWidth,
-            // Lists decode covers at other widths too; when this one isn't
-            // cached it appears without a fade, so landing never flickers.
-            fadeInDuration: Duration.zero,
-            fadeOutDuration: Duration.zero,
-            placeholder: (_, _) => placeholder,
-            errorWidget: (_, _, _) => placeholder,
-          ),
-        if (full != null && full != preview)
-          CachedNetworkImage(
-            imageUrl: full,
-            fit: BoxFit.cover,
-            memCacheWidth: cacheWidth,
-            fadeInDuration: fadeIn,
-            fadeOutDuration: Duration.zero,
-            placeholder: (_, _) => const SizedBox.shrink(),
-            errorWidget: (_, _, _) => const SizedBox.shrink(),
-          ),
+        AppImage(
+          url: preview,
+          cacheWidth: previewCacheWidth,
+          // Lists decode covers at other widths too; when this one isn't
+          // cached it appears without a fade, so landing never flickers.
+          fadeIn: Duration.zero,
+        ),
+        // Sharpens over the preview, which stays put underneath.
+        if (full != null && full != preview) AppImage(url: full, cacheWidth: cacheWidth, fill: false),
       ],
     );
   }

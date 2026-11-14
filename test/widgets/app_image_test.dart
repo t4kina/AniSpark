@@ -92,4 +92,24 @@ void main() {
     expect(image(tester).color, const Color(0x80FFFFFF));
     expect(image(tester).colorBlendMode, BlendMode.modulate);
   });
+
+  testWidgets('an image that fails shows its placeholder, or what it was given for that', (tester) async {
+    Widget failed(WidgetTester tester) {
+      final context = tester.element(find.byType(CachedNetworkImage));
+      return image(tester).errorWidget!(context, _url, Exception('404'));
+    }
+
+    await tester.pumpWidget(app(const AppImage(url: _url, cacheWidth: 160, placeholder: Icon(Icons.person))));
+    expect(failed(tester), isA<Icon>());
+
+    await tester.pumpWidget(app(const AppImage(
+      url: _url,
+      cacheWidth: 160,
+      placeholder: Icon(Icons.person),
+      error: Text('no banner'),
+    )));
+    expect(failed(tester), isA<Text>());
+    expect(image(tester).placeholder!(tester.element(find.byType(CachedNetworkImage)), _url), isA<Icon>(),
+        reason: 'still the placeholder while it loads');
+  });
 }

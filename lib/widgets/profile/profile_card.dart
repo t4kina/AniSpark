@@ -11,6 +11,7 @@ import '../genre_filter_sheet.dart' show genreLabel;
 import '../motion/fade_switcher.dart';
 import '../motion/pressable.dart';
 import 'count_up_text.dart';
+import '../app_image.dart';
 
 /// The top of a profile, own or a friend's: one card on the person's banner
 /// (their blurred avatar without one) holding who they are and a glass
@@ -195,19 +196,9 @@ class _ProfileCardState extends State<ProfileCard> {
   }
 
   Widget _background(BuildContext context) {
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
     final banner = widget.bannerUrl;
-    if (banner != null && banner.isNotEmpty) {
-      return CachedNetworkImage(
-        imageUrl: banner,
-        fit: BoxFit.cover,
-        memCacheWidth: 900,
-        fadeInDuration: AppMotion.of(context, AppMotion.short),
-        placeholder: (_, _) => placeholder,
-        errorWidget: (_, _, _) => _noBanner(context),
-      );
-    }
-    return _noBanner(context);
+    if (banner == null || banner.isEmpty) return _noBanner(context);
+    return AppImage(url: banner, cacheWidth: 900, error: _noBanner(context));
   }
 
   /// Without a banner: the avatar, blurred into colour (as the app's other

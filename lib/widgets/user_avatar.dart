@@ -1,5 +1,6 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import 'app_image.dart';
 
 /// A user's avatar, clipped to [radius] (a circle by default), with a
 /// person icon while it loads or when there is none. Decorative: the user's
@@ -14,28 +15,16 @@ class UserAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final placeholder = Container(
-      width: size,
-      height: size,
-      color: cs.surfaceContainerHighest,
-      child: Icon(Icons.person, size: size * 0.55, color: cs.onSurfaceVariant),
-    );
-    final url = this.url;
-    final decodeWidth = (size * MediaQuery.devicePixelRatioOf(context)).round();
     return ExcludeSemantics(
       child: ClipRRect(
         borderRadius: BorderRadius.circular(radius ?? size / 2),
-        child: url == null || url.isEmpty
-            ? placeholder
-            : CachedNetworkImage(
-                imageUrl: url,
-                width: size,
-                height: size,
-                memCacheWidth: decodeWidth,
-                fit: BoxFit.cover,
-                placeholder: (_, _) => placeholder,
-                errorWidget: (_, _, _) => placeholder,
-              ),
+        child: AppImage(
+          url: url,
+          cacheWidth: (size * MediaQuery.devicePixelRatioOf(context)).round(),
+          width: size,
+          height: size,
+          placeholder: Icon(Icons.person, size: size * 0.55, color: cs.onSurfaceVariant),
+        ),
       ),
     );
   }

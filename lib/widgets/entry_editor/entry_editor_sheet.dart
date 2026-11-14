@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -21,6 +20,7 @@ import 'entry_editor_api.dart';
 import 'entry_editor_fields.dart';
 import 'score_scale.dart';
 import '../load_error_view.dart';
+import '../app_image.dart';
 
 export 'entry_editor_api.dart' show EditorMedia;
 
@@ -654,28 +654,14 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cover = coverUrl;
-    final placeholder = Container(
-      width: 44,
-      height: 62,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       child: Row(
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
-            child: cover == null
-                ? placeholder
-                : CachedNetworkImage(
-                    imageUrl: cover,
-                    width: 44,
-                    height: 62,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 88,
-                    placeholder: (_, _) => placeholder,
-                    errorWidget: (_, _, _) => placeholder,
-                  ),
+            child: AppImage(url: cover, cacheWidth: 88, width: 44, height: 62),
           ),
           const SizedBox(width: 12),
           Expanded(

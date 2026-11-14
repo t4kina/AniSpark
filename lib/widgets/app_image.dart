@@ -6,7 +6,7 @@ import '../theme/app_motion.dart';
 /// The app's network image. Its box is the surface colour until the image
 /// arrives, which then fades in over it; an image already in memory shows
 /// at once. No [url], or one that fails, leaves the surface colour (and the
-/// [placeholder]) in place.
+/// [placeholder], or the [error] given for a failure) in place.
 class AppImage extends StatelessWidget {
   const AppImage({
     super.key,
@@ -19,6 +19,7 @@ class AppImage extends StatelessWidget {
     this.fadeIn = AppMotion.short,
     this.fill = true,
     this.placeholder,
+    this.error,
     this.color,
     this.colorBlendMode,
   });
@@ -47,6 +48,9 @@ class AppImage extends StatelessWidget {
   /// Shown while there is no image, over the surface colour.
   final Widget? placeholder;
 
+  /// Shown in place of an image that failed to load; the [placeholder]
+  /// unless given.
+  final Widget? error;
   final Color? color;
   final BlendMode? colorBlendMode;
 
@@ -70,7 +74,7 @@ class AppImage extends StatelessWidget {
             // whatever is behind it.
             fadeOutDuration: Duration.zero,
             placeholder: (_, _) => idle,
-            errorWidget: (_, _, _) => idle,
+            errorWidget: (_, _, _) => error ?? idle,
           );
     if (fill) {
       image = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest, child: image);

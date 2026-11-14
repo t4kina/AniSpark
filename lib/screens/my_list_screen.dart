@@ -2,7 +2,6 @@ import 'dart:math' show pi;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:confetti/confetti.dart';
 import '../providers/media_list_store.dart';
 import '../services/auth_service.dart';
@@ -31,6 +30,7 @@ import '../widgets/motion/pressable.dart';
 import 'settings_screen.dart';
 import '../services/notification_service.dart';
 import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
 
@@ -808,24 +808,11 @@ class _SwipeableRowState extends State<_SwipeableRow> {
   /// The cover, which flies to the detail page and dips while the row is
   /// pressed (a transform only, so the row never re-lays out).
   Widget _cover(BuildContext context, String? image, String? heroTag) {
-    final placeholder = Container(
-        width: 80,
-        height: 115,
-        color: Theme.of(context).colorScheme.surfaceContainerHighest);
+
     final cover = RoundedHero(
       tag: heroTag,
       borderRadius: BorderRadius.circular(6),
-      child: image != null
-          ? CachedNetworkImage(
-              imageUrl: image,
-              width: 80,
-              height: 115,
-              fit: BoxFit.cover,
-              memCacheWidth: 160,
-              placeholder: (_, _) => placeholder,
-              errorWidget: (_, _, _) => placeholder,
-            )
-          : placeholder,
+      child: AppImage(url: image, cacheWidth: 160, width: 80, height: 115),
     );
     return PressScale(pressed: _pressed, child: cover);
   }
@@ -1125,13 +1112,14 @@ class _CompletionDialogState extends State<_CompletionDialog> {
             Positioned.fill(
               child: Stack(
                 children: [
-                  CachedNetworkImage(
-                    imageUrl: widget.coverImage!,
-                    fit: BoxFit.cover,
+                  AppImage(
+                    url: widget.coverImage,
+                    // A darkened backdrop: a small decode is plenty.
+                    cacheWidth: 300,
                     width: double.infinity,
                     height: double.infinity,
-                    // A darkened backdrop: a small decode is plenty.
-                    memCacheWidth: 300,
+                    // It appears out of the black page behind it.
+                    fill: false,
                   ),
                   Container(color: Colors.black.withValues(alpha: 0.78)),
                 ],
@@ -1218,13 +1206,7 @@ class _CompletionDialogState extends State<_CompletionDialog> {
                 if (widget.coverImage != null)
                   ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: widget.coverImage!,
-                      width: 148,
-                      height: 210,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 296,
-                    ),
+                    child: AppImage(url: widget.coverImage!, cacheWidth: 296, width: 148, height: 210),
                   ),
                 const SizedBox(height: 28),
 
@@ -1522,12 +1504,11 @@ class _ProfileAvatarButton extends StatelessWidget {
               child: ClipOval(
                 child: SizedBox.square(
                   dimension: 30,
-                  child: picture != null
-                      ? CachedNetworkImage(imageUrl: picture, fit: BoxFit.cover, memCacheWidth: 64)
-                      : ColoredBox(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          child: const Icon(Icons.person, size: 16, color: Colors.grey),
-                        ),
+                  child: AppImage(
+                    url: picture,
+                    cacheWidth: 64,
+                    placeholder: const Icon(Icons.person, size: 16, color: Colors.grey),
+                  ),
                 ),
               ),
             ),

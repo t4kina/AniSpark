@@ -1,13 +1,11 @@
 import 'dart:math' show max;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
 import '../services/api_cache.dart';
 import '../services/discover_api.dart';
-import '../theme/app_motion.dart';
 import '../utils/anime_season.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/motion/cover_hero.dart';
@@ -20,6 +18,7 @@ import '../widgets/skeletons.dart';
 import '../widgets/state_message.dart';
 import 'detail_screen.dart';
 import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// Browses the anime of any season, sorted and filtered by format, loading
 /// more as the grid scrolls.
@@ -505,7 +504,6 @@ class _SeasonTile extends StatelessWidget {
       if (format != null) _formatLabel(format, lang),
       if (episodes != null) trf('search_eps', lang, {'n': episodes}),
     ].join(' · ');
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
     final heroTag = id == null ? null : coverHeroTag(heroScope, id);
 
     return Pressable(
@@ -527,17 +525,7 @@ class _SeasonTile extends StatelessWidget {
                 // Only the cover flies; the score stays on the tile.
                 RoundedHero(
                   tag: heroTag,
-                  child: cover == null
-                      ? placeholder
-                      : CachedNetworkImage(
-                          imageUrl: cover,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 240,
-                          fadeInDuration: AppMotion.of(context, AppMotion.short),
-                          fadeOutDuration: Duration.zero,
-                          placeholder: (_, _) => placeholder,
-                          errorWidget: (_, _, _) => placeholder,
-                        ),
+                  child: AppImage(url: cover, cacheWidth: 240),
                 ),
                 if (score != null) _ScoreOverlay(score: score),
               ],

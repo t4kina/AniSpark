@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../utils/external_url.dart';
 import '../providers/settings_provider.dart';
@@ -19,6 +18,7 @@ import '../widgets/sheet_list_surface.dart';
 import '../widgets/state_message.dart';
 import 'detail_screen.dart';
 import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 class UserProfileScreen extends StatefulWidget {
   final int userId;
@@ -592,20 +592,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
           child: Row(
             children: [
-              if (cover != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(5),
-                  child: CachedNetworkImage(
-                    imageUrl: cover, width: 36, height: 50,
-                    fit: BoxFit.cover, memCacheWidth: 72,
-                  ),
-                )
-              else
-                Container(width: 36, height: 50,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.outline,
-                      borderRadius: BorderRadius.circular(5),
-                    )),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(5),
+                child: AppImage(url: cover, cacheWidth: 72, width: 36, height: 50),
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -868,12 +858,7 @@ class _EntryTile extends StatelessWidget {
             // Cover
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
-              child: image != null
-                  ? CachedNetworkImage(
-                      imageUrl: image, width: 46, height: 64,
-                      fit: BoxFit.cover, memCacheWidth: 92)
-                  : Container(width: 46, height: 64,
-                      color: cs.surfaceContainerHighest),
+              child: AppImage(url: image, cacheWidth: 92, width: 46, height: 64),
             ),
             const SizedBox(width: 12),
             // Info

@@ -1,11 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
-import '../theme/app_motion.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/genre_filter_sheet.dart';
 import '../widgets/motion/cover_hero.dart';
@@ -17,6 +15,7 @@ import '../widgets/option_sheet.dart';
 import '../widgets/state_message.dart';
 import 'detail_screen.dart';
 import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// SharedPreferences key of the recent searches; cleared on logout.
 const recentSearchesPrefsKey = 'recent_searches';
@@ -531,8 +530,7 @@ class _ResultCard extends StatelessWidget {
       if (score != null) '★ ${(score / 10).toStringAsFixed(1)}',
     ];
     final heroTag = id == null ? null : coverHeroTag(heroScope, id);
-    final fadeIn = AppMotion.of(context, AppMotion.short);
-    final coverPlaceholder = ColoredBox(color: Colors.grey[800]!);
+
 
     return Pressable(
       // A full-width card only needs a hint of a press.
@@ -557,15 +555,7 @@ class _ResultCard extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             // Banner background
-            if (banner != null)
-              CachedNetworkImage(
-                imageUrl: banner,
-                fit: BoxFit.cover,
-                memCacheWidth: 600,
-                fadeInDuration: fadeIn,
-                fadeOutDuration: Duration.zero,
-                errorWidget: (_, _, _) => const SizedBox.shrink(),
-              ),
+            if (banner != null) AppImage(url: banner, cacheWidth: 600, fill: false),
             // Dark overlay
             Container(
               decoration: BoxDecoration(
@@ -592,16 +582,7 @@ class _ResultCard extends StatelessWidget {
                     child: RoundedHero(
                       tag: heroTag,
                       borderRadius: const BorderRadius.all(Radius.circular(6)),
-                      child: cover != null
-                          ? CachedNetworkImage(
-                              imageUrl: cover,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 160,
-                              fadeInDuration: fadeIn,
-                              fadeOutDuration: Duration.zero,
-                              errorWidget: (_, _, _) => coverPlaceholder,
-                            )
-                          : coverPlaceholder,
+                      child: AppImage(url: cover, cacheWidth: 160),
                     ),
                   ),
                   const SizedBox(width: 12),

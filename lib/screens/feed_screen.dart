@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
@@ -25,6 +24,7 @@ import '../widgets/social/social_widgets.dart';
 import 'activity_thread_screen.dart';
 import 'notifications_screen.dart';
 import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 enum _FeedType { following, global, personal }
 
@@ -643,13 +643,7 @@ class _ActivityCard extends StatelessWidget {
               onTap: mediaId != null ? () => openMediaDetail(context, mediaId) : null,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(6),
-                child: CachedNetworkImage(
-                  imageUrl: coverImage,
-                  width: 45,
-                  height: 64,
-                  fit: BoxFit.cover,
-                  memCacheWidth: 90,
-                ),
+                child: AppImage(url: coverImage, cacheWidth: 90, width: 45, height: 64),
               ),
             ),
           ],

@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:ui' show ImageFilter;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -24,6 +23,7 @@ import '../widgets/people/people_labels.dart';
 import '../widgets/people/people_routes.dart';
 import '../widgets/people/voiced_character_tile.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/app_image.dart';
 
 /// A staff member's page (voice actor, director, mangaka…): who they are,
 /// the characters they voiced and their staff credits, loading more of
@@ -379,7 +379,6 @@ class _StaffHeader extends StatelessWidget {
     final topPadding = MediaQuery.paddingOf(context).top;
     final imageUrl = this.imageUrl;
     final nativeName = staff.nativeName;
-    final placeholder = Container(color: cs.surfaceContainerHighest);
     return Stack(
       children: [
         Positioned(
@@ -394,13 +393,7 @@ class _StaffHeader extends StatelessWidget {
                 if (imageUrl != null)
                   ImageFiltered(
                     imageFilter: ImageFilter.blur(sigmaX: 28, sigmaY: 28),
-                    child: CachedNetworkImage(
-                      imageUrl: imageUrl,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 240,
-                      placeholder: (_, _) => const SizedBox.shrink(),
-                      errorWidget: (_, _, _) => const SizedBox.shrink(),
-                    ),
+                    child: AppImage(url: imageUrl, cacheWidth: 240, fill: false),
                   )
                 else
                   ColoredBox(color: cs.primary.withValues(alpha: 0.25)),
@@ -440,16 +433,7 @@ class _StaffHeader extends StatelessWidget {
                     child: Semantics(
                       image: true,
                       label: name,
-                      child: imageUrl == null
-                          ? placeholder
-                          : CachedNetworkImage(
-                              imageUrl: imageUrl,
-                              fit: BoxFit.cover,
-                              alignment: Alignment.topCenter,
-                              memCacheWidth: 400,
-                              placeholder: (_, _) => placeholder,
-                              errorWidget: (_, _, _) => placeholder,
-                            ),
+                      child: AppImage(url: imageUrl, cacheWidth: 400, alignment: Alignment.topCenter),
                     ),
                   ),
                 ),

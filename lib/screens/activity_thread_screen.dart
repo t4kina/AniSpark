@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -20,6 +19,7 @@ import '../widgets/skeletons.dart';
 import '../widgets/state_message.dart';
 import '../widgets/social/social_widgets.dart';
 import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// An activity with its replies and a field to reply.
 class ActivityThreadScreen extends StatefulWidget {
@@ -538,7 +538,7 @@ class _ListActivityBody extends StatelessWidget {
           if (cover != null) ...[
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
-              child: CachedNetworkImage(imageUrl: cover, width: 60, height: 85, fit: BoxFit.cover, memCacheWidth: 120),
+              child: AppImage(url: cover, cacheWidth: 120, width: 60, height: 85),
             ),
             const SizedBox(width: 12),
           ],

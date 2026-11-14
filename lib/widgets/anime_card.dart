@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../screens/detail_screen.dart';
 import '../services/auth_service.dart';
-import '../theme/app_motion.dart';
 import '../utils/haptics.dart';
 import '../utils/translations.dart' show tr;
 import 'entry_editor/entry_editor_sheet.dart';
 import 'motion/cover_hero.dart';
 import 'motion/pressable.dart';
 import 'motion/rounded_hero.dart';
+import 'app_image.dart';
 
 class AnimeCard extends StatelessWidget {
   final dynamic animeData; // from API
@@ -58,7 +57,6 @@ class AnimeCard extends StatelessWidget {
     final canQuickAdd = id != null && loggedIn;
     final scope = heroScope;
     final heroTag = id != null && scope != null ? coverHeroTag(scope, id) : null;
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
     final textScaler = MediaQuery.textScalerOf(context);
 
     final card = Pressable(
@@ -80,17 +78,7 @@ class AnimeCard extends StatelessWidget {
               child: RoundedHero(
                 tag: heroTag,
                 borderRadius: _coverRadius,
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 240,
-                        fadeInDuration: AppMotion.of(context, AppMotion.short),
-                        fadeOutDuration: Duration.zero,
-                        placeholder: (_, _) => placeholder,
-                        errorWidget: (_, _, _) => placeholder,
-                      )
-                    : placeholder,
+                child: AppImage(url: image, cacheWidth: 240),
               ),
             ),
           ),

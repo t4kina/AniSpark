@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../services/people_api.dart';
-import '../theme/app_motion.dart';
 import '../utils/haptics.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/review_text.dart';
@@ -24,6 +22,7 @@ import '../widgets/people/people_labels.dart';
 import '../widgets/people/people_routes.dart';
 import '../widgets/people/person_card.dart';
 import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 class CharacterScreen extends StatefulWidget {
   final int characterId;
@@ -292,16 +291,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
                   child: SizedBox(
                     height: _photoHeight + topPadding,
                     width: double.infinity,
-                    child: image != null
-                        ? CachedNetworkImage(
-                            imageUrl: image,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                            memCacheWidth: 600,
-                            placeholder: (ctx, _) => Container(color: cs.surfaceContainerHighest),
-                            errorWidget: (_, _, _) => Container(color: cs.surfaceContainerHighest),
-                          )
-                        : Container(color: cs.surfaceContainerHighest),
+                    child: AppImage(url: image, cacheWidth: 600, alignment: Alignment.topCenter),
                   ),
                 ),
                 Positioned.fill(
@@ -457,7 +447,6 @@ class _CharacterScreenState extends State<CharacterScreen> {
   /// row (AniList may list a media twice, and hero tags must differ).
   Widget _mediaCard(MediaRef media, String title, int index) {
     final image = media.coverUrl;
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
     final heroTag = coverHeroTag('character-${widget.characterId}-media-$index', media.id);
 
     return Padding(
@@ -477,17 +466,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
                     height: 130,
                     child: RoundedHero(
                       tag: heroTag,
-                      child: image != null
-                          ? CachedNetworkImage(
-                              imageUrl: image,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 200,
-                              fadeInDuration: AppMotion.of(context, AppMotion.short),
-                              fadeOutDuration: Duration.zero,
-                              placeholder: (_, _) => placeholder,
-                              errorWidget: (_, _, _) => placeholder,
-                            )
-                          : placeholder,
+                      child: AppImage(url: image, cacheWidth: 200),
                     ),
                   ),
                   const SizedBox(height: 4),

@@ -1,13 +1,12 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/settings_provider.dart';
 import '../../services/people_api.dart';
-import '../../theme/app_motion.dart';
 import '../../utils/translations.dart';
 import '../motion/pressable.dart';
 import '../motion/rounded_hero.dart';
+import '../app_image.dart';
 
 /// Grid layout shared by the cover grids of the staff and studio pages
 /// (the season browser's proportions, with room for a two-line subtitle).
@@ -47,7 +46,6 @@ class MediaCoverTile extends StatelessWidget {
     final cover = media.coverUrl;
     final score = media.averageScore;
     final subtitle = this.subtitle;
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
 
     return MergeSemantics(
       child: Semantics(
@@ -64,17 +62,7 @@ class MediaCoverTile extends StatelessWidget {
                     // Only the cover flies; the labels stay on the tile.
                     RoundedHero(
                       tag: heroTag,
-                      child: cover == null
-                          ? placeholder
-                          : CachedNetworkImage(
-                              imageUrl: cover,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 240,
-                              fadeInDuration: AppMotion.of(context, AppMotion.short),
-                              fadeOutDuration: Duration.zero,
-                              placeholder: (_, _) => placeholder,
-                              errorWidget: (_, _, _) => placeholder,
-                            ),
+                      child: AppImage(url: cover, cacheWidth: 240),
                     ),
                     if (score != null && score > 0) _ScoreOverlay(score: score),
                     if (media.isManga) _CornerLabel(text: tr('nav_manga', lang)),

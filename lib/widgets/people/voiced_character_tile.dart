@@ -1,13 +1,12 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../providers/settings_provider.dart';
 import '../../services/people_api.dart';
-import '../../theme/app_motion.dart';
 import '../motion/pressable.dart';
 import '../motion/rounded_hero.dart';
 import 'people_labels.dart';
+import '../app_image.dart';
 
 /// Grid layout of [VoicedCharacterTile]s: two per row on phones.
 const voicedCharacterGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
@@ -89,7 +88,6 @@ class _Half extends StatelessWidget {
   Widget build(BuildContext context) {
     final imageUrl = this.imageUrl;
     final subtitle = this.subtitle;
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
     return MergeSemantics(
       child: Semantics(
         button: onTap != null,
@@ -102,18 +100,7 @@ class _Half extends StatelessWidget {
                 child: SizedBox.expand(
                   child: RoundedHero(
                     tag: heroTag,
-                    child: imageUrl == null
-                        ? placeholder
-                        : CachedNetworkImage(
-                            imageUrl: imageUrl,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                            memCacheWidth: 240,
-                            fadeInDuration: AppMotion.of(context, AppMotion.short),
-                            fadeOutDuration: Duration.zero,
-                            placeholder: (_, _) => placeholder,
-                            errorWidget: (_, _, _) => placeholder,
-                          ),
+                    child: AppImage(url: imageUrl, cacheWidth: 240, alignment: Alignment.topCenter),
                   ),
                 ),
               ),

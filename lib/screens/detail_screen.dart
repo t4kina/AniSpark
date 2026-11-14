@@ -34,6 +34,7 @@ import '../utils/translations.dart';
 import '../providers/settings_provider.dart';
 import 'character_screen.dart';
 import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 class DetailScreen extends StatefulWidget {
   final int animeId;
@@ -288,15 +289,13 @@ class _DetailScreenState extends State<DetailScreen> {
         else
           surface,
         if (banner != null)
-          CachedNetworkImage(
-            imageUrl: banner,
-            fit: BoxFit.cover,
+          AppImage(
+            url: banner,
             // Banners are ~1900 px wide; decode them at the screen's width.
-            memCacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round(),
-            fadeInDuration: AppMotion.of(context, AppMotion.long),
-            fadeOutDuration: Duration.zero,
-            placeholder: (_, _) => const SizedBox.shrink(),
-            errorWidget: (_, _, _) => const SizedBox.shrink(),
+            cacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round(),
+            fadeIn: AppMotion.long,
+            // Over the blurred cover, which shows until the banner is there.
+            fill: false,
           ),
       ],
     );
@@ -1118,8 +1117,6 @@ class _CharactersSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
-    final fadeIn = AppMotion.of(context, AppMotion.short);
     return SizedBox(
       height: 180,
       child: ListView.builder(
@@ -1146,17 +1143,7 @@ class _CharactersSection extends StatelessWidget {
                       child: SizedBox(
                         width: 80,
                         height: 110,
-                        child: img != null
-                            ? CachedNetworkImage(
-                                imageUrl: img,
-                                fit: BoxFit.cover,
-                                memCacheWidth: 160,
-                                fadeInDuration: fadeIn,
-                                fadeOutDuration: Duration.zero,
-                                placeholder: (_, _) => placeholder,
-                                errorWidget: (_, _, _) => placeholder,
-                              )
-                            : placeholder,
+                        child: AppImage(url: img, cacheWidth: 160),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -1180,6 +1167,9 @@ class _TrailerSection extends StatelessWidget {
   final Future<void> Function(String url) onOpenUrl;
   const _TrailerSection({required this.trailerId, required this.onOpenUrl});
 
+  /// The width YouTube serves its `hqdefault` thumbnail at.
+  static const _trailerThumbWidth = 480;
+
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
@@ -1199,13 +1189,11 @@ class _TrailerSection extends StatelessWidget {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: CachedNetworkImage(
-                    imageUrl: 'https://img.youtube.com/vi/$trailerId/hqdefault.jpg',
+                  child: AppImage(
+                    url: 'https://img.youtube.com/vi/$trailerId/hqdefault.jpg',
+                    cacheWidth: _trailerThumbWidth,
                     width: double.infinity,
                     height: 200,
-                    fit: BoxFit.cover,
-                    fadeInDuration: AppMotion.of(context, AppMotion.short),
-                    fadeOutDuration: Duration.zero,
                   ),
                 ),
                 Container(
@@ -1235,8 +1223,6 @@ class _StreamingEpisodesSection extends StatelessWidget {
     final title = site != null
         ? trf('detail_streaming_episodes_on', lang, {'site': site.toUpperCase()})
         : tr('detail_streaming_episodes', lang);
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
-    final fadeIn = AppMotion.of(context, AppMotion.short);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1270,17 +1256,7 @@ class _StreamingEpisodesSection extends StatelessWidget {
                           child: SizedBox(
                             width: 160,
                             height: 110,
-                            child: thumb != null
-                                ? CachedNetworkImage(
-                                    imageUrl: thumb,
-                                    fit: BoxFit.cover,
-                                    memCacheWidth: 320,
-                                    fadeInDuration: fadeIn,
-                                    fadeOutDuration: Duration.zero,
-                                    placeholder: (_, _) => placeholder,
-                                    errorWidget: (_, _, _) => placeholder,
-                                  )
-                                : placeholder,
+                            child: AppImage(url: thumb, cacheWidth: 320),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -1369,6 +1345,8 @@ class _CoverViewer extends StatelessWidget {
             child: InteractiveViewer(
               minScale: 0.8,
               maxScale: 4.0,
+              // Not an AppImage: it is zoomed into, so it is decoded at full
+              // size, and nothing may be painted behind its transparent edges.
               child: CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.contain),
             ),
           ),

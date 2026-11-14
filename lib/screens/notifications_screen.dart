@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -16,6 +15,7 @@ import '../widgets/state_message.dart';
 import '../widgets/social/social_widgets.dart';
 import 'activity_thread_screen.dart';
 import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// The viewer's AniList notifications, newest first. Opening it marks them
 /// all read on AniList.
@@ -378,25 +378,15 @@ class _NotificationTile extends StatelessWidget {
       return ProfileAvatar(user: notification.user, radius: 20);
     }
     final cover = asJsonMap(notification.media?['coverImage'])?['large'] as String?;
-    final placeholder = Container(
-      height: 56,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Icon(kind == InboxKind.mediaDeletion ? Icons.delete_outline : Icons.movie_outlined,
-          size: 20, color: Colors.grey),
-    );
-    if (cover == null) return placeholder;
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
-      child: CachedNetworkImage(
-        imageUrl: cover,
+      child: AppImage(
+        url: cover,
+        cacheWidth: 80,
         width: 40,
         height: 56,
-        fit: BoxFit.cover,
-        memCacheWidth: 80,
-        errorWidget: (_, _, _) => placeholder,
+        placeholder: Icon(kind == InboxKind.mediaDeletion ? Icons.delete_outline : Icons.movie_outlined,
+            size: 20, color: Colors.grey),
       ),
     );
   }
