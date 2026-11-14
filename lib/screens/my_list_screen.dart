@@ -24,6 +24,9 @@ import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/option_sheet.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/entry_editor/entry_editor_sheet.dart';
+import '../widgets/motion/swipe_action.dart';
+import '../widgets/motion/pressable.dart';
+import 'settings_screen.dart';
 import '../services/notification_service.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
@@ -184,32 +187,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        leading: GestureDetector(
-          onTap: () => MainNavigation.navigateToTab(4),
-          child: Padding(
-            padding: const EdgeInsets.only(left: 16),
-            child: Center(
-              child: SizedBox(
-                width: 32,
-                height: 32,
-                child: ClipOval(
-                  child: avatar != null
-                      ? CachedNetworkImage(
-                          imageUrl: avatar,
-                          width: 32,
-                          height: 32,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 64,
-                        )
-                      : Container(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          child: const Icon(Icons.person, size: 16, color: Colors.grey),
-                        ),
-                ),
-              ),
-            ),
-          ),
-        ),
+        leading: _ProfileAvatarButton(avatar: avatar, name: auth.user?['name'] as String?, lang: lang),
         title: Text(title,
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         actions: [
@@ -972,70 +950,19 @@ class _SwipeableRowState extends State<_SwipeableRow> {
     final progressSuffix =
         '${total != null ? ' / $total' : ''} ${widget.type == 'ANIME' ? tr('episodes', lang) : tr('chapters', lang)}';
 
-    return Dismissible(
-      key: widget.key ?? ValueKey(id),
-      confirmDismiss: (direction) async {
-        if (direction == DismissDirection.startToEnd) {
-          widget.onAddEpisode();
-          return false; // don't dismiss, just trigger the action
-        } else {
-          widget.onRemove();
-          return false;
-        }
-      },
-      background: Container(
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.only(left: 24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [const Color(0xFF4CAF50).withValues(alpha: 0.9), const Color(0xFF4CAF50).withValues(alpha: 0.0)],
-            stops: const [0.0, 0.8],
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(top: 2),
-              child: Icon(Icons.add, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              unitLabel,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
+    // A quarter of the row is enough: right adds one, left takes one away.
+    return SwipeAction(
+      startToEnd: SwipeActionSide(
+        color: const Color(0xFF4CAF50),
+        icon: Icons.add,
+        label: unitLabel,
+        onTriggered: widget.onAddEpisode,
       ),
-      secondaryBackground: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [const Color(0xFFF44336).withValues(alpha: 0.0), const Color(0xFFF44336).withValues(alpha: 0.9)],
-            stops: const [0.2, 1.0],
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              unitLabel,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(width: 6),
-            const Icon(Icons.remove, color: Colors.white, size: 20),
-          ],
-        ),
+      endToStart: SwipeActionSide(
+        color: const Color(0xFFF44336),
+        icon: Icons.remove,
+        label: unitLabel,
+        onTriggered: widget.onRemove,
       ),
       child: Container(
         color: Theme.of(context).scaffoldBackgroundColor,
@@ -1658,6 +1585,81 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The user's avatar at the top left. A tap opens the profile, which grows
+/// out of this corner; holding it offers the profile and settings.
+class _ProfileAvatarButton extends StatelessWidget {
+  const _ProfileAvatarButton({required this.avatar, required this.name, required this.lang});
+
+  final String? avatar;
+  final String? name;
+  final String lang;
+
+  static const _profileTab = 4;
+
+  void _openProfile() => MainNavigation.navigateToTab(_profileTab, from: Alignment.topLeft);
+
+  void _showMenu(BuildContext context) {
+    mediumHaptic();
+    showOptionSheet<String>(
+      context: context,
+      title: name ?? tr('nav_profile', lang),
+      options: const ['profile', 'settings'],
+      labelOf: (option) => tr(option == 'profile' ? 'nav_profile' : 'settings', lang),
+      iconOf: (option) => option == 'profile' ? Icons.person_outline_rounded : Icons.settings_outlined,
+      current: '',
+      onSelected: (option) {
+        if (option == 'profile') {
+          _openProfile();
+        } else {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+        }
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    final picture = avatar;
+    return Semantics(
+      button: true,
+      label: tr('nav_profile', lang),
+      excludeSemantics: true,
+      child: Pressable(
+        pressedScale: 0.85,
+        onTap: () {
+          lightHaptic();
+          _openProfile();
+        },
+        onLongPress: () => _showMenu(context),
+        child: Padding(
+          padding: const EdgeInsets.only(left: 16),
+          child: Center(
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: accent.withValues(alpha: 0.7), width: 1.5),
+              ),
+              child: ClipOval(
+                child: SizedBox.square(
+                  dimension: 30,
+                  child: picture != null
+                      ? CachedNetworkImage(imageUrl: picture, fit: BoxFit.cover, memCacheWidth: 64)
+                      : ColoredBox(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          child: const Icon(Icons.person, size: 16, color: Colors.grey),
+                        ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

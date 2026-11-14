@@ -22,14 +22,17 @@ const recentSearchesPrefsKey = 'recent_searches';
 /// Selected genres in the filters sheet, as search has always shown them.
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  const SearchScreen({super.key, this.service});
+
+  /// Talks to AniList; tests pass one with a mock client.
+  final AniListService? service;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
 class _SearchScreenState extends State<SearchScreen> {
-  final _service = AniListService();
+  late final _service = widget.service ?? AniListService();
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   Timer? _debounce;
@@ -46,7 +49,10 @@ class _SearchScreenState extends State<SearchScreen> {
   List<String> _recentSearches = [];
   static const _prefsKey = recentSearchesPrefsKey;
 
-  String _contentType = 'ANIME';
+  /// Anime and manga together, AniList's answer when no type is asked for.
+  static const _allTypes = 'ALL';
+
+  String _contentType = _allTypes;
   Set<String> _selectedGenres = {};
   String _sort = 'POPULARITY_DESC';
 
@@ -142,9 +148,12 @@ class _SearchScreenState extends State<SearchScreen> {
     });
     final genres = _selectedGenres.isEmpty ? null : _selectedGenres.toList();
     try {
-      final results = _contentType == 'ANIME'
-          ? await _service.searchAnime(query, genres: genres, sort: _sort)
-          : await _service.searchManga(query, genres: genres, sort: _sort);
+      final results = await _service.searchMedia(
+        query,
+        type: _contentType == _allTypes ? null : _contentType,
+        genres: genres,
+        sort: _sort,
+      );
       if (!mounted) return;
       // The service returns [] on HTTP errors; don't remember that for the
       // whole session.
@@ -167,6 +176,12 @@ class _SearchScreenState extends State<SearchScreen> {
       });
     }
   }
+
+  static String _typeLabel(String type, String lang) => switch (type) {
+        'ANIME' => tr('nav_anime', lang),
+        'MANGA' => tr('nav_manga', lang),
+        _ => tr('search_all_types', lang),
+      };
 
   void _onContentTypeChanged(String type) {
     if (type == _contentType) return;
@@ -283,12 +298,12 @@ class _SearchScreenState extends State<SearchScreen> {
                 // Content type pill
                 _pickerButton(
                   name: tr('search_content_type', lang),
-                  value: tr(_contentType == 'ANIME' ? 'nav_anime' : 'nav_manga', lang),
+                  value: _typeLabel(_contentType, lang),
                   onTap: () => showOptionSheet<String>(
                     context: context,
                     title: tr('search_content_type', lang),
-                    options: const ['ANIME', 'MANGA'],
-                    labelOf: (v) => tr(v == 'ANIME' ? 'nav_anime' : 'nav_manga', lang),
+                    options: const [_allTypes, 'ANIME', 'MANGA'],
+                    labelOf: (type) => _typeLabel(type, lang),
                     current: _contentType,
                     onSelected: _onContentTypeChanged,
                   ),
@@ -302,7 +317,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          tr(_contentType == 'ANIME' ? 'nav_anime' : 'nav_manga', lang),
+                          _typeLabel(_contentType, lang),
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
                         ),
                         const SizedBox(width: 4),

@@ -265,8 +265,10 @@ class MainNavigation extends StatefulWidget {
 
   static final globalKey = GlobalKey<_MainNavigationState>();
 
-  static void navigateToTab(int index) {
-    globalKey.currentState?._setTab(index);
+  /// Opens the tab at [index]. [from] is where it was asked from on screen
+  /// (e.g. the avatar's corner): the tab then grows out of that point.
+  static void navigateToTab(int index, {Alignment? from}) {
+    globalKey.currentState?._setTab(index, from: from);
   }
 
   @override
@@ -285,7 +287,11 @@ class _MainNavigationState extends State<MainNavigation> {
     _visited = {_currentIndex};
   }
 
-  void _setTab(int index) => setState(() {
+  /// Where the open tab was opened from, for its entrance.
+  Alignment? _openedFrom;
+
+  void _setTab(int index, {Alignment? from}) => setState(() {
+    _openedFrom = from;
     _currentIndex = index;
     _visited.add(index);
   });
@@ -316,7 +322,11 @@ class _MainNavigationState extends State<MainNavigation> {
         children: List.generate(
           _screens.length,
           (i) => _visited.contains(i)
-              ? TabFadeThrough(active: i == _currentIndex, child: _screens[i])
+              ? TabFadeThrough(
+                  active: i == _currentIndex,
+                  origin: i == _currentIndex ? _openedFrom : null,
+                  child: _screens[i],
+                )
               : const SizedBox.shrink(),
         ),
       ),

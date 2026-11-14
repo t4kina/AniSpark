@@ -8,10 +8,14 @@ import '../../theme/app_motion.dart';
 /// appears at once. A hidden tab's animations (e.g. a loading shimmer) are
 /// paused, since an IndexedStack keeps them ticking for nobody.
 class TabFadeThrough extends StatefulWidget {
-  const TabFadeThrough({super.key, required this.active, required this.child});
+  const TabFadeThrough({super.key, required this.active, required this.child, this.origin});
 
   final bool active;
   final Widget child;
+
+  /// Where the tab was opened from (e.g. the avatar in a corner): it then
+  /// grows out of that point instead of the usual hint of a zoom.
+  final Alignment? origin;
 
   @override
   State<TabFadeThrough> createState() => _TabFadeThroughState();
@@ -24,7 +28,10 @@ class _TabFadeThroughState extends State<TabFadeThrough> with SingleTickerProvid
     value: widget.active ? 1 : 0,
   );
   late final Animation<double> _progress = CurvedAnimation(parent: _controller, curve: AppMotion.enter);
-  late final Animation<double> _scale = Tween(begin: 0.98, end: 1.0).animate(_progress);
+
+  /// The usual hint of a zoom, and the bigger one out of an [TabFadeThrough.origin].
+  static const _hintScale = 0.98;
+  static const _originScale = 0.9;
 
   @override
   void didUpdateWidget(TabFadeThrough oldWidget) {
@@ -48,7 +55,8 @@ class _TabFadeThroughState extends State<TabFadeThrough> with SingleTickerProvid
     return FadeTransition(
       opacity: _progress,
       child: ScaleTransition(
-        scale: _scale,
+        alignment: widget.origin ?? Alignment.center,
+        scale: Tween(begin: widget.origin == null ? _hintScale : _originScale, end: 1.0).animate(_progress),
         // Inside the transitions, so the fade-in itself is never paused.
         child: TickerMode(enabled: widget.active, child: widget.child),
       ),

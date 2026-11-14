@@ -220,7 +220,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                   ),
                 ),
                 actions: [
-                  ProfileCard.primaryButton(
+                  // Two counts side by side, so both glass: white is for the
+                  // one action a card leads with (Follow on a friend's).
+                  ProfileCard.secondaryButton(
                     label: '$_followersCount ${tr('followers', lang)}',
                     onPressed: () => _showFollowSheet(context, tr('followers', lang)),
                   ),
@@ -938,52 +940,77 @@ class _FollowSheetState extends State<_FollowSheet> {
     if (mounted) setState(() { _users = result; _loading = false; });
   }
 
+  /// The most of the screen the sheet takes; past it the list scrolls.
+  static const _maxHeightFraction = 0.7;
+
+  /// Room for the spinner or "nobody here" while there's no list.
+  static const _placeholderHeight = 160.0;
+
+  /// Like the app's other pickers (the Sort sheet): as tall as its people,
+  /// up to [_maxHeightFraction] of the screen, and a drag scrolls the list
+  /// inside it rather than raising the whole sheet.
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final lang = context.watch<SettingsProvider>().language;
-    return DraggableScrollableSheet(
-      initialChildSize: 0.6,
-      minChildSize: 0.4,
-      maxChildSize: 1,
-      builder: (_, scrollController) => Container(
+    final Widget body;
+    if (_loading) {
+      body = const SizedBox(height: _placeholderHeight, child: Center(child: CircularProgressIndicator()));
+    } else if (_users == null || _users!.isEmpty) {
+      body = SizedBox(
+        height: _placeholderHeight,
+        child: Center(
+          child: Text(tr('profile_nobody_here', lang),
+              style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))),
+        ),
+      );
+    } else {
+      body = Flexible(
+        child: SheetListSurface(
+          child: ListView.builder(
+            shrinkWrap: true,
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            itemCount: _users!.length,
+            itemBuilder: (_, i) => _UserTile(user: _users![i]),
+          ),
+        ),
+      );
+    }
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFraction),
+      child: Container(
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 12, bottom: 8),
-              child: Container(
-                width: 36, height: 4,
-                decoration: BoxDecoration(
-                  color: cs.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
+        child: SafeArea(
+          top: false,
+          child: AnimatedSize(
+            duration: AppMotion.of(context, AppMotion.short),
+            curve: AppMotion.standard,
+            alignment: Alignment.bottomCenter,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 8),
+                  child: Container(
+                    width: 36, height: 4,
+                    decoration: BoxDecoration(
+                      color: cs.outlineVariant,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
                 ),
-              ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                  child: Text(widget.title,
+                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                ),
+                body,
+              ],
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: Text(widget.title,
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-            ),
-            Expanded(
-              child: _loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : (_users == null || _users!.isEmpty)
-                      ? Center(child: Text(tr('profile_nobody_here', lang),
-                          style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))))
-                      : SheetListSurface(
-                          child: ListView.builder(
-                            controller: scrollController,
-                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                            itemCount: _users!.length,
-                            itemBuilder: (_, i) => _UserTile(user: _users![i]),
-                          ),
-                        ),
-            ),
-          ],
+          ),
         ),
       ),
     );
