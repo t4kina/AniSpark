@@ -628,6 +628,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
+      // Dragged all the way up it stops under the status bar, with nothing
+      // behind it showing above.
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _UserListSheet(
         userId: widget.userId,
@@ -727,7 +730,7 @@ class _UserListSheetState extends State<_UserListSheet>
     return DraggableScrollableSheet(
       initialChildSize: 0.75,
       minChildSize: 0.4,
-      maxChildSize: 0.95,
+      maxChildSize: 1,
       builder: (_, scrollController) => Container(
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,

@@ -196,6 +196,8 @@ class _SearchScreenState extends State<SearchScreen> {
       context: context,
       backgroundColor: Theme.of(context).colorScheme.surface,
       isScrollControlled: true,
+      // Dragged all the way up it stops under the status bar.
+      useSafeArea: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),

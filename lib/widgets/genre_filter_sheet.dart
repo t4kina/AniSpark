@@ -166,7 +166,7 @@ class _GenreFilterSheetState extends State<GenreFilterSheet> {
     return DraggableScrollableSheet(
       expand: false,
       initialChildSize: 0.7,
-      maxChildSize: 0.95,
+      maxChildSize: 1,
       builder: (_, scrollCtrl) => Column(
         children: [
           // Header
