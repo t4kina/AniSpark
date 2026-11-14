@@ -24,6 +24,7 @@ import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/option_sheet.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/entry_editor/entry_editor_sheet.dart';
+import '../widgets/motion/swipe_action.dart';
 import '../services/notification_service.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
@@ -972,70 +973,19 @@ class _SwipeableRowState extends State<_SwipeableRow> {
     final progressSuffix =
         '${total != null ? ' / $total' : ''} ${widget.type == 'ANIME' ? tr('episodes', lang) : tr('chapters', lang)}';
 
-    return Dismissible(
-      key: widget.key ?? ValueKey(id),
-      confirmDismiss: (direction) async {
-        if (direction == DismissDirection.startToEnd) {
-          widget.onAddEpisode();
-          return false; // don't dismiss, just trigger the action
-        } else {
-          widget.onRemove();
-          return false;
-        }
-      },
-      background: Container(
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.only(left: 24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [const Color(0xFF4CAF50).withValues(alpha: 0.9), const Color(0xFF4CAF50).withValues(alpha: 0.0)],
-            stops: const [0.0, 0.8],
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Padding(
-              padding: EdgeInsets.only(top: 2),
-              child: Icon(Icons.add, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              unitLabel,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-          ],
-        ),
+    // A quarter of the row is enough: right adds one, left takes one away.
+    return SwipeAction(
+      startToEnd: SwipeActionSide(
+        color: const Color(0xFF4CAF50),
+        icon: Icons.add,
+        label: unitLabel,
+        onTriggered: widget.onAddEpisode,
       ),
-      secondaryBackground: Container(
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [const Color(0xFFF44336).withValues(alpha: 0.0), const Color(0xFFF44336).withValues(alpha: 0.9)],
-            stops: const [0.2, 1.0],
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              unitLabel,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
-            const SizedBox(width: 6),
-            const Icon(Icons.remove, color: Colors.white, size: 20),
-          ],
-        ),
+      endToStart: SwipeActionSide(
+        color: const Color(0xFFF44336),
+        icon: Icons.remove,
+        label: unitLabel,
+        onTriggered: widget.onRemove,
       ),
       child: Container(
         color: Theme.of(context).scaffoldBackgroundColor,
