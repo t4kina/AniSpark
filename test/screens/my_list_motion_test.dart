@@ -86,7 +86,7 @@ void main() {
       providers: [
         Provider.value(value: cache),
         ChangeNotifierProvider<AuthService>.value(
-          value: FakeAuthService(fakeToken: 'token', fakeUser: {'id': 7}),
+          value: FakeAuthService(fakeToken: 'token', fakeUser: {'id': 7, 'name': 'Faye'}),
         ),
         ChangeNotifierProvider.value(value: store),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
@@ -102,6 +102,18 @@ void main() {
       )
       .position
       .pixels;
+
+  testWidgets('holding the avatar offers the profile and settings', (tester) async {
+    await pumpList(tester);
+
+    await tester.longPress(find.bySemanticsLabel('Profile'));
+    await tester.pumpAndSettle();
+
+    expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Faye')), findsOneWidget,
+        reason: 'titled with the user\'s name');
+    expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Profile')), findsOneWidget);
+    expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Settings')), findsOneWidget);
+  });
 
   testWidgets('cover hero tags are unique, even for a media also in a custom list', (tester) async {
     lists = [
