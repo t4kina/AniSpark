@@ -220,7 +220,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                   ),
                 ),
                 actions: [
-                  ProfileCard.primaryButton(
+                  // Two counts side by side, so both glass: white is for the
+                  // one action a card leads with (Follow on a friend's).
+                  ProfileCard.secondaryButton(
                     label: '$_followersCount ${tr('followers', lang)}',
                     onPressed: () => _showFollowSheet(context, tr('followers', lang)),
                   ),
