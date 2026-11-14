@@ -145,6 +145,18 @@ void main() {
     expect(rect.right, lessThanOrEqualTo(screenWidth), reason: 'today is visible without scrolling');
   });
 
+  testWidgets('the activity legend has room above the genre cards', (tester) async {
+    await _pumpProfile(
+      tester,
+      _StatsAuth(scoreFormat: 'POINT_10_DECIMAL', animeScores: const []),
+    );
+
+    final legend = tester.getRect(find.text('More'));
+    final genres = tester.getRect(
+        find.ancestor(of: find.text('ANIME GENRES'), matching: find.byType(Container)).last);
+    expect(genres.top - legend.bottom, greaterThanOrEqualTo(24));
+  });
+
   testWidgets('eras are listed newest first with their counts', (tester) async {
     await _pumpProfile(
       tester,
