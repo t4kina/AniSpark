@@ -23,6 +23,16 @@ abstract final class AppMotion {
   /// Elements that move and stay on screen.
   static const standard = Easing.standard;
 
+  /// A spring for whatever follows a finger and is let go: quick and soft,
+  /// with barely an overshoot. Unlike a curve it carries on at the speed
+  /// the gesture ended with.
+  static const snap = SpringDescription(mass: 1, stiffness: 420, damping: 32);
+
+  /// A livelier spring for small things that should feel alive when
+  /// released, such as a pressed card or a button: one visible rebound.
+  static const bounce = SpringDescription(mass: 1, stiffness: 520, damping: 22);
+
+
   /// Whether the user asked the system to remove animations.
   static bool reduced(BuildContext context) => MediaQuery.maybeDisableAnimationsOf(context) ?? false;
 
