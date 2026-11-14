@@ -221,50 +221,33 @@ class AniListService {
     }
   ''');
 
-  Future<List<dynamic>> searchAnime(
+  /// Media matching [search]: of [type] (`ANIME` or `MANGA`), or both when
+  /// it's null (AniList skips a filter whose variable isn't sent).
+  Future<List<dynamic>> searchMedia(
     String search, {
+    String? type,
     List<String>? genres,
     String? sort,
   }) {
-    final variables = <String, dynamic>{'search': search};
+    final variables = <String, dynamic>{
+      'search': search,
+      'sort': [sort ?? 'SEARCH_MATCH'],
+      'type': ?type,
+    };
     if (genres != null && genres.isNotEmpty) variables['genres'] = genres;
-    final sortValue = sort ?? 'SEARCH_MATCH';
     return _query('''
-      query(\$search: String, \$genres: [String], \$sort: [MediaSort]) {
+      query(\$search: String, \$type: MediaType, \$genres: [String], \$sort: [MediaSort]) {
         Page(page: 1, perPage: 30) {
-          media(search: \$search, type: ANIME,
+          media(search: \$search, type: \$type,
                 genre_in: \$genres, sort: \$sort) {
-            id title { romaji english native }
+            id type title { romaji english native }
             coverImage { large } bannerImage
-            episodes averageScore genres status format
+            episodes chapters averageScore genres status format
             description(asHtml: false)
           }
         }
       }
-    ''', {...variables, 'sort': [sortValue]});
-  }
-
-  Future<List<dynamic>> searchManga(
-    String search, {
-    List<String>? genres,
-    String? sort,
-  }) {
-    final variables = <String, dynamic>{'search': search};
-    if (genres != null && genres.isNotEmpty) variables['genres'] = genres;
-    final sortValue = sort ?? 'SEARCH_MATCH';
-    return _query('''
-      query(\$search: String, \$genres: [String], \$sort: [MediaSort]) {
-        Page(page: 1, perPage: 30) {
-          media(search: \$search, type: MANGA,
-                genre_in: \$genres, sort: \$sort) {
-            id title { romaji english native }
-            coverImage { large } bannerImage
-            chapters averageScore genres status format
-            description(asHtml: false)
-          }
-        }
-      }
-    ''', {...variables, 'sort': [sortValue]});
+    ''', variables);
   }
 
   Future<Map<String, dynamic>?> getAnimeDetail(int id, [String? token]) async {
