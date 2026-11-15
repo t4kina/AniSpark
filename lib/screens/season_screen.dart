@@ -9,6 +9,7 @@ import '../services/discover_api.dart';
 import '../utils/anime_season.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/app_refresh_indicator.dart';
+import '../widgets/media_preview.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
@@ -508,6 +509,7 @@ class _SeasonTile extends StatelessWidget {
     final heroTag = id == null ? null : coverHeroTag(heroScope, id);
 
     return Pressable(
+      onLongPress: id == null ? null : () => showMediaPreview(context, media: media),
       onTap: id == null
           ? null
           : () => Navigator.push(

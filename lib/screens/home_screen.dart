@@ -13,6 +13,7 @@ import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/app_refresh_indicator.dart';
 import '../widgets/anime_card.dart';
+import '../widgets/media_preview.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
@@ -473,6 +474,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final heroTag = id == null ? null : coverHeroTag('home-week-$i', id);
 
           return Pressable(
+            onLongPress: id == null ? null : () => showMediaPreview(ctx, media: media),
             onTap: id != null
                 ? () => Navigator.push(
                       ctx,

@@ -7,6 +7,7 @@ import '../services/anilist_service.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/app_sheet.dart';
 import '../widgets/genre_filter_sheet.dart';
+import '../widgets/media_preview.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
@@ -550,6 +551,7 @@ class _ResultCard extends StatelessWidget {
     return Pressable(
       // A full-width card only needs a hint of a press.
       pressedScale: 0.98,
+      onLongPress: id == null ? null : () => showMediaPreview(context, media: data as Map<String, dynamic>),
       onTap: id == null
           ? null
           : () => Navigator.push(

@@ -5,9 +5,11 @@ import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/widgets/anime_card.dart';
+import 'package:anispark/widgets/app_button.dart';
 import 'package:anispark/widgets/entry_editor/entry_editor_fields.dart' show UnknownValue;
 import 'package:anispark/utils/translations.dart';
 import 'package:anispark/widgets/entry_editor/entry_editor_sheet.dart';
+import 'package:anispark/widgets/media_preview.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -93,7 +95,7 @@ void main() {
 
   tearDown(() => store.dispose());
 
-  testWidgets('My List: long-press opens the editor with the row\'s entry', (tester) async {
+  testWidgets('My List: holding a row previews it, and editing from there has the row\'s entry', (tester) async {
     tester.view.physicalSize = const Size(800, 2000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -104,6 +106,15 @@ void main() {
     await tester.longPress(find.text('Vagabond'));
     await tester.pumpAndSettle();
 
+    expect(find.byType(MediaPreview), findsOneWidget);
+    expect(find.byType(EntryEditorSheet), findsNothing);
+    expect(find.widgetWithText(AppButton, tr('tooltip_edit_entry', 'English')), findsOneWidget,
+        reason: 'a row of the list is known to be in it');
+
+    await tester.tap(find.byKey(const ValueKey('preview-edit')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(MediaPreview), findsNothing);
     expect(find.byType(EntryEditorSheet), findsOneWidget);
     expect(tester.widget<ChoiceChip>(find.byKey(const ValueKey('entry-editor-status-CURRENT'))).selected, isTrue);
     final progress = find.descendant(
@@ -150,12 +161,15 @@ void main() {
           cache: cache,
         );
 
-    testWidgets('does nothing when logged out', (tester) async {
+    testWidgets('logged out it previews the media, with nothing to add it with', (tester) async {
       await tester.pumpWidget(cardApp(FakeAuthService()));
 
       await tester.longPress(find.byType(AnimeCard));
       await tester.pumpAndSettle();
 
+      expect(find.byType(MediaPreview), findsOneWidget);
+      expect(find.byKey(const ValueKey('preview-open')), findsOneWidget);
+      expect(find.byKey(const ValueKey('preview-edit')), findsNothing);
       expect(find.byType(EntryEditorSheet), findsNothing);
     });
 
@@ -178,12 +192,18 @@ void main() {
       semantics.dispose();
     });
 
-    testWidgets('opens the editor to look the media up when logged in', (tester) async {
+    testWidgets('logged in, the preview opens the editor, which looks the media up', (tester) async {
       await tester.pumpWidget(cardApp(_loggedIn()));
 
       await tester.longPress(find.byType(AnimeCard));
       await tester.pumpAndSettle();
+      expect(find.byType(MediaPreview), findsOneWidget);
+      expect(find.byType(EntryEditorSheet), findsNothing);
 
+      await tester.tap(find.byKey(const ValueKey('preview-edit')));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(MediaPreview), findsNothing);
       expect(find.byType(EntryEditorSheet), findsOneWidget);
       // Nothing can be saved before AniList says whether it's in the list.
       expect(find.byKey(const ValueKey('entry-editor-save')), findsNothing);

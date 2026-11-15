@@ -15,6 +15,7 @@ import '../theme/app_motion.dart';
 import '../widgets/app_refresh_indicator.dart';
 import '../widgets/app_sheet.dart';
 import '../widgets/app_button.dart';
+import '../widgets/media_preview.dart';
 import '../widgets/motion/animated_count.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
@@ -868,7 +869,10 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                           )),
                 )
             : null,
-        onLongPress: widget.onEdit,
+        // Holding the row shows what it is; the editor is a tap from there.
+        onLongPress: id == null
+            ? widget.onEdit
+            : () => showMediaPreview(context, media: media, isManga: widget.type != 'ANIME', onEdit: widget.onEdit),
         onHighlightChanged: (pressed) => _pressed.value = pressed,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),

@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import '../utils/haptics.dart';
 import '../utils/translations.dart' show tr;
 import 'entry_editor/entry_editor_sheet.dart';
+import 'media_preview.dart';
 import 'motion/cover_hero.dart';
 import 'motion/pressable.dart';
 import 'motion/rounded_hero.dart';
@@ -32,9 +33,10 @@ class AnimeCard extends StatelessWidget {
   static const _scoreSize = 11.0;
   static const _lineHeight = 1.3;
 
-  /// Long-press quick add: opens the entry editor, which looks the media up
-  /// in the user's list (a new entry starts as Planning). Does nothing when
-  /// logged out.
+  /// Quick add, for screen readers (holding the card opens a preview that
+  /// offers it): opens the entry editor, which looks the media up in the
+  /// user's list (a new entry starts as Planning). Does nothing when logged
+  /// out.
   void _quickAdd(BuildContext context) {
     final data = animeData;
     if (data is! Map<String, dynamic> || !context.read<AuthService>().isLoggedIn) return;
@@ -68,7 +70,8 @@ class AnimeCard extends StatelessWidget {
                   builder: (_) => DetailScreen(animeId: id, heroTag: heroTag, initialCoverUrl: image),
                 ),
               ),
-      onLongPress: id == null ? null : () => _quickAdd(context),
+      // Holding it shows what it is before opening it (see MediaPreview).
+      onLongPress: id == null ? null : () => showMediaPreview(context, media: animeData as Map<String, dynamic>),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -114,8 +117,8 @@ class AnimeCard extends StatelessWidget {
         ],
       ),
     );
-    // Screen readers can't discover a long press, so quick add is also
-    // offered as a named action.
+    // Screen readers can't discover a long press, so what the preview
+    // offers is a named action for them.
     final quickAdd = tr('quick_add_action', lang);
     return Semantics(
       onLongPressHint: canQuickAdd ? quickAdd : null,
