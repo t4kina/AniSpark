@@ -47,8 +47,10 @@ Future<void> showOptionSheet<T>({
                         trailing: selected ? Icon(Icons.check, size: 18, color: color) : null,
                         onTap: () {
                           selectionHaptic();
+                          // The sheet goes first: an option may open a page,
+                          // and closing afterwards would close that page.
+                          Navigator.pop(ctx);
                           onSelected(opt);
-                          Navigator.pop(context);
                         },
                       );
                     });

@@ -2,6 +2,7 @@ import 'package:anispark/providers/media_list_store.dart';
 import 'package:anispark/providers/settings_provider.dart';
 import 'package:anispark/screens/completion_celebration.dart';
 import 'package:anispark/screens/my_list_screen.dart';
+import 'package:anispark/screens/settings_screen.dart';
 import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
@@ -13,6 +14,7 @@ import 'package:anispark/widgets/motion/staggered_entrance.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../helpers/fake_auth_service.dart';
 import '../helpers/memory_cache_store.dart';
@@ -116,6 +118,19 @@ void main() {
         reason: 'titled with the user\'s name');
     expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Profile')), findsOneWidget);
     expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Settings')), findsOneWidget);
+  });
+
+  testWidgets('settings in the avatar menu opens the settings', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await pumpList(tester);
+    await tester.longPress(find.bySemanticsLabel('Profile'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Settings')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
   });
 
   testWidgets('cover hero tags are unique, even for a media also in a custom list', (tester) async {
