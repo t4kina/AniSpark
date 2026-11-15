@@ -10,6 +10,7 @@ import '../utils/refresh_notifier.dart';
 import '../utils/review_text.dart';
 import '../utils/translations.dart' show tr;
 import '../widgets/motion/arrival_builder.dart';
+import '../widgets/motion/collapsing_title_bar.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pop_on_change.dart';
@@ -63,11 +64,18 @@ class _CharacterScreenState extends State<CharacterScreen> {
   bool _isFresh = false;
   // A second toggle sent before the first returns would flip it back.
   bool _togglingFav = false;
+  final _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
   }
 
   static CharacterDetail _decode(Object? json) =>
@@ -164,6 +172,12 @@ class _CharacterScreenState extends State<CharacterScreen> {
               child: _loading || (!arrived && widget.heroTag != null) ? _buildPlaceholder() : _buildContent(),
             ),
           ),
+          // The name, once the one over the photo has scrolled away.
+          CollapsingTitleBar(
+            controller: _scroll,
+            title: _data?.name.isNotEmpty == true ? _data!.name : widget.name ?? '',
+            revealAt: _photoHeight - _nameAbovePhotoFoot,
+          ),
           // 44px touch targets around 36px circles, so offsets are 4px smaller.
           Positioned(
             top: MediaQuery.of(context).padding.top + 2,
@@ -230,6 +244,10 @@ class _CharacterScreenState extends State<CharacterScreen> {
 
   /// Height of the photo at the top, under the status bar.
   static const _photoHeight = 340.0;
+
+  /// About how far above the foot of the photo the name starts, plus the
+  /// top bar: scrolled past it, the name is going under the bar.
+  static const _nameAbovePhotoFoot = 104.0;
 
   static const _photoCorners = BorderRadius.vertical(bottom: Radius.circular(24));
 
@@ -318,6 +336,7 @@ class _CharacterScreenState extends State<CharacterScreen> {
 
 
     return CustomScrollView(
+      controller: _scroll,
       slivers: [
         // ── Hero image card ──────────────────────────────────────────────
         SliverToBoxAdapter(child: _photoCard(image: image, name: name, nativeName: nativeName)),

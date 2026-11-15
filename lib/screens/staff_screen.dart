@@ -12,6 +12,7 @@ import '../utils/translations.dart';
 import '../widgets/load_error_view.dart';
 import '../widgets/detail/section_title.dart';
 import '../widgets/motion/arrival_builder.dart';
+import '../widgets/motion/collapsing_title_bar.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/rounded_hero.dart';
@@ -194,6 +195,12 @@ class _StaffScreenState extends State<StaffScreen> with PagedLoading {
           // A photo flying here lands on the placeholder: it stays until
           // the page has arrived.
           ArrivalBuilder(builder: (context, arrived) => FadeSwitcher(child: _body(lang, arrived: arrived))),
+          // The name, once the one under the portrait has scrolled away.
+          CollapsingTitleBar(
+            controller: _scroll,
+            title: _staff?.name.isNotEmpty == true ? _staff!.name : widget.name ?? '',
+            revealAt: _StaffHeader.nameTop - CollapsingTitleBar.height + 12,
+          ),
           // 44px touch target around a 36px circle, so the offset is 4px smaller.
           Positioned(
             top: MediaQuery.paddingOf(context).top + 2,
@@ -382,6 +389,10 @@ class _StaffHeader extends StatelessWidget {
   static const _portraitWidth = 124.0;
   static const _portraitHeight = 180.0;
   static const _backdropHeight = 210.0;
+
+  /// Where the name starts, below the status bar: under the back button,
+  /// the portrait and a gap.
+  static const nameTop = 48 + _portraitHeight + 16;
 
   /// Null while the page loads: the header then shows what it was opened
   /// with.

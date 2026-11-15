@@ -24,6 +24,7 @@ import '../utils/fuzzy_date.dart' show FuzzyDate, formatFuzzyDate;
 import '../widgets/entry_editor/entry_draft.dart' show entryStatusKey;
 import '../widgets/entry_editor/entry_editor_api.dart' show loadCustomListNames;
 import '../widgets/entry_editor/entry_editor_sheet.dart';
+import '../widgets/motion/collapsing_title_bar.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pop_on_change.dart';
@@ -267,6 +268,13 @@ class _DetailScreenState extends State<DetailScreen> {
                 ],
               ),
             ),
+            // The title, once the one under the cover has scrolled away.
+            CollapsingTitleBar(
+              controller: _scroll,
+              title: d == null ? '' : _titleOf(d, settings),
+              revealAt: _titleBarRevealAt - MediaQuery.paddingOf(context).top,
+              sideInset: _titleBarSideInset,
+            ),
             _buildOverlayButtons(context, d, settings.language),
           ],
         ),
@@ -331,6 +339,14 @@ class _DetailScreenState extends State<DetailScreen> {
   /// Steps into the page's entrance cascade: the title, the studio and the
   /// next episode come first, then the stats, then the sections under the
   /// header in order (see `StaggeredEntrance`).
+  /// Scrolled this far (less the status bar), the page title is going
+  /// under the top bar.
+  static const _titleBarRevealAt =
+      DetailHeader.bannerHeight + DetailHeader.coverTop - CollapsingTitleBar.height + 12;
+
+  /// Clear of the three buttons at the right; the title stays centred.
+  static const _titleBarSideInset = 148.0;
+
   static const _statsStep = 3;
   static const _bodyStep = _statsStep + 1;
 

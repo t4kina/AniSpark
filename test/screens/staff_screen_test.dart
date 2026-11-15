@@ -6,6 +6,7 @@ import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/people_api.dart';
 import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/motion/collapsing_title_bar.dart';
 import 'package:anispark/widgets/people/media_cover_tile.dart';
 import 'package:anispark/widgets/people/voiced_character_tile.dart';
 import 'package:anispark/widgets/skeletons.dart';
@@ -284,5 +285,23 @@ void main() {
       expect(find.text('Native Name'), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 600));
     });
+  });
+
+  testWidgets('scrolled past their name, the page shows it in a bar at the top', (tester) async {
+    tester.view.physicalSize = const Size(400, 500);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await pumpStaff(
+      tester,
+      apiAnswering((_) => _staff(characters: [for (var i = 1; i <= 6; i++) _voiced(i, 10 + i)])),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    final barName = find.descendant(of: find.byType(CollapsingTitleBar), matching: find.text('Kouichi Yamadera'));
+    expect(barName, findsNothing);
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+    await tester.pump();
+
+    expect(barName, findsOneWidget);
   });
 }

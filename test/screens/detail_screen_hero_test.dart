@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:anispark/screens/detail_screen.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/motion/collapsing_title_bar.dart';
 import 'package:anispark/widgets/motion/cover_hero.dart';
 import 'package:anispark/widgets/motion/staggered_entrance.dart';
 import 'package:anispark/widgets/skeletons.dart';
@@ -197,5 +198,30 @@ void main() {
       expect(opacity(tester, actions), 1);
       expect(tester.hasRunningAnimations, isFalse);
     });
+  });
+
+  testWidgets('scrolled past its title, the page shows it in a bar at the top', (tester) async {
+    tester.view.physicalSize = const Size(400, 400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final cache = ApiCache(MemoryCacheStore());
+    await cache.write('anon:media:1', _media());
+    await tester.pumpWidget(appWith(const DetailScreen(animeId: 1), cache: cache));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    final barTitle = find.descendant(of: find.byType(CollapsingTitleBar), matching: find.text('Cowboy Bebop'));
+    expect(barTitle, findsNothing);
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -450));
+    await tester.pump();
+
+    expect(barTitle, findsOneWidget);
+    expect(tester.getCenter(barTitle).dx, 200, reason: 'centred, clear of the buttons');
+    expect(find.byTooltip(tr('tooltip_back', 'English')), findsOneWidget, reason: 'the buttons stay over the bar');
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 450));
+    await tester.pump();
+    expect(barTitle, findsNothing);
   });
 }

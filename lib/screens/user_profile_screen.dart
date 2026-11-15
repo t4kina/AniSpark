@@ -10,6 +10,7 @@ import '../utils/score_utils.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/app_sheet.dart';
 import '../widgets/motion/arrival_builder.dart';
+import '../widgets/motion/collapsing_title_bar.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
@@ -63,11 +64,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   bool _isFollower = false;
   bool _togglingFollow = false;
   bool _bioExpanded = false;
+  final _scroll = ScrollController();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
   }
 
   /// Cache key for data that depends on who is looking (isFollowing etc.).
@@ -198,6 +206,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               child: _loading || (!arrived && widget.heroTag != null) ? _buildPlaceholder() : _buildContent(lang),
             ),
           ),
+          // Their name, once the one on the card has scrolled away.
+          CollapsingTitleBar(
+            controller: _scroll,
+            title: _profile?['name'] as String? ?? widget.name,
+            revealAt: _nameTop - CollapsingTitleBar.height + 12,
+          ),
           // 44px touch target around a 36px circle, so the offset is 4px smaller.
           Positioned(
             top: MediaQuery.of(context).padding.top + 2,
@@ -260,6 +274,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   /// Room for the back button above the card.
   static const _cardTopGap = 52.0;
 
+  /// About where the name is on the card, below the status bar: under the
+  /// gap, the card's padding and the avatar.
+  static const _nameTop = _cardTopGap + 122;
+
   /// The shape of the profile and, when the page was opened from an avatar,
   /// that avatar where the card will have it.
   Widget _buildPlaceholder() {
@@ -313,6 +331,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
     return CustomScrollView(
       key: const ValueKey('uprof-content'),
+      controller: _scroll,
       slivers: [
         // ── Who they are and their stats, on their banner ───────────
         SliverToBoxAdapter(
