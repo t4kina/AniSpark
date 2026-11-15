@@ -8,6 +8,8 @@ import '../../services/auth_service.dart';
 import '../../services/media_extras_api.dart';
 import '../../utils/score_utils.dart';
 import '../../utils/translations.dart';
+import '../motion/cover_hero.dart';
+import '../motion/rounded_hero.dart';
 import 'section_title.dart';
 import '../user_avatar.dart';
 
@@ -69,10 +71,18 @@ class _FollowingSectionState extends State<FollowingSection> {
     }
   }
 
+  /// The tag their avatar flies to their profile with.
+  String _heroTag(MiniUser user) => personHeroTag('detail-${widget.mediaId}-following', user.id);
+
   void _openProfile(MiniUser user) => Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => UserProfileScreen(userId: user.id, name: user.name, avatarUrl: user.avatarUrl),
+          builder: (_) => UserProfileScreen(
+            userId: user.id,
+            name: user.name,
+            avatarUrl: user.avatarUrl,
+            heroTag: _heroTag(user),
+          ),
         ),
       );
 
@@ -95,6 +105,7 @@ class _FollowingSectionState extends State<FollowingSection> {
             entry: entry,
             isManga: widget.isManga,
             scoreFormat: scoreFormat,
+            heroTag: _heroTag(entry.user),
             onTap: () => _openProfile(entry.user),
           ),
         if (_entries.length > _collapsedCount)
@@ -122,12 +133,14 @@ class _FollowingRow extends StatelessWidget {
     required this.entry,
     required this.isManga,
     required this.scoreFormat,
+    required this.heroTag,
     required this.onTap,
   });
 
   final FollowingEntry entry;
   final bool isManga;
   final String? scoreFormat;
+  final String heroTag;
   final VoidCallback onTap;
 
   /// "On episode 12" while it's in progress; nothing once completed or
@@ -149,7 +162,11 @@ class _FollowingRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              UserAvatar(url: entry.user.avatarUrl, size: 44),
+              RoundedHero(
+                tag: heroTag,
+                borderRadius: BorderRadius.circular(22),
+                child: UserAvatar(url: entry.user.avatarUrl, size: 44),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(

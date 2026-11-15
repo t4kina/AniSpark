@@ -71,6 +71,7 @@ class FavouriteCharacterCard extends StatelessWidget {
     final id = character['id'] as int?;
     final image = (character['image'] as Map?)?['medium'] as String?;
     final name = (character['name'] as Map?)?['full'] as String? ?? '';
+    final heroTag = id == null ? null : personHeroTag('favourite-characters', id);
     return Padding(
       padding: const EdgeInsets.only(right: 10),
       child: Pressable(
@@ -79,7 +80,7 @@ class FavouriteCharacterCard extends StatelessWidget {
             : () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => CharacterScreen(characterId: id, name: name, imageUrl: image),
+                    builder: (_) => CharacterScreen(characterId: id, name: name, imageUrl: image, heroTag: heroTag),
                   ),
                 ),
         child: SizedBox(
@@ -87,9 +88,10 @@ class FavouriteCharacterCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: AppImage(url: image, cacheWidth: 160, width: 80, height: 80),
+              SizedBox(
+                width: 80,
+                height: 80,
+                child: RoundedHero(tag: heroTag, child: AppImage(url: image, cacheWidth: 160)),
               ),
               const SizedBox(height: 4),
               Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),

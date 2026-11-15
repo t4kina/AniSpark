@@ -6,22 +6,24 @@ import '../../screens/staff_screen.dart';
 import '../../screens/studio_screen.dart';
 import '../../services/people_api.dart';
 
-/// Opens the page of [staff].
-void openStaff(BuildContext context, StaffRef staff) => Navigator.push(
+/// Opens the page of [staff]. With the [heroTag] of the photo that was
+/// tapped (see `personHeroTag`), that photo flies there.
+void openStaff(BuildContext context, StaffRef staff, {String? heroTag}) => Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => StaffScreen(staffId: staff.id, name: staff.name, imageUrl: staff.imageUrl),
+        builder: (_) => StaffScreen(staffId: staff.id, name: staff.name, imageUrl: staff.imageUrl, heroTag: heroTag),
       ),
     );
 
-/// Opens the page of [character].
-void openCharacter(BuildContext context, CharacterRef character) => Navigator.push(
+/// Opens the page of [character]; [heroTag] as in [openStaff].
+void openCharacter(BuildContext context, CharacterRef character, {String? heroTag}) => Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => CharacterScreen(
           characterId: character.id,
           name: character.name,
           imageUrl: character.imageUrl,
+          heroTag: heroTag,
         ),
       ),
     );

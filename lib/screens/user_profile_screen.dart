@@ -9,8 +9,10 @@ import '../utils/haptics.dart';
 import '../utils/score_utils.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/app_sheet.dart';
+import '../widgets/motion/arrival_builder.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
+import '../widgets/motion/rounded_hero.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/profile/affinity_card.dart';
 import '../widgets/profile/favourite_cards.dart';
@@ -18,6 +20,7 @@ import '../widgets/profile/profile_card.dart';
 import '../widgets/sheet_list_surface.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/state_message.dart';
+import '../widgets/user_avatar.dart';
 import 'detail_screen.dart';
 import '../widgets/load_error_view.dart';
 import '../widgets/app_image.dart';
@@ -27,6 +30,10 @@ class UserProfileScreen extends StatefulWidget {
   final String name;
   final String? avatarUrl;
 
+  /// Tag of the avatar that was tapped to open this page (see
+  /// `personHeroTag`), so it flies to the one on the card.
+  final String? heroTag;
+
   /// Talks to AniList; tests pass one with a mock client.
   final AniListService? service;
 
@@ -35,6 +42,7 @@ class UserProfileScreen extends StatefulWidget {
     required this.userId,
     required this.name,
     this.avatarUrl,
+    this.heroTag,
     this.service,
   });
 
@@ -183,11 +191,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          FadeSwitcher(
-            child: _loading
-                // Below the back button that floats over the page.
-                ? const ProfileSkeleton(key: ValueKey('uprof-loading'), topGap: 52)
-                : _buildContent(lang),
+          // An avatar flying here lands on the placeholder: it stays until
+          // the page has arrived.
+          ArrivalBuilder(
+            builder: (context, arrived) => FadeSwitcher(
+              child: _loading || (!arrived && widget.heroTag != null) ? _buildPlaceholder() : _buildContent(lang),
+            ),
           ),
           // 44px touch target around a 36px circle, so the offset is 4px smaller.
           Positioned(
@@ -248,6 +257,31 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
+  /// Room for the back button above the card.
+  static const _cardTopGap = 52.0;
+
+  /// The shape of the profile and, when the page was opened from an avatar,
+  /// that avatar where the card will have it.
+  Widget _buildPlaceholder() {
+    const skeleton = ProfileSkeleton(key: ValueKey('uprof-loading'), topGap: _cardTopGap);
+    final heroTag = widget.heroTag;
+    if (heroTag == null) return skeleton;
+    final avatar = ProfileCard.avatarRect(top: MediaQuery.paddingOf(context).top + _cardTopGap);
+    return Stack(
+      children: [
+        skeleton,
+        Positioned.fromRect(
+          rect: avatar,
+          child: RoundedHero(
+            tag: heroTag,
+            borderRadius: BorderRadius.circular(ProfileCard.avatarSize / 2),
+            child: UserAvatar(url: widget.avatarUrl, size: ProfileCard.avatarSize),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildContent(String lang) {
     final p = _profile;
     if (p == null) return LoadErrorView(key: const ValueKey('uprof-error'), onRetry: _retry);
@@ -286,13 +320,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             name: name,
             lang: lang,
             avatarUrl: avatar,
+            avatarHeroTag: widget.heroTag,
             bannerUrl: banner,
             animeStats: animeStats,
             mangaStats: mangaStats,
             scoreFormat: scoreFormatOf(auth.user),
             nameTag: _isFollower ? tr('uprof_follows_you', lang) : null,
-            // Room for the back button above the card.
-            topGap: 52,
+            topGap: _cardTopGap,
             onCountTap: (type) {
               final count = type == 'MANGA' ? totalManga : totalAnime;
               if (count > 0) _showListSheet(context, type);

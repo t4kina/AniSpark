@@ -269,6 +269,9 @@ class _NotificationTile extends StatelessWidget {
   const _NotificationTile({required this.notification, required this.lang});
 
   final InboxNotification notification;
+
+  /// Tells this notification's avatar apart from the person's other ones.
+  String get _heroScope => 'inbox-${notification.id}';
   final String lang;
 
   static final _placeholder = RegExp(r'\{(\w+)\}');
@@ -325,7 +328,9 @@ class _NotificationTile extends StatelessWidget {
             MaterialPageRoute(builder: (_) => ActivityThreadScreen(activityId: activityId)),
           );
     }
-    if (kind == InboxKind.following) return () => openUserProfile(context, notification.user);
+    if (kind == InboxKind.following) {
+      return () => openUserProfile(context, notification.user, heroScope: _heroScope);
+    }
     return null;
   }
 
@@ -375,7 +380,7 @@ class _NotificationTile extends StatelessWidget {
   Widget _leading(BuildContext context) {
     final kind = notification.kind;
     if (kind.isAboutActivity || kind == InboxKind.following) {
-      return ProfileAvatar(user: notification.user, radius: 20);
+      return ProfileAvatar(user: notification.user, radius: 20, heroScope: _heroScope);
     }
     final cover = asJsonMap(notification.media?['coverImage'])?['large'] as String?;
     return ClipRRect(

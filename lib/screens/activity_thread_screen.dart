@@ -415,6 +415,8 @@ class _ActivityHeader extends StatelessWidget {
   final String lang;
   final VoidCallback onToggleLike;
 
+  static const _authorHeroScope = 'thread-author';
+
   @override
   Widget build(BuildContext context) {
     final type = activity['type'] as String?;
@@ -429,7 +431,7 @@ class _ActivityHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              ProfileAvatar(user: author, radius: 22),
+              ProfileAvatar(user: author, radius: 22, heroScope: _authorHeroScope),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -438,7 +440,7 @@ class _ActivityHeader extends StatelessWidget {
                     Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        _UserName(user: author, style: nameStyle, lang: lang),
+                        _UserName(user: author, style: nameStyle, lang: lang, heroScope: _authorHeroScope),
                         if (recipient != null) ...[
                           const Icon(Icons.arrow_right, size: 20, color: Colors.grey),
                           _UserName(user: recipient, style: nameStyle, lang: lang),
@@ -482,15 +484,19 @@ class _ActivityHeader extends StatelessWidget {
 }
 
 class _UserName extends StatelessWidget {
-  const _UserName({required this.user, required this.style, required this.lang});
+  const _UserName({required this.user, required this.style, required this.lang, this.heroScope});
 
   final Map<String, dynamic>? user;
   final TextStyle style;
   final String lang;
 
+  /// The scope of their avatar beside the name, which then flies to the
+  /// profile (see `ProfileAvatar`).
+  final String? heroScope;
+
   @override
   Widget build(BuildContext context) => TappableUserName(
-        onTap: () => openUserProfile(context, user),
+        onTap: () => openUserProfile(context, user, heroScope: heroScope),
         child: Text(user?['name'] as String? ?? tr('feed_unknown', lang), style: style),
       );
 }
@@ -565,12 +571,14 @@ class _ReplyTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = asJsonMap(reply['user']);
+    // Tells this reply's avatar apart from the person's other replies.
+    final heroScope = 'thread-reply-${reply['id']}';
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ProfileAvatar(user: user, radius: 16),
+          ProfileAvatar(user: user, radius: 16, heroScope: heroScope),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -583,6 +591,7 @@ class _ReplyTile extends StatelessWidget {
                     _UserName(
                       user: user,
                       lang: lang,
+                      heroScope: heroScope,
                       style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 13,

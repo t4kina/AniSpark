@@ -24,6 +24,7 @@ import '../utils/fuzzy_date.dart' show FuzzyDate, formatFuzzyDate;
 import '../widgets/entry_editor/entry_draft.dart' show entryStatusKey;
 import '../widgets/entry_editor/entry_editor_api.dart' show loadCustomListNames;
 import '../widgets/entry_editor/entry_editor_sheet.dart';
+import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pop_on_change.dart';
 import '../widgets/motion/pressable.dart';
@@ -590,15 +591,19 @@ class _DetailScreenState extends State<DetailScreen> {
           _sectionPad(DetailSectionTitle(tr('characters', lang).toUpperCase())),
           _CharactersSection(
             characters: characters,
-            onTap: (id, name, img) => Navigator.push(context,
+            heroScope: 'detail-${widget.animeId}-characters',
+            onTap: (id, name, img, heroTag) => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => CharacterScreen(
-                    characterId: id, name: name, imageUrl: img))),
+                    characterId: id, name: name, imageUrl: img, heroTag: heroTag))),
           ),
           const Divider(height: 1),
         ],
 
         // ── Staff ── (brings its own title and divider; hides when empty)
-        StaffSection(edges: (d['staff']?['edges'] as List?) ?? const []),
+        StaffSection(
+          edges: (d['staff']?['edges'] as List?) ?? const [],
+          heroScope: 'detail-${widget.animeId}-staff',
+        ),
 
         // ── Recommended ──
         if (recommendations.isNotEmpty) ...[
@@ -1104,8 +1109,11 @@ class _TagsSectionState extends State<_TagsSection> {
 
 class _CharactersSection extends StatelessWidget {
   final List<Map<String, dynamic>> characters;
-  final void Function(int id, String name, String? imageUrl) onTap;
-  const _CharactersSection({required this.characters, required this.onTap});
+  final void Function(int id, String name, String? imageUrl, String heroTag) onTap;
+
+  /// The scope of the photos' hero tags (see `personHeroTag`).
+  final String heroScope;
+  const _CharactersSection({required this.characters, required this.heroScope, required this.onTap});
 
   String _roleLabel(String role, String lang) => switch (role) {
     'MAIN' => tr('detail_role_main', lang),
@@ -1130,19 +1138,22 @@ class _CharactersSection extends StatelessWidget {
           final name = node['name']?['full'] as String? ?? '';
           final img = node['image']?['medium'] as String?;
           final role = _roleLabel(edge['role'] as String? ?? '', lang);
+          // The index keeps the tags apart should a character be listed twice.
+          final heroTag = charId == null ? null : personHeroTag('$heroScope-$i', charId);
           return Padding(
             padding: const EdgeInsets.only(right: 10),
             child: Pressable(
-              onTap: charId != null ? () => onTap(charId, name, img) : null,
+              onTap: charId != null && heroTag != null ? () => onTap(charId, name, img, heroTag) : null,
               child: SizedBox(
                 width: 80,
                 child: Column(
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: SizedBox(
-                        width: 80,
-                        height: 110,
+                    SizedBox(
+                      width: 80,
+                      height: 110,
+                      child: RoundedHero(
+                        tag: heroTag,
+                        borderRadius: BorderRadius.circular(6),
                         child: AppImage(url: img, cacheWidth: 160),
                       ),
                     ),

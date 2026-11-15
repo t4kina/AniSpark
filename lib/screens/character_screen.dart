@@ -9,6 +9,7 @@ import '../utils/haptics.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/review_text.dart';
 import '../utils/translations.dart' show tr;
+import '../widgets/motion/arrival_builder.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pop_on_change.dart';
@@ -29,6 +30,9 @@ class CharacterScreen extends StatefulWidget {
   final String? name;
   final String? imageUrl;
 
+  /// Tag of the photo that was tapped to open this page (see
+  /// `personHeroTag`), so it flies to the photo here.
+  final String? heroTag;
   /// Replaces the AniList API, for tests.
   final PeopleApi? api;
 
@@ -40,6 +44,7 @@ class CharacterScreen extends StatefulWidget {
     required this.characterId,
     this.name,
     this.imageUrl,
+    this.heroTag,
     this.api,
     this.service,
   });
@@ -152,7 +157,13 @@ class _CharacterScreenState extends State<CharacterScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          FadeSwitcher(child: _loading ? _buildPlaceholder() : _buildContent()),
+          // A photo flying here lands on the placeholder: it stays until
+          // the page has arrived.
+          ArrivalBuilder(
+            builder: (context, arrived) => FadeSwitcher(
+              child: _loading || (!arrived && widget.heroTag != null) ? _buildPlaceholder() : _buildContent(),
+            ),
+          ),
           // 44px touch targets around 36px circles, so offsets are 4px smaller.
           Positioned(
             top: MediaQuery.of(context).padding.top + 2,
@@ -191,37 +202,20 @@ class _CharacterScreenState extends State<CharacterScreen> {
   /// Shaped like the loaded page (the photo with the name over its bottom,
   /// then the info pills), so cross-fading to it doesn't jump.
   Widget _buildPlaceholder() {
-    final topPadding = MediaQuery.of(context).padding.top;
     final cs = Theme.of(context).colorScheme;
-    Widget block(double width, double height, {double radius = 6, Color? color}) => Container(
+    Widget block(double width, double height, {double radius = 6}) => Container(
           width: width,
           height: height,
           decoration: BoxDecoration(
-            color: color ?? cs.surfaceContainerHighest,
+            color: cs.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(radius),
           ),
         );
-    final onPhoto = cs.surface.withValues(alpha: 0.6);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          height: _photoHeight + topPadding,
-          padding: const EdgeInsets.only(bottom: 24),
-          alignment: Alignment.bottomCenter,
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: const BorderRadius.vertical(bottom: Radius.circular(24)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              block(180, 24, color: onPhoto),
-              const SizedBox(height: 8),
-              block(110, 14, color: onPhoto),
-            ],
-          ),
-        ),
+        // The photo and name the page was opened with, where they will be.
+        _photoCard(image: widget.imageUrl, name: widget.name),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
           child: Wrap(
@@ -236,6 +230,71 @@ class _CharacterScreenState extends State<CharacterScreen> {
 
   /// Height of the photo at the top, under the status bar.
   static const _photoHeight = 340.0;
+
+  static const _photoCorners = BorderRadius.vertical(bottom: Radius.circular(24));
+
+  /// The photo under the status bar with the name over its foot. The page
+  /// shows it while it loads too, so a photo flying here lands on it.
+  Widget _photoCard({required String? image, required String? name, String? nativeName}) {
+    final cs = Theme.of(context).colorScheme;
+    final surface = cs.surface;
+    final topPadding = MediaQuery.paddingOf(context).top;
+    return Container(
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: _photoCorners,
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.14), blurRadius: 18, offset: const Offset(0, 5)),
+        ],
+      ),
+      child: Stack(
+        alignment: Alignment.bottomCenter,
+        children: [
+          SizedBox(
+            height: _photoHeight + topPadding,
+            width: double.infinity,
+            child: RoundedHero(
+              tag: widget.heroTag,
+              borderRadius: _photoCorners,
+              child: AppImage(url: image, cacheWidth: 600, alignment: Alignment.topCenter),
+            ),
+          ),
+          Positioned.fill(
+            child: ClipRRect(
+              borderRadius: _photoCorners,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, surface.withValues(alpha: 0.5), surface],
+                    stops: const [0.45, 0.75, 1.0],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  name ?? '',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                if (nativeName != null) ...[
+                  const SizedBox(height: 4),
+                  Text(nativeName, style: TextStyle(fontSize: 14, color: cs.onSurface.withValues(alpha: 0.55))),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildContent() {
     final d = _data;
@@ -257,85 +316,11 @@ class _CharacterScreenState extends State<CharacterScreen> {
     // Japanese first, then whoever dubs in the viewer's language.
     final voiceActors = sortVoiceActors(d.voiceActors, preferredLanguage: lang);
 
-    final surface = Theme.of(context).colorScheme.surface;
-    final topPadding = MediaQuery.of(context).padding.top;
-    final cs = Theme.of(context).colorScheme;
 
     return CustomScrollView(
       slivers: [
         // ── Hero image card ──────────────────────────────────────────────
-        SliverToBoxAdapter(
-          child: Container(
-            decoration: BoxDecoration(
-              color: surface,
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(24),
-                bottomRight: Radius.circular(24),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.14),
-                  blurRadius: 18,
-                  offset: const Offset(0, 5),
-                ),
-              ],
-            ),
-            child: Stack(
-              alignment: Alignment.bottomCenter,
-              children: [
-                ClipRRect(
-                  borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(24),
-                    bottomRight: Radius.circular(24),
-                  ),
-                  child: SizedBox(
-                    height: _photoHeight + topPadding,
-                    width: double.infinity,
-                    child: AppImage(url: image, cacheWidth: 600, alignment: Alignment.topCenter),
-                  ),
-                ),
-                Positioned.fill(
-                  child: ClipRRect(
-                    borderRadius: const BorderRadius.only(
-                      bottomLeft: Radius.circular(24),
-                      bottomRight: Radius.circular(24),
-                    ),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
-                          colors: [Colors.transparent, surface.withValues(alpha: 0.5), surface],
-                          stops: const [0.45, 0.75, 1.0],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(name,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              fontSize: 22, fontWeight: FontWeight.bold)),
-                      if (nativeName != null) ...[
-                        const SizedBox(height: 4),
-                        Text(nativeName,
-                            style: TextStyle(
-                                fontSize: 14,
-                                color: cs.onSurface.withValues(alpha: 0.55))),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+        SliverToBoxAdapter(child: _photoCard(image: image, name: name, nativeName: nativeName)),
 
         // ── Info pills ───────────────────────────────────────────────────
         if (gender != null || age != null || bloodType != null || dobStr != null)
@@ -393,11 +378,14 @@ class _CharacterScreenState extends State<CharacterScreen> {
                 separatorBuilder: (_, _) => const SizedBox(width: 4),
                 itemBuilder: (_, i) {
                   final actor = voiceActors[i];
+                  // The index keeps the tags apart should someone be listed twice.
+                  final heroTag = personHeroTag('character-${widget.characterId}-voices-$i', actor.id);
                   return PersonCard(
                     name: actor.name,
                     imageUrl: actor.imageUrl,
                     subtitle: voiceLanguageLabel(actor.language, lang),
-                    onTap: () => openStaff(context, actor),
+                    heroTag: heroTag,
+                    onTap: () => openStaff(context, actor, heroTag: heroTag),
                   );
                 },
               ),

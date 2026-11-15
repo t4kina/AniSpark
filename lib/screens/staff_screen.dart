@@ -11,8 +11,10 @@ import '../utils/review_text.dart';
 import '../utils/translations.dart';
 import '../widgets/load_error_view.dart';
 import '../widgets/detail/section_title.dart';
+import '../widgets/motion/arrival_builder.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/rounded_hero.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/people/expandable_text.dart';
 import '../widgets/people/info_pill.dart';
@@ -29,13 +31,17 @@ import '../widgets/app_image.dart';
 /// the characters they voiced and their staff credits, loading more of
 /// either list on scroll.
 class StaffScreen extends StatefulWidget {
-  const StaffScreen({super.key, required this.staffId, this.name, this.imageUrl, this.api});
+  const StaffScreen({super.key, required this.staffId, this.name, this.imageUrl, this.heroTag, this.api});
 
   final int staffId;
 
   /// Shown until the page loads (from the card that opened it).
   final String? name;
   final String? imageUrl;
+
+  /// Tag of the photo that was tapped to open this page (see
+  /// `personHeroTag`), so it flies to the portrait here.
+  final String? heroTag;
 
   /// Replaces the AniList API, for tests.
   final PeopleApi? api;
@@ -185,7 +191,9 @@ class _StaffScreenState extends State<StaffScreen> with PagedLoading {
     return Scaffold(
       body: Stack(
         children: [
-          FadeSwitcher(child: _body(lang)),
+          // A photo flying here lands on the placeholder: it stays until
+          // the page has arrived.
+          ArrivalBuilder(builder: (context, arrived) => FadeSwitcher(child: _body(lang, arrived: arrived))),
           // 44px touch target around a 36px circle, so the offset is 4px smaller.
           Positioned(
             top: MediaQuery.paddingOf(context).top + 2,
@@ -201,10 +209,11 @@ class _StaffScreenState extends State<StaffScreen> with PagedLoading {
     );
   }
 
-  Widget _body(String lang) {
+  Widget _body(String lang, {required bool arrived}) {
     final staff = _staff;
-    if (staff == null) {
-      return _loading ? const _StaffSkeleton() : LoadErrorView(onRetry: _retry);
+    if (staff == null && !_loading) return LoadErrorView(onRetry: _retry);
+    if (staff == null || (!arrived && widget.heroTag != null)) {
+      return _StaffSkeleton(name: widget.name, imageUrl: widget.imageUrl, heroTag: widget.heroTag);
     }
     final description = cleanReviewText(staff.description, spoilerPlaceholder: tr('review_spoiler', lang));
     final facts = _facts(staff, lang);
@@ -221,6 +230,7 @@ class _StaffScreenState extends State<StaffScreen> with PagedLoading {
               staff: staff,
               name: staff.name.isNotEmpty ? staff.name : widget.name ?? '',
               imageUrl: staff.imageUrl ?? widget.imageUrl,
+              heroTag: widget.heroTag,
             ),
           ),
           if (facts.isNotEmpty)
@@ -323,9 +333,13 @@ class _StaffScreenState extends State<StaffScreen> with PagedLoading {
                 final item = _characters.items[i];
                 // One media can be on several tiles (each character once).
                 final heroTag = coverHeroTag('staff-${widget.staffId}-voiced-${item.character.id}', item.media.id);
+                // And one character on several (each media once).
+                final characterTag =
+                    personHeroTag('staff-${widget.staffId}-voiced-${item.media.id}', item.character.id);
                 return VoicedCharacterTile(
                   item: item,
-                  onCharacterTap: () => openCharacter(context, item.character),
+                  onCharacterTap: () => openCharacter(context, item.character, heroTag: characterTag),
+                  characterHeroTag: characterTag,
                   onMediaTap: () => openMedia(context, item.media, heroTag: heroTag),
                   mediaHeroTag: heroTag,
                 );
@@ -363,22 +377,26 @@ class _StaffScreenState extends State<StaffScreen> with PagedLoading {
 
 /// Blurred photo backdrop with the portrait, name and occupations.
 class _StaffHeader extends StatelessWidget {
-  const _StaffHeader({required this.staff, required this.name, required this.imageUrl});
+  const _StaffHeader({required this.staff, required this.name, required this.imageUrl, this.heroTag});
 
   static const _portraitWidth = 124.0;
   static const _portraitHeight = 180.0;
   static const _backdropHeight = 210.0;
 
-  final StaffDetail staff;
+  /// Null while the page loads: the header then shows what it was opened
+  /// with.
+  final StaffDetail? staff;
   final String name;
   final String? imageUrl;
+  final String? heroTag;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final topPadding = MediaQuery.paddingOf(context).top;
     final imageUrl = this.imageUrl;
-    final nativeName = staff.nativeName;
+    final staff = this.staff;
+    final nativeName = staff?.nativeName;
     return Stack(
       children: [
         Positioned(
@@ -428,7 +446,8 @@ class _StaffHeader extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: ClipRRect(
+                  child: RoundedHero(
+                    tag: heroTag,
                     borderRadius: BorderRadius.circular(14),
                     child: Semantics(
                       image: true,
@@ -452,7 +471,7 @@ class _StaffHeader extends StatelessWidget {
                   style: TextStyle(fontSize: 14, color: cs.onSurface.withValues(alpha: 0.55)),
                 ),
               ],
-              if (staff.occupations.isNotEmpty) ...[
+              if (staff != null && staff.occupations.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
                   staff.occupations.join(' · '),
@@ -468,27 +487,35 @@ class _StaffHeader extends StatelessWidget {
   }
 }
 
-/// Placeholder shaped like the header and the start of a grid.
+/// The header with the name and photo the page was opened with, over a
+/// placeholder shaped like the facts and the start of a grid.
 class _StaffSkeleton extends StatelessWidget {
-  const _StaffSkeleton();
+  const _StaffSkeleton({required this.name, required this.imageUrl, required this.heroTag});
+
+  final String? name;
+  final String? imageUrl;
+  final String? heroTag;
 
   @override
-  Widget build(BuildContext context) => Skeleton(
-        child: SingleChildScrollView(
-          physics: const NeverScrollableScrollPhysics(),
-          padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + 48, 16, 0),
+  Widget build(BuildContext context) => SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        child: Column(
+          children: [
+            _StaffHeader(staff: null, name: name ?? '', imageUrl: imageUrl, heroTag: heroTag),
+            const Skeleton(child: _StaffBodySkeleton()),
+          ],
+        ),
+      );
+}
+
+class _StaffBodySkeleton extends StatelessWidget {
+  const _StaffBodySkeleton();
+
+  @override
+  Widget build(BuildContext context) => Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
           child: Column(
             children: [
-              const SkeletonBox(
-                width: _StaffHeader._portraitWidth,
-                height: _StaffHeader._portraitHeight,
-                radius: 14,
-              ),
-              const SizedBox(height: 16),
-              const SkeletonBox(width: 200, height: 20),
-              const SizedBox(height: 8),
-              const SkeletonBox(width: 120, height: 14),
-              const SizedBox(height: 20),
               const Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -513,6 +540,5 @@ class _StaffSkeleton extends StatelessWidget {
                 ),
             ],
           ),
-        ),
       );
 }

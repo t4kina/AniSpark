@@ -536,6 +536,9 @@ class _ActivityCard extends StatelessWidget {
     return _buildListActivity(context, user, username, createdAt);
   }
 
+  /// Tells this post's avatar apart from the author's other posts.
+  String get _heroScope => 'feed-${activity['id']}';
+
   BoxDecoration _cardDecoration(BuildContext context) => BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
@@ -579,14 +582,14 @@ class _ActivityCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ProfileAvatar(user: user),
+          ProfileAvatar(user: user, heroScope: _heroScope),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TappableUserName(
-                  onTap: () => openUserProfile(context, user),
+                  onTap: () => openUserProfile(context, user, heroScope: _heroScope),
                   child: RichText(
                     text: TextSpan(
                       style: const TextStyle(fontSize: 13),
@@ -638,14 +641,14 @@ class _ActivityCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ProfileAvatar(user: user),
+          ProfileAvatar(user: user, heroScope: _heroScope),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 TappableUserName(
-                  onTap: () => openUserProfile(context, user),
+                  onTap: () => openUserProfile(context, user, heroScope: _heroScope),
                   child: Text(username,
                       style: TextStyle(
                           fontWeight: FontWeight.bold,

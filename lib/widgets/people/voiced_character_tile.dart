@@ -25,6 +25,7 @@ class VoicedCharacterTile extends StatelessWidget {
     this.onCharacterTap,
     this.onMediaTap,
     this.mediaHeroTag,
+    this.characterHeroTag,
   });
 
   final VoicedCharacter item;
@@ -34,6 +35,10 @@ class VoicedCharacterTile extends StatelessWidget {
   /// Tag of the media cover's hero (see `coverHeroTag`), when
   /// [onMediaTap] opens its detail page with it.
   final String? mediaHeroTag;
+
+  /// Tag of the character photo's hero (see `personHeroTag`), when
+  /// [onCharacterTap] opens the character with it.
+  final String? characterHeroTag;
 
   @override
   Widget build(BuildContext context) {
@@ -56,6 +61,7 @@ class VoicedCharacterTile extends StatelessWidget {
                 title: item.character.name,
                 subtitle: characterRoleLabel(item.role, lang),
                 onTap: onCharacterTap,
+                heroTag: characterHeroTag,
               ),
             ),
             const SizedBox(width: 6),

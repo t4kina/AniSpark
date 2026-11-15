@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anispark/screens/user_profile_screen.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/widgets/profile/profile_card.dart';
 import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -99,5 +100,60 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(ListSkeleton), findsNothing);
     expect(find.text(loadErrorText), findsOneWidget);
+  });
+
+  testWidgets('an avatar that flies here lands where the card will have it, then on the card', (tester) async {
+    const tag = 'person:feed-1:7';
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    tester.view.padding = const FakeViewPadding(top: 47);
+    addTearDown(tester.view.reset);
+    await cache.write('anon:profile:7', {
+      'id': 7,
+      'name': 'Faye Valentine',
+      'isFollowing': false,
+      'isFollower': false,
+    });
+    await tester.pumpWidget(screenApp(
+      Builder(
+        builder: (context) => TextButton(
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => const UserProfileScreen(
+                userId: 7,
+                name: 'faye',
+                avatarUrl: 'https://img.example/faye.png',
+                heroTag: tag,
+              ),
+            ),
+          ),
+          child: const Text('open'),
+        ),
+      ),
+      cache: cache,
+    ));
+    final avatar = find.descendant(of: find.byType(UserProfileScreen), matching: find.byType(Hero));
+
+    await tester.tap(find.text('open'));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('uprof-loading')), findsOneWidget, reason: 'the placeholder holds the landing spot');
+    expect(tester.widget<Hero>(avatar).tag, tag);
+    // The placeholder puts it where the card says its avatar goes.
+    final expected = ProfileCard.avatarRect(top: 47 + 52);
+    Matcher near(Rect rect) => within<Rect>(distance: 0.01, from: rect);
+
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byKey(const ValueKey('uprof-loading')), findsNothing);
+    expect(find.text('Faye Valentine'), findsWidgets);
+    expect(tester.widget<Hero>(avatar).tag, tag, reason: 'so the avatar can fly back');
+    expect(tester.getRect(avatar), near(expected), reason: 'the card has it where it landed');
   });
 }

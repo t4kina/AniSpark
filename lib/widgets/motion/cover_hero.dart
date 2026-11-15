@@ -6,3 +6,10 @@
 /// media in several rows, and two heroes with one tag on a page break the
 /// transition.
 String coverHeroTag(String scope, int mediaId) => 'cover:$scope:$mediaId';
+
+/// The hero tag for the picture of the character, staff member or user
+/// [id] shown by [scope], e.g. `personHeroTag('detail-21-characters', 40)`.
+/// Pass it to the picture that is tapped and to the page it opens, so the
+/// picture flies there. As with covers, the scope must be unique on its
+/// screen: a feed shows the same avatar on every post by that user.
+String personHeroTag(String scope, int id) => 'person:$scope:$id';

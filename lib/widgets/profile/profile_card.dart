@@ -10,6 +10,7 @@ import '../blurred_backdrop.dart';
 import '../genre_filter_sheet.dart' show genreLabel;
 import '../motion/fade_switcher.dart';
 import '../motion/pressable.dart';
+import '../motion/rounded_hero.dart';
 import 'count_up_text.dart';
 import '../app_image.dart';
 
@@ -23,6 +24,7 @@ class ProfileCard extends StatefulWidget {
     required this.name,
     required this.lang,
     this.avatarUrl,
+    this.avatarHeroTag,
     this.bannerUrl,
     this.animeStats,
     this.mangaStats,
@@ -37,6 +39,10 @@ class ProfileCard extends StatefulWidget {
   final String name;
   final String lang;
   final String? avatarUrl;
+
+  /// Tag of the avatar that was tapped to open this profile (see
+  /// `personHeroTag`), so it flies to the one here.
+  final String? avatarHeroTag;
   final String? bannerUrl;
 
   /// AniList `statistics.anime` / `statistics.manga` (scores on 0–100).
@@ -63,6 +69,19 @@ class ProfileCard extends StatefulWidget {
 
   /// Tapping "N anime" / "N manga" under the name, with `ANIME` or `MANGA`.
   final ValueChanged<String>? onCountTap;
+
+  /// The avatar's diameter.
+  static const avatarSize = 78.0;
+
+  /// Where the avatar is on a page whose card starts [top] below the top
+  /// of the page (the status bar plus [topGap]), for a placeholder that
+  /// shows the avatar before the card is there.
+  static Rect avatarRect({required double top}) => Rect.fromLTWH(
+        _margin + _padding + _avatarRing,
+        top + _paddingTop + _avatarRing,
+        avatarSize,
+        avatarSize,
+      );
 
   /// A round glass button for [cornerButton].
   static Widget roundButton({required IconData icon, required String tooltip, required VoidCallback onPressed}) =>
@@ -93,6 +112,11 @@ class ProfileCard extends StatefulWidget {
   State<ProfileCard> createState() => _ProfileCardState();
 }
 
+const _margin = 16.0;
+const _padding = 20.0;
+const _paddingTop = 22.0;
+const _avatarRing = 3.0;
+
 class _ProfileCardState extends State<ProfileCard> {
   bool _manga = false;
 
@@ -120,7 +144,7 @@ class _ProfileCardState extends State<ProfileCard> {
     final lang = widget.lang;
     final genre = _topGenre;
     return Padding(
-      padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + widget.topGap, 16, 0),
+      padding: EdgeInsets.fromLTRB(_margin, MediaQuery.paddingOf(context).top + widget.topGap, _margin, 0),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(32),
         child: Stack(
@@ -142,7 +166,7 @@ class _ProfileCardState extends State<ProfileCard> {
             // The glass pieces blur the banner once, together.
             BackdropGroup(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+                padding: const EdgeInsets.fromLTRB(_padding, _paddingTop, _padding, 20),
                 child: DefaultTextStyle.merge(
                   style: const TextStyle(color: Colors.white),
                   child: Column(
@@ -221,13 +245,17 @@ class _ProfileCardState extends State<ProfileCard> {
   Widget _avatar() {
     final avatar = widget.avatarUrl;
     return Container(
-      padding: const EdgeInsets.all(3),
+      padding: const EdgeInsets.all(_avatarRing),
       decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.35)),
-      child: CircleAvatar(
-        radius: 39,
-        backgroundColor: Colors.black26,
-        backgroundImage: avatar == null ? null : CachedNetworkImageProvider(avatar),
-        child: avatar == null ? const Icon(Icons.person, size: 38, color: Colors.white70) : null,
+      child: RoundedHero(
+        tag: widget.avatarHeroTag,
+        borderRadius: BorderRadius.circular(ProfileCard.avatarSize / 2),
+        child: CircleAvatar(
+          radius: ProfileCard.avatarSize / 2,
+          backgroundColor: Colors.black26,
+          backgroundImage: avatar == null ? null : CachedNetworkImageProvider(avatar),
+          child: avatar == null ? const Icon(Icons.person, size: 38, color: Colors.white70) : null,
+        ),
       ),
     );
   }

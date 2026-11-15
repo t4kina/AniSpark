@@ -1,8 +1,16 @@
+import 'dart:io';
+
+import 'package:anispark/screens/user_profile_screen.dart';
+import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/widgets/motion/cover_hero.dart';
 import 'package:anispark/widgets/social/social_widgets.dart';
 import 'package:anispark/widgets/user_avatar.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/memory_cache_store.dart';
+import '../screens/screen_harness.dart';
 
 void main() {
   testWidgets(
@@ -105,5 +113,61 @@ void main() {
     await tester.pumpAndSettle();
     expect(opacity(), 1);
     expect(taps, 1);
+  });
+
+  group('an avatar with a hero scope', () {
+    const faye = {'id': 7, 'name': 'faye'};
+
+    setUpAll(() => HttpOverrides.global = OfflineHttpOverrides());
+
+    Widget page(List<Widget> avatars) => screenApp(
+          Scaffold(body: Column(children: avatars)),
+          cache: ApiCache(MemoryCacheStore()),
+        );
+
+    testWidgets('is told apart from the same person elsewhere on the page', (tester) async {
+      await tester.pumpWidget(page(const [
+        ProfileAvatar(user: faye, heroScope: 'feed-1'),
+        ProfileAvatar(user: faye, heroScope: 'feed-2'),
+        ProfileAvatar(user: faye),
+      ]));
+
+      final tags = tester.widgetList<Hero>(find.byType(Hero)).map((hero) => hero.tag).toList();
+      expect(tags, [personHeroTag('feed-1', 7), personHeroTag('feed-2', 7)], reason: 'none without a scope');
+    });
+
+    testWidgets('opens the profile with its tag, so it flies there', (tester) async {
+      await tester.pumpWidget(page(const [ProfileAvatar(user: faye, heroScope: 'feed-1')]));
+
+      await tester.tap(find.byType(ProfileAvatar));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(tester.takeException(), isNull);
+      final profile = tester.widget<UserProfileScreen>(find.byType(UserProfileScreen));
+      expect(profile.userId, 7);
+      expect(profile.heroTag, personHeroTag('feed-1', 7));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a name beside it opens the profile with the same tag', (tester) async {
+      await tester.pumpWidget(page([
+        const ProfileAvatar(user: faye, heroScope: 'feed-1'),
+        Builder(
+          builder: (context) => TappableUserName(
+            onTap: () => openUserProfile(context, faye, heroScope: 'feed-1'),
+            child: const Text('faye'),
+          ),
+        ),
+      ]));
+
+      await tester.tap(find.text('faye'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(tester.takeException(), isNull);
+      expect(tester.widget<UserProfileScreen>(find.byType(UserProfileScreen)).heroTag, personHeroTag('feed-1', 7));
+      await tester.pumpAndSettle();
+    });
   });
 }

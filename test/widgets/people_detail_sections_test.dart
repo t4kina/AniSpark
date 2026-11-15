@@ -5,12 +5,15 @@ import 'package:anispark/screens/studio_screen.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/widgets/detail/staff_section.dart';
 import 'package:anispark/widgets/detail/studio_links.dart';
+import 'package:anispark/widgets/motion/cover_hero.dart';
 import 'package:anispark/widgets/people/person_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/memory_cache_store.dart';
 import '../screens/screen_harness.dart';
+
+const _scope = 'detail-1-staff';
 
 Map<String, dynamic> _edge(int id, String name, String role) => {
       'role': role,
@@ -38,12 +41,12 @@ void main() {
 
   group('StaffSection', () {
     testWidgets('hides itself when there is nobody to show', (tester) async {
-      await tester.pumpWidget(app(const StaffSection(edges: [])));
+      await tester.pumpWidget(app(const StaffSection(edges: [], heroScope: _scope)));
       expect(find.byType(PersonCard), findsNothing);
       expect(find.text('STAFF'), findsNothing);
       expect(find.byType(Divider), findsNothing);
 
-      await tester.pumpWidget(app(const StaffSection(edges: [
+      await tester.pumpWidget(app(const StaffSection(heroScope: _scope, edges: [
         {'role': 'Director'},
         {'role': 'Music', 'node': {'id': 3}},
         'junk',
@@ -53,7 +56,7 @@ void main() {
     });
 
     testWidgets('shows each person once with all their roles', (tester) async {
-      await tester.pumpWidget(app(StaffSection(edges: [
+      await tester.pumpWidget(app(StaffSection(heroScope: _scope, edges: [
         _edge(1, 'Shinichirou Watanabe', 'Director'),
         _edge(2, 'Yoko Kanno', 'Music'),
         _edge(1, 'Shinichirou Watanabe', 'Storyboard'),
@@ -67,7 +70,7 @@ void main() {
     });
 
     testWidgets('opens the staff page of a tapped person', (tester) async {
-      await tester.pumpWidget(app(StaffSection(edges: [_edge(2, 'Yoko Kanno', 'Music')])));
+      await tester.pumpWidget(app(StaffSection(heroScope: _scope, edges: [_edge(2, 'Yoko Kanno', 'Music')])));
 
       await tester.tap(find.text('Yoko Kanno'));
       await tester.pumpAndSettle();
@@ -76,6 +79,20 @@ void main() {
       expect(screen.staffId, 2);
       expect(screen.name, 'Yoko Kanno');
       expect(find.text(loadErrorText), findsOneWidget, reason: 'offline, nothing cached');
+    });
+
+    testWidgets('the photo of a tapped person flies to their page', (tester) async {
+      await tester.pumpWidget(app(StaffSection(heroScope: _scope, edges: [_edge(2, 'Yoko Kanno', 'Music')])));
+      final tag = personHeroTag(_scope, 2);
+      expect(tester.widget<Hero>(find.byType(Hero)).tag, tag);
+
+      await tester.tap(find.text('Yoko Kanno'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(tester.takeException(), isNull);
+      expect(tester.widget<StaffScreen>(find.byType(StaffScreen)).heroTag, tag);
+      await tester.pumpAndSettle();
     });
   });
 
