@@ -15,6 +15,7 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
 import '../widgets/sheet_list_surface.dart';
+import '../widgets/load_error_view.dart';
 import '../widgets/state_message.dart';
 import '../main.dart' show MainNavigation;
 import 'settings_screen.dart';
@@ -920,6 +921,7 @@ class _FollowSheet extends StatefulWidget {
 class _FollowSheetState extends State<_FollowSheet> {
   List<dynamic>? _users;
   bool _loading = false;
+  bool _hasError = false;
 
   @override
   void initState() {
@@ -936,9 +938,14 @@ class _FollowSheetState extends State<_FollowSheet> {
       setState(() => _users = []);
       return;
     }
-    setState(() => _loading = true);
-    final result = await widget.service.getFollowers(widget.userId!, widget.token!);
-    if (mounted) setState(() { _users = result; _loading = false; });
+    setState(() { _loading = true; _hasError = false; });
+    try {
+      final result = await widget.service.getFollowers(widget.userId!, widget.token!);
+      if (mounted) setState(() { _users = result; _loading = false; });
+    } on Exception catch (e) {
+      debugPrint('[ProfileScreen] Loading followers failed: $e');
+      if (mounted) setState(() { _loading = false; _hasError = true; });
+    }
   }
 
   /// The most of the screen the sheet takes; past it the list scrolls.
@@ -958,6 +965,8 @@ class _FollowSheetState extends State<_FollowSheet> {
     final Widget body;
     if (_loading) {
       body = const SizedBox(height: _placeholderHeight, child: Center(child: CircularProgressIndicator()));
+    } else if (_hasError) {
+      body = LoadErrorView(onRetry: _fetchFollowers);
     } else if (_users == null || _users!.isEmpty) {
       body = StateMessage(icon: Icons.people_outline_rounded, message: tr('profile_nobody_here', lang));
     } else {
