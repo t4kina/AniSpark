@@ -79,6 +79,18 @@ class _StaggeredEntranceState extends State<StaggeredEntrance> with SingleTicker
   }
 }
 
+/// [children] with each one cascading in after the one before it (see
+/// [StaggeredEntrance]), the first of them [from] steps in, for a page that
+/// is a column of different sections and not a list. Gaps and rules
+/// (`SizedBox`, `Divider`) stay as they are and take no step.
+List<Widget> staggered(List<Widget> children, {int from = 0}) {
+  var index = from;
+  return [
+    for (final child in children)
+      if (child is SizedBox || child is Divider) child else StaggeredEntrance(index: index++, child: child),
+  ];
+}
+
 /// Marks when a list got its data, so [StaggeredEntrance] items only play
 /// their entrance right after a load, and not when a lazy list rebuilds an
 /// item that scrolls back into view. Change [trigger] when new data arrives

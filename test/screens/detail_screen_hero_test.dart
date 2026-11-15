@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:anispark/screens/detail_screen.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/utils/translations.dart';
 import 'package:anispark/widgets/motion/cover_hero.dart';
+import 'package:anispark/widgets/motion/staggered_entrance.dart';
 import 'package:anispark/widgets/skeletons.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -134,5 +136,66 @@ void main() {
     final next = tester.widget<DetailScreen>(find.byType(DetailScreen).last);
     expect(next.animeId, 2);
     expect(next.heroTag, relationTag);
+  });
+
+  group('what the data fills in', () {
+    Finder entranceOf(Finder content) => find.ancestor(of: content, matching: find.byType(StaggeredEntrance)).first;
+
+    int step(WidgetTester tester, Finder content) => tester.widget<StaggeredEntrance>(entranceOf(content)).index;
+
+    double opacity(WidgetTester tester, Finder content) => tester
+        .widget<FadeTransition>(find.descendant(of: entranceOf(content), matching: find.byType(FadeTransition)).first)
+        .opacity
+        .value;
+
+    final title = find.text('Cowboy Bebop').first;
+    final stats = find.text(tr('detail_average_score', 'English'));
+    final actions = find.text(tr('progress', 'English').toUpperCase());
+    final seriesInfo = find.text(tr('detail_series_info', 'English'));
+
+    Future<void> pumpLoaded(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final cache = ApiCache(MemoryCacheStore());
+      await cache.write('anon:media:1', _media());
+      await tester.pumpWidget(appWith(const DetailScreen(animeId: 1), cache: cache));
+      await tester.pump();
+    }
+
+    testWidgets('cascades in from the title down', (tester) async {
+      await pumpLoaded(tester);
+
+      expect(step(tester, title), 0);
+      expect(step(tester, stats), greaterThan(step(tester, title)));
+      expect(step(tester, actions), greaterThan(step(tester, stats)));
+      expect(step(tester, seriesInfo), greaterThan(step(tester, actions)));
+
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(opacity(tester, title), greaterThan(0), reason: 'the title leads');
+      expect(opacity(tester, actions), 0, reason: 'the sections wait their turn');
+
+      // The later steps start on a timer; a second frame plays them out.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(opacity(tester, title), 1);
+      expect(opacity(tester, actions), 1);
+      expect(opacity(tester, seriesInfo), 1);
+    });
+
+    testWidgets('does not cascade again when the page is rebuilt later', (tester) async {
+      await pumpLoaded(tester);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      final entrance = tester.state(entranceOf(actions));
+
+      // A fresher copy of the data, or anything else, rebuilds the page.
+      tester.element(find.byType(DetailScreen)).markNeedsBuild();
+      await tester.pump();
+
+      expect(tester.state(entranceOf(actions)), same(entrance));
+      expect(opacity(tester, actions), 1);
+      expect(tester.hasRunningAnimations, isFalse);
+    });
   });
 }

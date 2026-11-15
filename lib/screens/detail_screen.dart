@@ -29,6 +29,7 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pop_on_change.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
+import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/motion/stretchy_banner.dart';
 import '../widgets/blurred_backdrop.dart';
 import '../utils/translations.dart';
@@ -236,30 +237,35 @@ class _DetailScreenState extends State<DetailScreen> {
       child: Scaffold(
         body: Stack(
           children: [
-            CustomScrollView(
-              controller: _scroll,
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      DetailHeader(
-                        banner: StretchyBanner(
-                          controller: _scroll,
-                          child: FadeSwitcher(child: _buildBanner(context, d)),
+            // What the data fills in cascades in when it arrives, and not
+            // again when a fresher copy replaces it.
+            EntranceGate(
+              trigger: d == null,
+              child: CustomScrollView(
+                controller: _scroll,
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        DetailHeader(
+                          banner: StretchyBanner(
+                            controller: _scroll,
+                            child: FadeSwitcher(child: _buildBanner(context, d)),
+                          ),
+                          cover: _buildCover(context, d),
+                          info: FadeSwitcher(
+                            child: d == null ? const DetailInfoSkeleton() : _buildInfo(d, settings),
+                          ),
                         ),
-                        cover: _buildCover(context, d),
-                        info: FadeSwitcher(
-                          child: d == null ? const DetailInfoSkeleton() : _buildInfo(d, settings),
+                        FadeSwitcher(
+                          child: d == null ? const DetailBodySkeleton() : _buildBody(context, d, settings),
                         ),
-                      ),
-                      FadeSwitcher(
-                        child: d == null ? const DetailBodySkeleton() : _buildBody(context, d, settings),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             _buildOverlayButtons(context, d, settings.language),
           ],
@@ -322,6 +328,12 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   /// Title, studio, next episode and the score and ranking stats.
+  /// Steps into the page's entrance cascade: the title, the studio and the
+  /// next episode come first, then the stats, then the sections under the
+  /// header in order (see `StaggeredEntrance`).
+  static const _statsStep = 3;
+  static const _bodyStep = _statsStep + 1;
+
   Widget _buildInfo(Map<String, dynamic> d, SettingsProvider settings) {
     final lang = settings.language;
     final title = settings.resolveTitle(d['title'] as Map<String, dynamic>?);
@@ -339,7 +351,8 @@ class _DetailScreenState extends State<DetailScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
-            children: [
+            // The title leads the cascade, under the cover that just landed.
+            children: staggered([
               Text(title,
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
@@ -362,27 +375,30 @@ class _DetailScreenState extends State<DetailScreen> {
                   style: const TextStyle(color: Colors.grey, fontSize: 13),
                 ),
               ],
-            ],
+            ]),
           ),
         ),
         const SizedBox(height: 20),
-        IntrinsicHeight(
-          child: Row(
-            children: [
-              _statCell(tr('detail_average_score', lang),
-                  score != null ? '$score%' : '—',
-                  score != null && score >= 70 ? Colors.green : Colors.grey),
-              if (highestRated != null) ...[
-                _vDivider(),
-                _statCell(tr('detail_highest_rated', lang), '#${highestRated['rank']}', null,
-                    sub: _rankingSub(highestRated, lang)),
+        StaggeredEntrance(
+          index: _statsStep,
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                _statCell(tr('detail_average_score', lang),
+                    score != null ? '$score%' : '—',
+                    score != null && score >= 70 ? Colors.green : Colors.grey),
+                if (highestRated != null) ...[
+                  _vDivider(),
+                  _statCell(tr('detail_highest_rated', lang), '#${highestRated['rank']}', null,
+                      sub: _rankingSub(highestRated, lang)),
+                ],
+                if (mostPopular != null) ...[
+                  _vDivider(),
+                  _statCell(tr('detail_most_popular', lang), '#${mostPopular['rank']}', null,
+                      sub: _rankingSub(mostPopular, lang)),
+                ],
               ],
-              if (mostPopular != null) ...[
-                _vDivider(),
-                _statCell(tr('detail_most_popular', lang), '#${mostPopular['rank']}', null,
-                    sub: _rankingSub(mostPopular, lang)),
-              ],
-            ],
+            ),
           ),
         ),
         const SizedBox(height: 24),
@@ -451,9 +467,8 @@ class _DetailScreenState extends State<DetailScreen> {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+      children: staggered(from: _bodyStep, [
         const SizedBox(height: 16),
-
         // ── Action buttons ──
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -646,7 +661,7 @@ class _DetailScreenState extends State<DetailScreen> {
           _ExternalLinksSection(links: externalLinks, onOpenUrl: _openUrl),
 
         const SizedBox(height: 32),
-      ],
+      ]),
     );
   }
 
