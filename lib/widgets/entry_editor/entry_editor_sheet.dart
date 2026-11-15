@@ -14,6 +14,7 @@ import '../../utils/score_utils.dart';
 import '../../utils/translations.dart';
 import '../app_button.dart';
 import '../motion/pop_on_change.dart';
+import '../app_dialog.dart';
 import '../app_sheet.dart';
 import '../sheet_list_surface.dart';
 import '../skeletons.dart';
@@ -65,26 +66,14 @@ Future<void> showEntryEditor(
     );
 
 /// Asks before deleting a list entry.
-Future<bool> confirmEntryRemoval(BuildContext context, String lang) async {
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text(tr('remove_from_list', lang)),
-      content: Text(tr('remove_from_list_confirm', lang)),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext, false),
-          child: Text(tr('cancel', lang)),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext, true),
-          child: Text(tr('remove', lang), style: const TextStyle(color: Colors.red)),
-        ),
-      ],
-    ),
-  );
-  return confirmed ?? false;
-}
+Future<bool> confirmEntryRemoval(BuildContext context, String lang) => showAppConfirm(
+      context: context,
+      title: tr('remove_from_list', lang),
+      message: tr('remove_from_list_confirm', lang),
+      confirmLabel: tr('remove', lang),
+      cancelLabel: tr('cancel', lang),
+      destructive: true,
+    );
 
 /// The editor's content; open it with [showEntryEditor].
 class EntryEditorSheet extends StatefulWidget {

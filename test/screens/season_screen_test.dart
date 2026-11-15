@@ -4,6 +4,7 @@ import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/discover_api.dart';
 import 'package:anispark/utils/anime_season.dart';
 import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/app_dialog.dart';
 import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -198,5 +199,20 @@ void main() {
 
     expect(find.byType(GridSkeleton), findsNothing);
     expect(find.text('Show 1-0'), findsOneWidget);
+  });
+
+  testWidgets('the year is picked in an app dialog, and loads that year', (tester) async {
+    await pumpSeason(tester, apiAnswering((r) => _page(1, count: 2)));
+    final earlier = fall.year - 1;
+
+    await tester.tap(find.byTooltip(tr('season_pick_year', 'English')));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byType(AppDialog), matching: find.byType(YearPicker)), findsOneWidget);
+
+    await tester.tap(find.descendant(of: find.byType(AppDialog), matching: find.text('$earlier')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AppDialog), findsNothing);
+    expect(log.last.variables, containsPair('seasonYear', earlier));
   });
 }

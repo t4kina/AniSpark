@@ -1,3 +1,4 @@
+import 'package:anispark/theme/app_colors.dart';
 import 'package:anispark/theme/app_theme.dart';
 import 'package:anispark/widgets/app_button.dart';
 import 'package:flutter/material.dart';
@@ -127,6 +128,10 @@ void main() {
       await tester.pumpWidget(button(AppButtonKind.glass));
       expect(_decoration(tester).color!.a, lessThan(0.2), reason: 'see-through');
       expect(_decoration(tester).border, isNotNull);
+      expect(_labelColor(tester), Colors.white);
+
+      await tester.pumpWidget(button(AppButtonKind.danger));
+      expect(_decoration(tester).color, theme.extension<AppColors>()!.danger);
       expect(_labelColor(tester), Colors.white);
     });
   }

@@ -13,6 +13,7 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/option_sheet.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/state_message.dart';
@@ -268,12 +269,11 @@ class _SeasonScreenState extends State<SeasonScreen> {
       );
 
   Future<void> _pickYear(String lang) async {
-    final year = await showDialog<int>(
+    final year = await showAppDialog<int>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr('season_pick_year', lang)),
+      builder: (ctx) => AppDialog(
+        title: tr('season_pick_year', lang),
         content: SizedBox(
-          width: 300,
           height: 320,
           child: YearPicker(
             firstDate: DateTime(_firstYear),

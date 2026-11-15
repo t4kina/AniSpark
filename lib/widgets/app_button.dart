@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_colors.dart';
 import '../theme/app_layout.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_text.dart';
@@ -15,6 +16,9 @@ enum AppButtonKind {
 
   /// Translucent white, for buttons drawn over a cover or a blurred backdrop.
   glass,
+
+  /// Filled with the danger colour: confirms something that cannot be undone.
+  danger,
 }
 
 /// The app's labelled button. It shrinks under the finger and springs back
@@ -59,6 +63,7 @@ class AppButton extends StatelessWidget {
     final (Color background, Color foreground, BoxBorder? border) = switch (kind) {
       AppButtonKind.primary => (cs.primary, cs.onPrimary, null),
       AppButtonKind.tonal => (cs.surfaceContainerHighest, cs.onSurface, null),
+      AppButtonKind.danger => (context.colors.danger, Colors.white, null),
       AppButtonKind.glass => (
           Colors.white.withValues(alpha: 0.12),
           Colors.white,

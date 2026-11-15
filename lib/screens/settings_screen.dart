@@ -13,6 +13,10 @@ import '../providers/settings_provider.dart' show SettingsProvider, accentColorO
 import '../services/auth_service.dart';
 import '../utils/translations.dart';
 import '../utils/refresh_notifier.dart';
+import '../theme/app_layout.dart';
+import '../theme/app_text.dart';
+import '../widgets/app_button.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/app_sheet.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/option_sheet.dart';
@@ -577,64 +581,46 @@ class SettingsScreen extends StatelessWidget {
   static Future<void> _openUrl(String url) => openExternalUrl(url);
 
   static void _showAbout(BuildContext context, String lang) {
-    showDialog(
+    showAppDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset('assets/logo.jpg', width: 40, height: 40),
-            ),
-            const SizedBox(width: 12),
-            const Text('AniSpark', style: TextStyle(fontSize: 18)),
-          ],
+      builder: (dialogContext) => AppDialog(
+        leading: ClipRRect(
+          borderRadius: AppRadius.smAll,
+          child: Image.asset('assets/logo.jpg', width: 40, height: 40),
         ),
+        title: 'AniSpark',
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _AppVersion(
-              builder: (v) => Text(trf('settings_version', lang, {'v': v}),
-                  style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            ),
-            const SizedBox(height: 12),
-            Text(tr('about_description', lang),
-                style: const TextStyle(color: Colors.grey, height: 1.5, fontSize: 13)),
-            const SizedBox(height: 12),
-            Text(tr('made_with', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            _AppVersion(builder: (v) => Text(trf('settings_version', lang, {'v': v}))),
+            const SizedBox(height: AppSpace.md),
+            Text(tr('about_description', lang)),
+            const SizedBox(height: AppSpace.md),
+            Text(tr('made_with', lang), style: AppText.caption),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Builder(builder: (ctx) => Text(tr('close', lang), style: TextStyle(color: Theme.of(ctx).colorScheme.primary))),
-          ),
-        ],
+        actions: [_closeButton(dialogContext, lang)],
       ),
     );
   }
 
+  static Widget _closeButton(BuildContext dialogContext, String lang) => AppButton(
+        label: tr('close', lang),
+        kind: AppButtonKind.tonal,
+        expand: true,
+        onPressed: () => Navigator.pop(dialogContext),
+      );
+
   /// What AniSpark does with the user's data. It has no servers of its own,
   /// so this is its whole privacy policy; AniList's terms cover the account.
   static void _showPrivacy(BuildContext context, String lang) {
-    showDialog(
+    showAppDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(tr('privacy', lang), style: const TextStyle(fontSize: 18)),
-        content: SingleChildScrollView(
-          child: Text(tr('privacy_summary', lang),
-              style: const TextStyle(color: Colors.grey, height: 1.5, fontSize: 13)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(tr('close', lang),
-                style: TextStyle(color: Theme.of(dialogContext).colorScheme.primary)),
-          ),
-        ],
+      builder: (dialogContext) => AppDialog(
+        title: tr('privacy', lang),
+        content: Text(tr('privacy_summary', lang)),
+        actions: [_closeButton(dialogContext, lang)],
       ),
     );
   }
@@ -700,28 +686,19 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  static void _confirmLogout(BuildContext context, AuthService auth, String lang) {
-    showDialog(
+  static Future<void> _confirmLogout(BuildContext context, AuthService auth, String lang) async {
+    final confirmed = await showAppConfirm(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(tr('logout', lang)),
-        content: Text(tr('logout_confirm', lang)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(tr('cancel', lang))),
-          TextButton(
-            onPressed: () {
-              // Back to the tabs first (closing this dialog and Settings);
-              // AuthGate swaps them for the login screen once the session
-              // has ended, whenever logout() reports it.
-              Navigator.of(context).popUntil((route) => route.isFirst);
-              auth.logout();
-            },
-            child: Text(tr('logout', lang), style: const TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+      title: tr('logout', lang),
+      message: tr('logout_confirm', lang),
+      confirmLabel: tr('logout', lang),
+      cancelLabel: tr('cancel', lang),
+      destructive: true,
     );
+    if (!confirmed || !context.mounted) return;
+    // Back to the tabs first (closing Settings); AuthGate swaps them for the
+    // login screen once the session has ended, whenever logout() reports it.
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    auth.logout();
   }
 }
