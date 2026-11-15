@@ -11,6 +11,7 @@ import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../theme/app_motion.dart';
 import '../utils/tab_reselect.dart';
+import '../widgets/app_sheet.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
@@ -354,13 +355,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       {List<dynamic>? preloaded}) {
     final auth = context.read<AuthService>();
     final userId = auth.user?['id'] as int?;
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      // Dragged all the way up it stops under the status bar, with nothing
-      // behind it showing above.
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
+      maxHeightFraction: _followSheetMaxHeightFraction,
       builder: (_) => _FollowSheet(
         title: title,
         preloaded: preloaded,
@@ -900,6 +897,9 @@ class _HeatmapPainter extends CustomPainter {
 
 // ── Follow sheet ──────────────────────────────────────────────────────────────
 
+/// The most of the screen the followers sheet takes; past it the list scrolls.
+const _followSheetMaxHeightFraction = 0.7;
+
 class _FollowSheet extends StatefulWidget {
   final String title;
   final List<dynamic>? preloaded;
@@ -949,15 +949,11 @@ class _FollowSheetState extends State<_FollowSheet> {
     }
   }
 
-  /// The most of the screen the sheet takes; past it the list scrolls.
-  static const _maxHeightFraction = 0.7;
-
-  /// Like the app's other pickers (the Sort sheet): as tall as its people,
-  /// up to [_maxHeightFraction] of the screen, and a drag scrolls the list
+  /// Like the other pickers (the Sort sheet): as tall as its people, up to
+  /// [_followSheetMaxHeightFraction] of the screen, and a drag scrolls the list
   /// inside it rather than raising the whole sheet.
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final lang = context.watch<SettingsProvider>().language;
     final Widget body;
     if (_loading) {
@@ -980,41 +976,18 @@ class _FollowSheetState extends State<_FollowSheet> {
         ),
       );
     }
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFraction),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: AnimatedSize(
-            duration: AppMotion.of(context, AppMotion.short),
-            curve: AppMotion.standard,
-            alignment: Alignment.bottomCenter,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 12, bottom: 8),
-                  child: Container(
-                    width: 36, height: 4,
-                    decoration: BoxDecoration(
-                      color: cs.outlineVariant,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                  child: Text(widget.title,
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-                ),
-                body,
-              ],
-            ),
-          ),
+    return SafeArea(
+      top: false,
+      child: AnimatedSize(
+        duration: AppMotion.of(context, AppMotion.short),
+        curve: AppMotion.standard,
+        alignment: Alignment.bottomCenter,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SheetTitle(widget.title),
+            body,
+          ],
         ),
       ),
     );

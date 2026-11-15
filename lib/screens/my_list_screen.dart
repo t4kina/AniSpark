@@ -14,6 +14,7 @@ import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
 import '../utils/tab_reselect.dart';
 import '../theme/app_motion.dart';
+import '../widgets/app_sheet.dart';
 import '../widgets/app_button.dart';
 import '../widgets/motion/animated_count.dart';
 import '../widgets/motion/cover_hero.dart';
@@ -100,15 +101,11 @@ class _ListTabScreenState extends State<_ListTabScreen> {
   void _showGenreFilter(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final lang = context.read<SettingsProvider>().language;
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      backgroundColor: cs.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => StatefulBuilder(
         builder: (ctx, setSheet) => Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1078,13 +1075,8 @@ class _CompletionDialogState extends State<_CompletionDialog> {
   }
 
   void _openScorePicker() {
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (_) => _ScorePickerSheet(
         initialScore: _score,
         onUpdate: (score) {
@@ -1346,19 +1338,10 @@ class _ScorePickerSheetState extends State<_ScorePickerSheet> {
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
-          24, 16, 24, MediaQuery.of(context).viewInsets.bottom + 32),
+          24, 12, 24, MediaQuery.of(context).viewInsets.bottom + 32),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 36,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 20),
-            decoration: BoxDecoration(
-              color: cs.onSurface.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
           Text(
             tr('list_score', lang),
             style: TextStyle(

@@ -172,7 +172,7 @@ class _GenreFilterSheetState extends State<GenreFilterSheet> {
         children: [
           // Header
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
               children: [
                 TextButton(

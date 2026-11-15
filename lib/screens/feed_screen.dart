@@ -10,6 +10,7 @@ import '../utils/activity_status.dart';
 import '../utils/activity_text.dart' show relativeTime;
 import '../utils/refresh_notifier.dart';
 import '../theme/app_motion.dart';
+import '../widgets/app_sheet.dart';
 import '../widgets/app_button.dart';
 import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
@@ -286,15 +287,7 @@ class _FeedScreenState extends State<FeedScreen>
   }
 
   void _openComposer() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => _ComposeStatusSheet(onPost: _postStatus),
-    );
+    showAppSheet<void>(context: context, builder: (_) => _ComposeStatusSheet(onPost: _postStatus));
   }
 
   /// Posts a status and puts it at the top of the feed. Returns whether
@@ -330,32 +323,15 @@ class _FeedScreenState extends State<FeedScreen>
 
   void _showFeedPicker() {
     final lang = context.read<SettingsProvider>().language;
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (_) {
         return SafeArea(
+          top: false,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text(tr('choose_feed', lang),
-                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
-              ),
+              SheetTitle(tr('choose_feed', lang)),
               _feedOption(tr('your_feed', lang), Icons.person, _FeedType.personal),
               _feedOption(tr('following_feed', lang), Icons.group, _FeedType.following),
               _feedOption(tr('global_feed', lang), Icons.public, _FeedType.global),

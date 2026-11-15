@@ -8,6 +8,7 @@ import '../services/auth_service.dart';
 import '../utils/haptics.dart';
 import '../utils/score_utils.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_sheet.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/overlay_button.dart';
@@ -206,13 +207,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   /// Unfollow (when following), block and report; the last two are done
   /// on AniList's site.
   void _showProfileActions(BuildContext context, String lang) {
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
       builder: (sheet) => SafeArea(
+        top: false,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.only(bottom: 8),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -598,13 +598,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   void _showListSheet(BuildContext context, String type) {
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      // Dragged all the way up it stops under the status bar, with nothing
-      // behind it showing above.
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
       builder: (_) => _UserListSheet(
         userId: widget.userId,
         type: type,
@@ -701,102 +696,79 @@ class _UserListSheetState extends State<_UserListSheet>
     }
 
     return DraggableScrollableSheet(
+      expand: false,
       initialChildSize: 0.75,
       minChildSize: 0.4,
       maxChildSize: 1,
-      builder: (_, scrollController) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          children: [
-            // Drag handle
-            Padding(
-              padding: const EdgeInsets.only(top: 12, bottom: 8),
-              child: Container(
-                width: 36, height: 4,
-                decoration: BoxDecoration(
-                  color: cs.outlineVariant,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            // Title
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-              child: Text(
-                tr(isAnime ? 'uprof_anime_list' : 'uprof_manga_list', lang),
-                style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
-              ),
-            ),
-            // Tabs
-            TabBar(
-              controller: _tabs,
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              dividerColor: cs.outlineVariant,
-              indicatorColor: cs.primary,
-              labelColor: cs.primary,
-              unselectedLabelColor: cs.onSurface.withValues(alpha: 0.5),
-              labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-              unselectedLabelStyle: const TextStyle(fontSize: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              tabs: _statuses.map((s) {
-                final count = _lists?[s]?.length ?? 0;
-                final label = tr(_labelKey(s, isAnime: isAnime), lang);
-                return Tab(
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(label),
-                      if (!_loading && count > 0) ...[
-                        const SizedBox(width: 5),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: cs.primary.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Text('$count',
-                              style: TextStyle(fontSize: 10, color: cs.primary,
-                                  fontWeight: FontWeight.w700)),
+      builder: (_, scrollController) => Column(
+        children: [
+          SheetTitle(tr(isAnime ? 'uprof_anime_list' : 'uprof_manga_list', lang)),
+          // Tabs
+          TabBar(
+            controller: _tabs,
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            dividerColor: cs.outlineVariant,
+            indicatorColor: cs.primary,
+            labelColor: cs.primary,
+            unselectedLabelColor: cs.onSurface.withValues(alpha: 0.5),
+            labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+            unselectedLabelStyle: const TextStyle(fontSize: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            tabs: _statuses.map((s) {
+              final count = _lists?[s]?.length ?? 0;
+              final label = tr(_labelKey(s, isAnime: isAnime), lang);
+              return Tab(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(label),
+                    if (!_loading && count > 0) ...[
+                      const SizedBox(width: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: cs.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                      ],
+                        child: Text('$count',
+                            style: TextStyle(fontSize: 10, color: cs.primary,
+                                fontWeight: FontWeight.w700)),
+                      ),
                     ],
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+          // Content
+          Expanded(
+            child: _loading
+                ? const ListSkeleton(coverSize: Size(46, 64))
+                : _isPrivate
+                ? StateMessage(icon: Icons.lock_outline, message: tr('affinity_private', lang))
+                : _hasError
+                ? LoadErrorView(onRetry: _retry)
+                : TabBarView(
+                    controller: _tabs,
+                    children: _statuses.map((s) {
+                      final entries = _lists?[s] ?? [];
+                      if (entries.isEmpty) {
+                        return StateMessage(icon: Icons.inbox_outlined, message: tr('nothing_here', lang));
+                      }
+                      return SheetListSurface(
+                        child: ListView.builder(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                          itemCount: entries.length,
+                          itemBuilder: (_, i) =>
+                              _EntryTile(entry: entries[i], isAnime: isAnime),
+                        ),
+                      );
+                    }).toList(),
                   ),
-                );
-              }).toList(),
-            ),
-            // Content
-            Expanded(
-              child: _loading
-                  ? const ListSkeleton(coverSize: Size(46, 64))
-                  : _isPrivate
-                  ? StateMessage(icon: Icons.lock_outline, message: tr('affinity_private', lang))
-                  : _hasError
-                  ? LoadErrorView(onRetry: _retry)
-                  : TabBarView(
-                      controller: _tabs,
-                      children: _statuses.map((s) {
-                        final entries = _lists?[s] ?? [];
-                        if (entries.isEmpty) {
-                          return StateMessage(icon: Icons.inbox_outlined, message: tr('nothing_here', lang));
-                        }
-                        return SheetListSurface(
-                          child: ListView.builder(
-                            controller: scrollController,
-                            padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-                            itemCount: entries.length,
-                            itemBuilder: (_, i) =>
-                                _EntryTile(entry: entries[i], isAnime: isAnime),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

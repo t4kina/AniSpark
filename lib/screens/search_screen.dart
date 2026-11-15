@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_sheet.dart';
 import '../widgets/genre_filter_sheet.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
@@ -209,15 +210,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _showFilters() {
     final draft = Set<String>.from(_selectedGenres);
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      isScrollControlled: true,
-      // Dragged all the way up it stops under the status bar.
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => GenreFilterSheet(
         selected: draft,
         onApply: (genres) {

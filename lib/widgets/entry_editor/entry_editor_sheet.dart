@@ -14,6 +14,7 @@ import '../../utils/score_utils.dart';
 import '../../utils/translations.dart';
 import '../app_button.dart';
 import '../motion/pop_on_change.dart';
+import '../app_sheet.dart';
 import '../sheet_list_surface.dart';
 import '../skeletons.dart';
 import 'entry_draft.dart';
@@ -51,13 +52,9 @@ Future<void> showEntryEditor(
   ValueChanged<EntryEditorResult>? onChanged,
   AniListService? service,
 }) =>
-    showModalBottomSheet<void>(
+    showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.92),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      maxHeightFraction: 0.92,
       builder: (_) => EntryEditorSheet(
         media: media,
         entry: entry,
@@ -336,14 +333,6 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(top: 10, bottom: 10),
-                decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
             _Header(
               title: title,
               coverUrl: _media.coverUrl,

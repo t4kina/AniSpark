@@ -13,6 +13,7 @@ import '../providers/settings_provider.dart' show SettingsProvider, accentColorO
 import '../services/auth_service.dart';
 import '../utils/translations.dart';
 import '../utils/refresh_notifier.dart';
+import '../widgets/app_sheet.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/option_sheet.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -511,28 +512,17 @@ class SettingsScreen extends StatelessWidget {
 
   static void _showAccentColorPicker(
       BuildContext context, SettingsProvider settings, String lang) {
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => SafeArea(
+        top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 40, height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                    color: Colors.grey[400],
-                    borderRadius: BorderRadius.circular(2)),
-              ),
-              Text(tr('accent_color', lang),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
+              SheetTitle(tr('accent_color', lang)),
+              const SizedBox(height: 8),
               Wrap(
                 spacing: 16,
                 runSpacing: 16,
