@@ -10,6 +10,7 @@ import '../../utils/haptics.dart';
 import '../../utils/translations.dart' show tr;
 import '../motion/animated_count.dart';
 import '../motion/cover_hero.dart';
+import '../motion/like_burst.dart';
 import '../motion/pop_on_change.dart';
 import '../motion/pressable.dart';
 import '../motion/rounded_hero.dart';
@@ -62,8 +63,8 @@ ButtonStyle _countButtonStyle(Color color) => TextButton.styleFrom(
     );
 
 /// Heart toggle with the like count, for activities and replies. Liking
-/// pops the heart with a light haptic tap and the count rolls to its new
-/// value; unliking only rolls the count.
+/// pops the heart inside a small burst, with a light haptic tap, and the
+/// count rolls to its new value; unliking only rolls the count.
 class LikeButton extends StatelessWidget {
   const LikeButton({
     super.key,
@@ -90,10 +91,14 @@ class LikeButton extends StatelessWidget {
       child: TextButton.icon(
         onPressed: onPressed == null ? null : () => _press(onPressed),
         style: _countButtonStyle(isLiked ? Colors.redAccent : Colors.grey),
-        icon: PopOnChange(
-          value: isLiked,
-          when: (liked) => liked == true,
-          child: Icon(isLiked ? Icons.favorite : Icons.favorite_border, size: 16),
+        icon: LikeBurst(
+          active: isLiked,
+          color: Colors.redAccent,
+          child: PopOnChange(
+            value: isLiked,
+            when: (liked) => liked == true,
+            child: Icon(isLiked ? Icons.favorite : Icons.favorite_border, size: 16),
+          ),
         ),
         label: AnimatedCount(value: count),
       ),

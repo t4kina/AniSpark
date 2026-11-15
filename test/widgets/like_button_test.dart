@@ -1,4 +1,5 @@
 import 'package:anispark/providers/settings_provider.dart';
+import 'package:anispark/widgets/motion/like_burst.dart';
 import 'package:anispark/widgets/motion/pop_on_change.dart';
 import 'package:anispark/widgets/social/social_widgets.dart';
 import 'package:flutter/material.dart';
@@ -36,6 +37,9 @@ double _heartScale(WidgetTester tester) => tester
     .scale
     .value;
 
+/// The painter of the burst around the heart.
+final _burst = find.descendant(of: find.byType(LikeBurst), matching: find.byType(CustomPaint)).first;
+
 void main() {
   late List<String> haptics;
 
@@ -62,11 +66,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 80));
 
     expect(_heartScale(tester), greaterThan(1), reason: 'the heart is mid-pop');
+    expect(_burst, paints..circle(style: PaintingStyle.stroke)..circle(style: PaintingStyle.fill),
+        reason: 'a ring opens around it and sparks fly off');
     expect(find.text('4'), findsOneWidget, reason: 'the new count is rolling in');
     expect(haptics, ['HapticFeedbackType.lightImpact']);
 
     await tester.pumpAndSettle();
     expect(_heartScale(tester), 1);
+    expect(_burst, isNot(paints..circle()), reason: 'the burst has gone');
     expect(find.byIcon(Icons.favorite), findsOneWidget);
     expect(find.text('4'), findsOneWidget);
     expect(find.text('3'), findsNothing, reason: 'the old count rolled away');
@@ -83,10 +90,45 @@ void main() {
     await tester.pump(const Duration(milliseconds: 80));
 
     expect(_heartScale(tester), 1);
+    expect(_burst, isNot(paints..circle()), reason: 'no burst for taking a like back');
     expect(haptics, isEmpty);
     await tester.pumpAndSettle();
     expect(find.byIcon(Icons.favorite_border), findsOneWidget);
     expect(find.text('3'), findsOneWidget);
     expect(find.text('4'), findsNothing);
+  });
+
+  testWidgets('the burst moves nothing around the heart', (tester) async {
+    await pumpHost(tester);
+    final before = tester.getRect(find.byType(LikeButton));
+    final heart = tester.getRect(find.byType(Icon));
+
+    await tester.tap(find.byType(LikeButton));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(tester.getRect(find.byType(LikeButton)), before);
+    expect(tester.getRect(find.byType(LikeBurst)).size, heart.size, reason: 'it takes no room of its own');
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('there is no burst when motion is reduced', (tester) async {
+    await tester.pumpWidget(ChangeNotifierProvider(
+      create: (_) => SettingsProvider(),
+      child: const MaterialApp(
+        home: MediaQuery(
+          data: MediaQueryData(disableAnimations: true),
+          child: Scaffold(body: Center(child: _Host())),
+        ),
+      ),
+    ));
+
+    await tester.tap(find.byType(LikeButton));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+
+    expect(_burst, isNot(paints..circle()));
+    expect(find.byIcon(Icons.favorite), findsOneWidget);
+    await tester.pumpAndSettle();
   });
 }
