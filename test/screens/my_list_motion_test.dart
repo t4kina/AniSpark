@@ -7,6 +7,7 @@ import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/utils/tab_reselect.dart';
 import 'package:anispark/widgets/app_button.dart';
 import 'package:anispark/widgets/motion/animated_count.dart';
+import 'package:anispark/widgets/motion/progress_moment.dart';
 import 'package:anispark/widgets/motion/staggered_entrance.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -189,11 +190,14 @@ void main() {
     expect(shown(), 43);
     expect(find.text('42'), findsOneWidget, reason: 'the old value is still rolling out');
     expect(find.text('43'), findsOneWidget, reason: 'the new value is rolling in');
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget, reason: 'a tick says it counted');
+    expect(tester.widget<ProgressLine>(find.byType(ProgressLine)).value, 43, reason: 'and the bar fills up to it');
     await tester.pumpAndSettle();
 
     expect(log.where((r) => r.query.contains('SaveMediaListEntry')).single.variables['progress'], 43);
     expect(find.text('43'), findsOneWidget);
     expect(find.text('42'), findsNothing, reason: 'the old value rolled away');
+    expect(find.byIcon(Icons.check_circle_rounded), findsNothing, reason: 'the tick has gone');
     // Let the undo snack bar time out.
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();

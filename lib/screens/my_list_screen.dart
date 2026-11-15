@@ -22,6 +22,7 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/press_scale.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/motion/progress_moment.dart';
 import '../widgets/option_sheet.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/state_message.dart';
@@ -916,10 +917,16 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                           children: [
                             AnimatedCount(value: _progress),
                             Flexible(child: Text(progressSuffix)),
+                            // Answers a +1 where the eye already is.
+                            IncrementTick(value: _progress),
                           ],
                         ),
                       ),
                     ),
+                    if (total != null && total > 0) ...[
+                      const SizedBox(height: 6),
+                      ProgressLine(value: _progress, total: total),
+                    ],
                     if (score > 0) ...[
                       const SizedBox(height: 4),
                       Row(
