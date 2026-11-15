@@ -14,6 +14,7 @@ import '../utils/score_utils.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/detail/detail_header.dart';
+import '../widgets/detail/list_action_button.dart';
 import '../widgets/detail/following_section.dart';
 import '../widgets/detail/media_row.dart';
 import '../widgets/detail/reviews_section.dart';
@@ -497,6 +498,8 @@ class _DetailScreenState extends State<DetailScreen> {
                     : tr('add_to_list', lang).toUpperCase(),
                 icon: inList ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
                 sublabel: tr('status', lang).toUpperCase(),
+                // Once it is in their list the button is the status chip.
+                highlighted: inList,
                 onTap: () => _openEditor(context),
               ),
               const SizedBox(width: 8),
@@ -830,43 +833,17 @@ class _DetailScreenState extends State<DetailScreen> {
     required VoidCallback onTap,
     required IconData icon,
     required String sublabel,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Expanded(
-      child: Pressable(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: cs.outline.withValues(alpha: 0.5)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 15, color: cs.primary),
-              const SizedBox(height: 4),
-              Text(label,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: cs.onSurface)),
-              const SizedBox(height: 2),
-              Text(sublabel,
-                  style: TextStyle(
-                      fontSize: 9,
-                      color: cs.onSurface.withValues(alpha: 0.45),
-                      letterSpacing: 0.3)),
-            ],
-          ),
+    bool highlighted = false,
+  }) =>
+      Expanded(
+        child: ListActionButton(
+          icon: icon,
+          label: label,
+          sublabel: sublabel,
+          onTap: onTap,
+          highlighted: highlighted,
         ),
-      ),
-    );
-  }
+      );
 
   Widget _sectionPad(Widget child) =>
       Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 16), child: child);

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:anispark/screens/detail_screen.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/detail/list_action_button.dart';
 import 'package:anispark/widgets/motion/collapsing_title_bar.dart';
 import 'package:anispark/widgets/motion/cover_hero.dart';
 import 'package:anispark/widgets/motion/staggered_entrance.dart';
@@ -223,5 +224,26 @@ void main() {
     await tester.drag(find.byType(CustomScrollView), const Offset(0, 450));
     await tester.pump();
     expect(barTitle, findsNothing);
+  });
+
+  testWidgets('the add button is the status chip once the series is in the list', (tester) async {
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Future<List<bool>> highlights(Map<String, dynamic>? entry) async {
+      final cache = ApiCache(MemoryCacheStore());
+      await cache.write('anon:media:1', {..._media(), 'mediaListEntry': entry});
+      await tester.pumpWidget(appWith(DetailScreen(key: UniqueKey(), animeId: 1), cache: cache));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      return [for (final button in tester.widgetList<ListActionButton>(find.byType(ListActionButton))) button.highlighted];
+    }
+
+    expect(await highlights(null), [false, false, false]);
+    expect(find.text(tr('add_to_list', 'English').toUpperCase()), findsOneWidget);
+
+    expect(await highlights({'id': 5, 'status': 'CURRENT', 'progress': 3, 'score': 0}), [true, false, false]);
+    expect(find.text(tr('add_to_list', 'English').toUpperCase()), findsNothing);
   });
 }
