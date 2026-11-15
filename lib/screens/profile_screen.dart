@@ -13,6 +13,7 @@ import '../theme/app_motion.dart';
 import '../utils/tab_reselect.dart';
 import '../widgets/app_refresh_indicator.dart';
 import '../widgets/app_sheet.dart';
+import '../widgets/motion/arrival_builder.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/drawn_on_sight.dart';
 import '../widgets/profile/favourite_cards.dart';
@@ -230,7 +231,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                   // one action a card leads with (Follow on a friend's).
                   ProfileCard.secondaryButton(
                     label: '$_followersCount ${tr('followers', lang)}',
-                    onPressed: () => _showFollowSheet(context, tr('followers', lang)),
+                    onPressed: () => _showFollowSheet(context, tr('followers', lang), expected: _followersCount),
                   ),
                   ProfileCard.secondaryButton(
                     label: '$_followingCount ${tr('following', lang)}',
@@ -353,8 +354,9 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  void _showFollowSheet(BuildContext context, String title,
-      {List<dynamic>? preloaded}) {
+  /// [expected] is how many people the sheet will list once it has loaded
+  /// them, so it can open at that height; not needed with a [preloaded] list.
+  void _showFollowSheet(BuildContext context, String title, {List<dynamic>? preloaded, int expected = 0}) {
     final auth = context.read<AuthService>();
     final userId = auth.user?['id'] as int?;
     showAppSheet<void>(
@@ -363,6 +365,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       builder: (_) => _FollowSheet(
         title: title,
         preloaded: preloaded,
+        expected: expected,
         userId: userId,
         token: auth.token,
         service: _service,
@@ -942,6 +945,9 @@ const _followSheetMaxHeightFraction = 0.7;
 class _FollowSheet extends StatefulWidget {
   final String title;
   final List<dynamic>? preloaded;
+
+  /// How many people are about to be loaded, for the placeholder's height.
+  final int expected;
   final int? userId;
   final String? token;
   final AniListService service;
@@ -950,6 +956,7 @@ class _FollowSheet extends StatefulWidget {
     required this.title,
     required this.service,
     this.preloaded,
+    this.expected = 0,
     this.userId,
     this.token,
   });
@@ -959,6 +966,8 @@ class _FollowSheet extends StatefulWidget {
 }
 
 class _FollowSheetState extends State<_FollowSheet> {
+  static const _listBottomPadding = 24.0;
+
   List<dynamic>? _users;
   bool _loading = false;
   bool _hasError = false;
@@ -993,12 +1002,36 @@ class _FollowSheetState extends State<_FollowSheet> {
   /// inside it rather than raising the whole sheet.
   @override
   Widget build(BuildContext context) {
+    // What loads while the sheet is still sliding up waits for it to
+    // arrive: changing height mid-slide shows as a step in the animation.
+    return ArrivalBuilder(builder: (context, arrived) => _buildSheet(context, arrived: arrived));
+  }
+
+  /// Rows the placeholder shows when nobody is expected: about what "nobody
+  /// here" takes, so the sheet barely moves between the two.
+  static const _fewRows = 3;
+
+  /// More placeholder rows than this never fit under the sheet's height.
+  static const _manyRows = 12;
+
+  Widget _buildSheet(BuildContext context, {required bool arrived}) {
     final lang = context.watch<SettingsProvider>().language;
     final Widget body;
-    if (_loading) {
-      // Three rows are about what "nobody here" takes, so the sheet barely
-      // moves between the two.
-      body = const PeopleSkeleton(avatarSize: 44, padding: EdgeInsets.fromLTRB(20, 6, 20, 6));
+    if (_loading || (!arrived && widget.preloaded == null)) {
+      // A row per person on the way, so the sheet opens as tall as it will
+      // be and the list replaces the placeholder without moving it.
+      body = Flexible(
+        child: SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: _listBottomPadding),
+          child: PeopleSkeleton(
+            rows: widget.expected > 0 ? math.min(widget.expected, _manyRows) : _fewRows,
+            avatarSize: 44,
+            // As tall as a row of the list, the avatar where it will be.
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+          ),
+        ),
+      );
     } else if (_hasError) {
       body = LoadErrorView(onRetry: _fetchFollowers);
     } else if (_users == null || _users!.isEmpty) {
@@ -1008,7 +1041,7 @@ class _FollowSheetState extends State<_FollowSheet> {
         child: SheetListSurface(
           child: ListView.builder(
             shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, _listBottomPadding),
             itemCount: _users!.length,
             itemBuilder: (_, i) => _UserTile(user: _users![i]),
           ),

@@ -12,16 +12,18 @@ import 'screen_harness.dart';
 
 /// Logged in, following a few people, with a fresh cached profile.
 class _FollowingAuth extends FakeAuthService {
-  _FollowingAuth({this.count = 3}) : super(fakeToken: 'token', fakeUser: {'id': 7, 'name': 'Faye'});
+  _FollowingAuth({this.count = 3, this.followers = 0})
+      : super(fakeToken: 'token', fakeUser: {'id': 7, 'name': 'Faye'});
 
   final int count;
+  final int followers;
 
   @override
   Map<String, dynamic>? get profileExtras => {
         'savedAt': DateTime.now().millisecondsSinceEpoch,
         'favoriteAnime': const [],
         'favoriteCharacters': const [],
-        'followersCount': 0,
+        'followersCount': followers,
         'followingCount': count,
         'activityDays': const <String, dynamic>{},
         'following': [
@@ -131,5 +133,72 @@ void main() {
 
     expect(find.byType(ProfileSkeleton), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  group('the followers sheet opens without a step', () {
+    Future<void> openFollowers(WidgetTester tester, {required int followers}) async {
+      tester.view.physicalSize = const Size(400, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(appWith(
+        const ProfileScreen(),
+        cache: ApiCache(MemoryCacheStore()),
+        auth: _FollowingAuth(followers: followers),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('$followers Followers'));
+      await tester.pump();
+    }
+
+    final placeholder = find.descendant(of: find.byType(BottomSheet), matching: find.byType(PeopleSkeleton));
+
+    testWidgets('it is as tall as it will be from the start: a placeholder row per follower', (tester) async {
+      await openFollowers(tester, followers: 5);
+
+      expect(tester.widget<PeopleSkeleton>(placeholder).rows, 5);
+    });
+
+    testWidgets('the placeholder of some people is as tall as the list of as many', (tester) async {
+      await openFollowers(tester, followers: 3);
+      await tester.pump(const Duration(milliseconds: 100));
+      final waiting = tester.getSize(find.byType(BottomSheet)).height;
+      await tester.pumpAndSettle();
+      Navigator.pop(tester.element(find.byType(BottomSheet)));
+      await tester.pumpAndSettle();
+
+      // The fixture follows three people, and those are already loaded.
+      await tester.tap(find.text('3 Following'));
+      await tester.pumpAndSettle();
+      expect(find.text('Friend 3'), findsOneWidget);
+      expect(tester.getSize(find.byType(BottomSheet)).height, waiting);
+    });
+
+    testWidgets('with many followers the placeholder stops at what the sheet can hold', (tester) async {
+      await openFollowers(tester, followers: 400);
+
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byType(BottomSheet)).height, lessThanOrEqualTo(900 * 0.7));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('what loads while it is still sliding up waits until it has arrived', (tester) async {
+      await openFollowers(tester, followers: 5);
+      await tester.pump(const Duration(milliseconds: 80));
+
+      // Offline, so the answer (a failure) is in already; the sheet is not.
+      expect(offline.requests, 1);
+      expect(placeholder, findsOneWidget, reason: 'nothing is swapped mid-slide');
+      expect(find.text(loadErrorText), findsNothing);
+      final height = tester.getSize(find.byType(BottomSheet)).height;
+
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(tester.getSize(find.byType(BottomSheet)).height, height, reason: 'the sheet keeps its height while it slides');
+
+      await tester.pumpAndSettle();
+      expect(placeholder, findsNothing);
+      expect(find.text(loadErrorText), findsOneWidget);
+    });
   });
 }
