@@ -169,4 +169,32 @@ void main() {
     expect(late.dy, lessThan(early.dy));
     expect(find.text('4'), findsOneWidget);
   });
+
+  testWidgets('the bars of a chart grow in when it is first seen, from the top down', (tester) async {
+    await _pumpProfile(
+      tester,
+      _StatsAuth(scoreFormat: 'POINT_10_DECIMAL', animeScores: [
+        {'score': 60, 'count': 1},
+        {'score': 100, 'count': 2},
+      ]),
+    );
+    double fill(String label) => tester
+        .widget<FractionallySizedBox>(find.descendant(
+          of: find.ancestor(of: find.text(label), matching: find.byType(Row)).first,
+          matching: find.byType(FractionallySizedBox),
+        ))
+        .widthFactor!;
+
+    await tester.tap(find.text('SCORE DISTRIBUTION'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 90));
+
+    expect(fill('10.0'), inExclusiveRange(0, 1), reason: 'the first bar is on its way');
+    expect(fill('6.0'), lessThan(fill('10.0')), reason: 'the next one starts a step later');
+
+    await tester.pumpAndSettle();
+    expect(fill('10.0'), 1);
+    expect(fill('6.0'), 0.5);
+  });
 }

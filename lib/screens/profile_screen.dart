@@ -14,6 +14,7 @@ import '../utils/tab_reselect.dart';
 import '../widgets/app_refresh_indicator.dart';
 import '../widgets/app_sheet.dart';
 import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/drawn_on_sight.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
 import '../widgets/sheet_list_surface.dart';
@@ -384,6 +385,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     'profile_month_oct', 'profile_month_nov', 'profile_month_dec',
   ];
 
+  static const _heatmapSweep = Duration(milliseconds: 900);
+
   Widget _buildActivityGraph(String lang) {
     // Build a 52-week heatmap (oldest left → newest right)
     final today = DateTime.now();
@@ -427,7 +430,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                   color: Colors.grey,
                   letterSpacing: 0.5)),
           const SizedBox(height: 12),
-          Builder(builder: (ctx) {
+          // The weeks appear in a sweep, latest first, when the map is seen.
+          DrawnOnSight(duration: _heatmapSweep, builder: (ctx, drawn) {
             return StatefulBuilder(builder: (ctx, setLocal) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -470,6 +474,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                             cellColor: (count) => cellColor(count, ctx),
                             cellSize: cellSize,
                             gap: gap,
+                            drawn: drawn,
                           ),
                         ),
                       ),
@@ -614,24 +619,35 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
 
   /// A rounded bar filled to [ratio], the accent brightening toward its
   /// end: the one mark the genre and era rows share.
-  Widget _dashboardBar(double ratio) {
+  ///
+  /// It grows to its length the first time it is seen, [order] steps after
+  /// the first bar of its chart, so a chart fills in from the top down.
+  Widget _dashboardBar(double ratio, {int order = 0}) {
     final colors = Theme.of(context).colorScheme;
+    final fill = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(4),
+        gradient: LinearGradient(colors: [colors.primary.withValues(alpha: 0.55), colors.primary]),
+      ),
+      child: const SizedBox.expand(),
+    );
     return Container(
       height: 8,
       alignment: Alignment.centerLeft,
       decoration: BoxDecoration(color: colors.surface, borderRadius: BorderRadius.circular(4)),
-      child: FractionallySizedBox(
-        widthFactor: ratio.clamp(0.0, 1.0),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-            gradient: LinearGradient(colors: [colors.primary.withValues(alpha: 0.55), colors.primary]),
-          ),
-          child: const SizedBox.expand(),
+      child: DrawnOnSight(
+        delay: _barStep * order,
+        builder: (_, drawn) => AnimatedBuilder(
+          animation: drawn,
+          builder: (_, fill) => FractionallySizedBox(widthFactor: ratio.clamp(0.0, 1.0) * drawn.value, child: fill),
+          child: fill,
         ),
       ),
     );
   }
+
+  /// The wait between one bar of a chart starting to grow and the next.
+  static const _barStep = Duration(milliseconds: 50);
 
   /// A statistics score (AniList sends them on 0–100) in the user's score
   /// format, like every other score in the app.
@@ -665,7 +681,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             for (final (i, g) in top.indexed)
               Padding(
                 padding: EdgeInsets.only(top: i == 0 ? 0 : 12),
-                child: _genreRow(g, maxCount, countKey, lang, scoreFormat),
+                child: _genreRow(g, maxCount, countKey, lang, scoreFormat, order: i),
               ),
           ],
         );
@@ -673,7 +689,14 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  Widget _genreRow(Map<String, dynamic> genre, double maxCount, String countKey, String lang, String? scoreFormat) {
+  Widget _genreRow(
+    Map<String, dynamic> genre,
+    double maxCount,
+    String countKey,
+    String lang,
+    String? scoreFormat, {
+    required int order,
+  }) {
     final count = (genre['count'] as num?)?.toInt() ?? 0;
     final mean = (genre['meanScore'] as num?) ?? 0;
     var details = trf(countKey, lang, {'n': count});
@@ -699,7 +722,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           ],
         ),
         const SizedBox(height: 6),
-        _dashboardBar(maxCount > 0 ? count / maxCount : 0),
+        _dashboardBar(maxCount > 0 ? count / maxCount : 0, order: order),
       ],
     );
   }
@@ -769,6 +792,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               labelWidth: 40,
               ratio: bar.value / maxCount,
               count: bar.value,
+              order: i,
             ),
           ),
       ],
@@ -782,13 +806,14 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     required double labelWidth,
     required double ratio,
     required int count,
+    required int order,
   }) {
     const style = TextStyle(fontSize: 11, color: Colors.grey, fontFeatures: [FontFeature.tabularFigures()]);
     return Row(
       children: [
         SizedBox(width: labelWidth, child: Text(label, maxLines: 1, style: style)),
         const SizedBox(width: 8),
-        Expanded(child: _dashboardBar(ratio)),
+        Expanded(child: _dashboardBar(ratio, order: order)),
         const SizedBox(width: 8),
         SizedBox(
           width: 30,
@@ -834,6 +859,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                 labelWidth: 72,
                 ratio: entry.value / maxCount,
                 count: entry.value,
+                order: i,
               ),
             ),
         ],
@@ -852,7 +878,14 @@ class _HeatmapPainter extends CustomPainter {
   final double cellSize;
   final double gap;
 
-  const _HeatmapPainter({
+  /// How much of the map has been drawn in (0 none, 1 all): the weeks come
+  /// in one after the other from the latest back.
+  final Animation<double> drawn;
+
+  /// How many weeks are fading in at once at the edge of the sweep.
+  static const _sweepEdge = 6;
+
+  _HeatmapPainter({
     required this.startDay,
     required this.today,
     required this.totalWeeks,
@@ -860,14 +893,18 @@ class _HeatmapPainter extends CustomPainter {
     required this.cellColor,
     required this.cellSize,
     required this.gap,
-  });
+    required this.drawn,
+  }) : super(repaint: drawn);
 
   @override
   void paint(Canvas canvas, Size size) {
     final step = cellSize + gap;
     final paint = Paint();
 
+    final swept = drawn.value * (totalWeeks + _sweepEdge);
     for (int week = 0; week < totalWeeks; week++) {
+      final shown = ((swept - (totalWeeks - 1 - week)) / _sweepEdge).clamp(0.0, 1.0);
+      if (shown == 0) continue;
       for (int dow = 0; dow < 7; dow++) {
         final day = startDay.add(Duration(days: week * 7 + dow));
         if (day.isAfter(today)) continue;
@@ -876,7 +913,8 @@ class _HeatmapPainter extends CustomPainter {
             '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
         final count = activityDays[key] ?? 0;
 
-        paint.color = cellColor(count);
+        final color = cellColor(count);
+        paint.color = shown == 1 ? color : color.withValues(alpha: color.a * shown);
         final rect = RRect.fromRectAndRadius(
           Rect.fromLTWH(
             week * step,
@@ -893,7 +931,7 @@ class _HeatmapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_HeatmapPainter old) =>
-      old.activityDays != activityDays || old.today != today;
+      old.activityDays != activityDays || old.today != today || old.drawn != drawn;
 }
 
 // ── Follow sheet ──────────────────────────────────────────────────────────────
