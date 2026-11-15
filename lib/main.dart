@@ -17,6 +17,7 @@ import 'services/secure_store.dart';
 import 'services/session_expiry.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_gate_screen.dart';
+import 'widgets/app_logo.dart';
 import 'screens/search_screen.dart' show recentSearchesPrefsKey;
 import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
@@ -202,15 +203,9 @@ class _SplashScreenState extends State<SplashScreen>
       body: Center(
         child: FadeTransition(
           opacity: _fadeIn,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: Image.asset(
-              'assets/logo.jpg',
-              width: 140,
-              height: 140,
-              fit: BoxFit.cover,
-            ),
-          ),
+          // The same logo travels to the login screen when there is no
+          // session (see AppLogo).
+          child: const AppLogo(size: 140),
         ),
       ),
     );
