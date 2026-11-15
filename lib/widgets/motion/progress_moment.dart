@@ -41,13 +41,16 @@ class ProgressLine extends StatelessWidget {
   }
 }
 
-/// A tick that pops in when [value] goes up, stays a moment and fades away:
-/// the answer to "did that count?" after adding an episode. Nothing is
-/// there the rest of the time, nor when the value goes down.
+/// A tick that pops in when [value] changes, stays a moment and fades away:
+/// the answer to "did that count?" after adding or taking away an episode.
+/// It is green when the value went up and grey when it went down.
 ///
-/// It takes its room only while it shows, so put it last in its row.
-class IncrementTick extends StatefulWidget {
-  const IncrementTick({super.key, required this.value, this.size = 14});
+/// Put it right after the text it belongs to, in a row centred on its cross
+/// axis. It always holds the same width and no height at all: the tick is
+/// painted over the line, centred on it, so showing and going moves
+/// nothing around it.
+class ChangeTick extends StatefulWidget {
+  const ChangeTick({super.key, required this.value, this.size = 14});
 
   final int value;
   final double size;
@@ -56,23 +59,27 @@ class IncrementTick extends StatefulWidget {
   static const duration = Duration(milliseconds: 1100);
 
   @override
-  State<IncrementTick> createState() => _IncrementTickState();
+  State<ChangeTick> createState() => _ChangeTickState();
 }
 
-class _IncrementTickState extends State<IncrementTick> with SingleTickerProviderStateMixin {
+class _ChangeTickState extends State<ChangeTick> with SingleTickerProviderStateMixin {
   // The shares of the run spent popping in and, at the end, fading out.
   static const _popUntil = 0.22;
   static const _fadeFrom = 0.72;
+  static const _gap = AppSpace.xs;
 
-  late final AnimationController _run = AnimationController(vsync: this, duration: IncrementTick.duration)
+  late final AnimationController _run = AnimationController(vsync: this, duration: ChangeTick.duration)
     ..addStatusListener((status) {
       if (status == AnimationStatus.completed) _run.reset();
     });
+  bool _wentUp = true;
 
   @override
-  void didUpdateWidget(IncrementTick oldWidget) {
+  void didUpdateWidget(ChangeTick oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.value > oldWidget.value) _run.forward(from: 0);
+    if (widget.value == oldWidget.value) return;
+    _wentUp = widget.value > oldWidget.value;
+    _run.forward(from: 0);
   }
 
   @override
@@ -84,20 +91,39 @@ class _IncrementTickState extends State<IncrementTick> with SingleTickerProvider
   @override
   Widget build(BuildContext context) {
     final reduced = AppMotion.reduced(context);
-    final icon = Padding(
-      padding: const EdgeInsetsDirectional.only(start: AppSpace.xs),
-      child: Icon(Icons.check_circle_rounded, size: widget.size, color: context.colors.success),
-    );
-    return AnimatedBuilder(
-      animation: _run,
-      builder: (_, icon) {
-        if (_run.isDismissed) return const SizedBox.shrink();
-        final t = _run.value;
-        final scale = reduced || t >= _popUntil ? 1.0 : Curves.easeOutBack.transform(t / _popUntil);
-        final opacity = t <= _fadeFrom ? 1.0 : 1 - (t - _fadeFrom) / (1 - _fadeFrom);
-        return Opacity(opacity: opacity, child: Transform.scale(scale: scale, child: icon));
-      },
-      child: icon,
+    final colors = context.colors;
+    return SizedBox(
+      width: _gap + widget.size,
+      height: 0,
+      child: AnimatedBuilder(
+        animation: _run,
+        builder: (_, _) {
+          if (_run.isDismissed) return const SizedBox.shrink();
+          final t = _run.value;
+          final scale = reduced || t >= _popUntil ? 1.0 : Curves.easeOutBack.transform(t / _popUntil);
+          final opacity = t <= _fadeFrom ? 1.0 : 1 - (t - _fadeFrom) / (1 - _fadeFrom);
+          // Taller than its box on purpose: it overflows evenly above and
+          // below, which centres it on the line without widening the line.
+          return OverflowBox(
+            alignment: AlignmentDirectional.centerEnd,
+            minWidth: widget.size,
+            maxWidth: widget.size,
+            minHeight: widget.size,
+            maxHeight: widget.size,
+            child: Opacity(
+              opacity: opacity,
+              child: Transform.scale(
+                scale: scale,
+                child: Icon(
+                  Icons.check_circle_rounded,
+                  size: widget.size,
+                  color: _wentUp ? colors.success : colors.textSecondary,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

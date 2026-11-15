@@ -899,13 +899,21 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
                           children: [
-                            AnimatedCount(value: _progress),
-                            Flexible(child: Text(progressSuffix)),
-                            // Answers a +1 where the eye already is.
-                            IncrementTick(value: _progress),
+                            Flexible(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.baseline,
+                                textBaseline: TextBaseline.alphabetic,
+                                children: [
+                                  AnimatedCount(value: _progress),
+                                  Flexible(child: Text(progressSuffix)),
+                                ],
+                              ),
+                            ),
+                            // Answers a swipe where the eye already is,
+                            // without moving the line it sits on.
+                            ChangeTick(value: _progress),
                           ],
                         ),
                       ),

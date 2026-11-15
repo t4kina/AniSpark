@@ -181,7 +181,8 @@ void main() {
     ];
     await pumpList(tester);
     expect(tester.widget<AnimatedCount>(find.byType(AnimatedCount)).value, 42);
-
+    final title = tester.getRect(find.text('Manga 30'));
+    final bar = tester.getRect(find.byType(ProgressLine));
     // The swipe is confirmed once the row has slid; the count then changes.
     await tester.drag(find.text('Manga 30'), const Offset(500, 0));
     int shown() => tester.widget<AnimatedCount>(find.byType(AnimatedCount)).value;
@@ -192,6 +193,14 @@ void main() {
     expect(find.text('42'), findsOneWidget, reason: 'the old value is still rolling out');
     expect(find.text('43'), findsOneWidget, reason: 'the new value is rolling in');
     expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget, reason: 'a tick says it counted');
+    await tester.pump(const Duration(milliseconds: 400));
+    // The row has slid back by now; the tick is still showing.
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+    // Up and down only: sideways the row is still easing back from the swipe.
+    final titleNow = tester.getRect(find.text('Manga 30'));
+    final barNow = tester.getRect(find.byType(ProgressLine));
+    expect((titleNow.top, titleNow.height), (title.top, title.height), reason: 'the tick moves nothing in the row');
+    expect((barNow.top, barNow.height), (bar.top, bar.height), reason: 'nor the bar under the count');
     expect(tester.widget<ProgressLine>(find.byType(ProgressLine)).value, 43, reason: 'and the bar fills up to it');
     await tester.pumpAndSettle();
 
@@ -255,5 +264,26 @@ void main() {
     // Let anything still pending (the undo snack bar) time out.
     await tester.pump(const Duration(seconds: 5));
     await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('taking a chapter away is answered with a tick too', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30, progress: 42)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+
+    await tester.drag(find.text('Manga 30'), const Offset(-500, 0));
+    int shown() => tester.widget<AnimatedCount>(find.byType(AnimatedCount)).value;
+    for (var i = 0; i < 20 && shown() != 41; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(shown(), 41);
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
+    // Let the undo snack bar time out.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
   });
 }
