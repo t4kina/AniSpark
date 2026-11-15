@@ -11,6 +11,7 @@ import '../theme/app_motion.dart';
 import '../utils/anime_season.dart';
 import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/anime_card.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
@@ -276,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Each row has its own hero scope: one media can be in several rows, and
   // two covers with one tag on a page break the flight to the detail page.
-  Widget _buildSections(String lang) => RefreshIndicator(
+  Widget _buildSections(String lang) => AppRefreshIndicator(
         onRefresh: _refresh,
         child: SingleChildScrollView(
           controller: _scroll,

@@ -7,6 +7,7 @@ import '../services/auth_service.dart';
 import '../services/social_api.dart';
 import '../utils/activity_text.dart' show relativeTime;
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
@@ -217,7 +218,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       trigger: null,
       child: NotificationListener<ScrollNotification>(
         onNotification: _onScrollNotification,
-        child: RefreshIndicator(
+        child: AppRefreshIndicator(
           onRefresh: () => _load(force: true),
           child: _items.isEmpty
               // Fills the page, so it is centred and can still be pulled.

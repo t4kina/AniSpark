@@ -9,6 +9,7 @@ import '../services/api_cache.dart';
 import '../services/people_api.dart';
 import '../utils/review_text.dart';
 import '../utils/translations.dart';
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/load_error_view.dart';
 import '../widgets/detail/section_title.dart';
 import '../widgets/motion/arrival_builder.dart';
@@ -224,7 +225,7 @@ class _StaffScreenState extends State<StaffScreen> with PagedLoading {
     }
     final description = cleanReviewText(staff.description, spoilerPlaceholder: tr('review_spoiler', lang));
     final facts = _facts(staff, lang);
-    return RefreshIndicator(
+    return AppRefreshIndicator(
       onRefresh: _refresh,
       // Below the status bar and the back button.
       edgeOffset: MediaQuery.paddingOf(context).top + 40,

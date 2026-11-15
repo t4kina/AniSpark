@@ -11,6 +11,7 @@ import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../theme/app_motion.dart';
 import '../utils/tab_reselect.dart';
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/app_sheet.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/profile/favourite_cards.dart';
@@ -199,7 +200,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     return Scaffold(
       body: Stack(
         children: [
-          RefreshIndicator(
+          AppRefreshIndicator(
         onRefresh: _fetchStats,
         child: CustomScrollView(
           controller: _scrollController,

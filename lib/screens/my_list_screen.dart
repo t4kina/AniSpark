@@ -12,6 +12,7 @@ import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
 import '../utils/tab_reselect.dart';
 import '../theme/app_motion.dart';
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/app_sheet.dart';
 import '../widgets/app_button.dart';
 import '../widgets/motion/animated_count.dart';
@@ -647,7 +648,7 @@ class _MediaListState extends State<_MediaList>
     return EntranceGate(
       key: const ValueKey('list'),
       trigger: widget.type,
-      child: noMatch ?? RefreshIndicator(
+      child: noMatch ?? AppRefreshIndicator(
         onRefresh: _refresh,
         child: ListView.builder(
           controller: _scrollController,

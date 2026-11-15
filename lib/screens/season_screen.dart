@@ -8,6 +8,7 @@ import '../services/api_cache.dart';
 import '../services/discover_api.dart';
 import '../utils/anime_season.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
@@ -425,7 +426,7 @@ class _SeasonScreenState extends State<SeasonScreen> {
     return EntranceGate(
       key: ValueKey(selection),
       trigger: _pages[1],
-      child: RefreshIndicator(
+      child: AppRefreshIndicator(
         onRefresh: _refresh,
         child: CustomScrollView(
           controller: _scroll,

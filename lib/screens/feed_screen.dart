@@ -10,6 +10,7 @@ import '../utils/activity_status.dart';
 import '../utils/activity_text.dart' show relativeTime;
 import '../utils/refresh_notifier.dart';
 import '../theme/app_motion.dart';
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/app_sheet.dart';
 import '../widgets/app_button.dart';
 import '../utils/tab_reselect.dart';
@@ -458,7 +459,7 @@ class _FeedScreenState extends State<FeedScreen>
       trigger: _postedCount,
       child: NotificationListener<ScrollNotification>(
         onNotification: _onScrollNotification,
-        child: RefreshIndicator(
+        child: AppRefreshIndicator(
           onRefresh: _load,
           child: ListView.builder(
             controller: _scrollController,

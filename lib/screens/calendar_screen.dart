@@ -14,6 +14,7 @@ import '../utils/airing_calendar.dart';
 import '../utils/airing_event.dart';
 import '../utils/haptics.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
@@ -265,7 +266,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       next += 1 + day.episodes.length;
     }
 
-    return RefreshIndicator(
+    return AppRefreshIndicator(
       key: ValueKey(heroScope),
       onRefresh: () => _load(force: true),
       child: days.isEmpty

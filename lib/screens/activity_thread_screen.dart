@@ -11,6 +11,7 @@ import '../services/social_api.dart';
 import '../utils/activity_status.dart';
 import '../utils/activity_text.dart';
 import '../utils/translations.dart' show tr;
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/motion/animated_count.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/staggered_entrance.dart';
@@ -349,7 +350,7 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
       trigger: _sentReplyIds.length,
       child: NotificationListener<ScrollNotification>(
         onNotification: _onScrollNotification,
-        child: RefreshIndicator(
+        child: AppRefreshIndicator(
           onRefresh: () => _load(force: true),
           child: ListView.builder(
             controller: _scrollController,

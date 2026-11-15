@@ -7,6 +7,7 @@ import '../providers/settings_provider.dart';
 import '../services/api_cache.dart';
 import '../services/people_api.dart';
 import '../utils/translations.dart';
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/load_error_view.dart';
 import '../widgets/detail/section_title.dart';
 import '../widgets/motion/cover_hero.dart';
@@ -148,7 +149,7 @@ class _StudioScreenState extends State<StudioScreen> with PagedLoading {
     return Scaffold(
       body: FadeSwitcher(
         child: switch ((studio, _loading)) {
-          (final StudioDetail studio, _) => RefreshIndicator(
+          (final StudioDetail studio, _) => AppRefreshIndicator(
               key: const ValueKey('content'),
               onRefresh: _refresh,
               child: _page(name, lang, controller: _scroll, slivers: _content(studio, lang)),
