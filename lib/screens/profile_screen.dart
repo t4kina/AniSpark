@@ -15,6 +15,7 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
 import '../widgets/sheet_list_surface.dart';
+import '../widgets/skeletons.dart';
 import '../widgets/load_error_view.dart';
 import '../widgets/state_message.dart';
 import '../main.dart' show MainNavigation;
@@ -184,7 +185,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final lang = context.watch<SettingsProvider>().language;
     final user = auth.user;
     if (user == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: ProfileSkeleton());
     }
     final animeStats =
         user['statistics']?['anime'] as Map<String, dynamic>?;
@@ -951,10 +952,6 @@ class _FollowSheetState extends State<_FollowSheet> {
   /// The most of the screen the sheet takes; past it the list scrolls.
   static const _maxHeightFraction = 0.7;
 
-  /// Room for the spinner while there's no list: about what "nobody here"
-  /// takes, so the sheet barely moves between the two.
-  static const _placeholderHeight = 160.0;
-
   /// Like the app's other pickers (the Sort sheet): as tall as its people,
   /// up to [_maxHeightFraction] of the screen, and a drag scrolls the list
   /// inside it rather than raising the whole sheet.
@@ -964,7 +961,9 @@ class _FollowSheetState extends State<_FollowSheet> {
     final lang = context.watch<SettingsProvider>().language;
     final Widget body;
     if (_loading) {
-      body = const SizedBox(height: _placeholderHeight, child: Center(child: CircularProgressIndicator()));
+      // Three rows are about what "nobody here" takes, so the sheet barely
+      // moves between the two.
+      body = const PeopleSkeleton(avatarSize: 44, padding: EdgeInsets.fromLTRB(20, 6, 20, 6));
     } else if (_hasError) {
       body = LoadErrorView(onRetry: _fetchFollowers);
     } else if (_users == null || _users!.isEmpty) {

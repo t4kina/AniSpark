@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:shimmer/shimmer.dart';
+
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
@@ -16,6 +16,7 @@ import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
+import '../widgets/skeletons.dart';
 import 'browse_screen.dart';
 import 'calendar_screen.dart';
 import 'detail_screen.dart';
@@ -262,7 +263,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: FadeSwitcher(
               child: _loading
-                  ? _buildShimmer()
+                  ? const _HomeSkeleton()
                   : _hasError
                       ? LoadErrorView(onRetry: _load)
                       : _buildSections(lang),
@@ -533,90 +534,79 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
 
-  Widget _buildShimmer() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Shimmer.fromColors(
-        baseColor: isDark ? Colors.grey[800]! : Colors.grey[300]!,
-        highlightColor: isDark ? Colors.grey[600]! : Colors.grey[100]!,
-        child: SingleChildScrollView(
-          physics: const NeverScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // The Calendar and Seasons shortcuts, so the rows don't shift
-              // down when the content replaces this.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Row(
-                  children: [
-                    for (var i = 0; i < 2; i++) ...[
-                      if (i > 0) const SizedBox(width: 10),
-                      Expanded(
-                        child: Container(
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+/// Placeholder shaped like the home page: the two shortcuts, then rows of
+/// covers under their titles.
+class _HomeSkeleton extends StatelessWidget {
+  const _HomeSkeleton();
+
+  static const _sections = 7;
+  static const _coversPerRow = 6;
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeleton(
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // The Calendar and Seasons shortcuts, so the rows don't shift
+            // down when the content replaces this.
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Row(
+                children: [
+                  Expanded(child: SkeletonBox(height: 40, radius: 20)),
+                  SizedBox(width: 10),
+                  Expanded(child: SkeletonBox(height: 40, radius: 20)),
+                ],
               ),
-              ...List.generate(7, (_) => _shimmerSection()),
-            ],
+            ),
+            for (var i = 0; i < _sections; i++) const _SectionSkeleton(covers: _coversPerRow),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionSkeleton extends StatelessWidget {
+  const _SectionSkeleton({required this.covers});
+
+  final int covers;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
+          child: SkeletonBox(width: 120, height: 16, radius: 4),
+        ),
+        SizedBox(
+          height: 210,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: covers,
+            itemBuilder: (_, _) => const Padding(
+              padding: EdgeInsets.only(right: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SkeletonBox(width: 120, height: 170, radius: 8),
+                  SizedBox(height: 4),
+                  SkeletonBox(width: 100, height: 12),
+                ],
+              ),
+            ),
           ),
         ),
-      );
+      ],
+    );
   }
-
-  Widget _shimmerSection() => Column(
-
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
-            child: Container(
-              width: 120,
-              height: 16,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-          ),
-          SizedBox(
-            height: 210,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: 6,
-              itemBuilder: (_, _) => Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 120,
-                      height: 170,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      width: 100,
-                      height: 12,
-                      color: Colors.white,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
 }

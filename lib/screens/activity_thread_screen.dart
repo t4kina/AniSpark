@@ -395,10 +395,7 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
     if (_hasError) {
       status = _InlineError(onRetry: _load, lang: lang);
     } else if (_loading && _replies.isEmpty) {
-      status = const Padding(
-        padding: EdgeInsets.all(16),
-        child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-      );
+      status = const PeopleSkeleton(avatarSize: 32, lines: 2, padding: EdgeInsets.fromLTRB(16, 6, 8, 6));
     } else if (_replies.isEmpty) {
       status = Padding(
         padding: const EdgeInsets.all(24),

@@ -4,6 +4,7 @@ import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/widgets/entry_editor/entry_editor_sheet.dart';
+import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -620,6 +621,20 @@ void main() {
 
       expect(_chipSelected(tester, 'PLANNING'), isTrue);
       expect(api.saves, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'shows the shape of the form, not a spinner, while it looks the entry up',
+    (tester) async {
+      await _open(tester, api, settle: false);
+
+      expect(_inside('entry-editor-loading', find.byType(Skeleton)), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      await tester.pumpAndSettle();
+      expect(find.byType(Skeleton), findsNothing);
+      expect(_chipSelected(tester, 'PLANNING'), isTrue);
     },
   );
 

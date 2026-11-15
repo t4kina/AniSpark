@@ -12,6 +12,7 @@ import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/option_sheet.dart';
+import '../widgets/skeletons.dart';
 import '../widgets/state_message.dart';
 import 'detail_screen.dart';
 import '../widgets/load_error_view.dart';
@@ -393,7 +394,7 @@ class _SearchScreenState extends State<SearchScreen> {
   /// state (or getting new results) cross-fades.
   Widget _buildResults(String lang) {
     if (_loading) {
-      return const Center(key: ValueKey('loading'), child: CircularProgressIndicator());
+      return const _ResultsSkeleton(key: ValueKey('loading'));
     }
     if (_hasError) {
       return LoadErrorView(key: const ValueKey('error'), onRetry: () => _search(_controller.text.trim()));
@@ -493,6 +494,26 @@ class _SearchScreenState extends State<SearchScreen> {
 }
 
 // ── Result card ──────────────────────────────────────────────────────────────
+
+/// Placeholder shaped like the result cards.
+class _ResultsSkeleton extends StatelessWidget {
+  const _ResultsSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeleton(
+      child: ListView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 8),
+        itemCount: 6,
+        itemBuilder: (_, _) => const Padding(
+          padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
+          child: SkeletonBox(height: 140, radius: 10),
+        ),
+      ),
+    );
+  }
+}
 
 class _ResultCard extends StatelessWidget {
   final dynamic data;

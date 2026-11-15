@@ -417,7 +417,7 @@ class _SeasonScreenState extends State<SeasonScreen> {
   Widget _buildContent(String lang) => FadeSwitcher(child: _buildState(lang));
 
   Widget _buildState(String lang) {
-    if (_loadingFirst && _pages.isEmpty) return const _GridSkeleton();
+    if (_loadingFirst && _pages.isEmpty) return const GridSkeleton(gridDelegate: _gridDelegate);
     if (_hasError) return LoadErrorView(onRetry: () => _loadPage(1));
     final items = _items;
     final selection = _selectionKey;
@@ -579,31 +579,6 @@ class _ScoreOverlay extends StatelessWidget {
               fontSize: 10,
               fontWeight: FontWeight.w600,
             ),
-          ),
-        ),
-      );
-}
-
-/// Placeholder shaped like the cover grid.
-class _GridSkeleton extends StatelessWidget {
-  const _GridSkeleton();
-
-  @override
-  Widget build(BuildContext context) => Skeleton(
-        child: GridView.builder(
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(12),
-          gridDelegate: _gridDelegate,
-          itemCount: 12,
-          itemBuilder: (_, _) => const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: SkeletonBox(height: double.infinity, radius: 8)),
-              SizedBox(height: 5),
-              SkeletonBox(height: 12),
-              SizedBox(height: 4),
-              SkeletonBox(width: 60, height: 10),
-            ],
           ),
         ),
       );

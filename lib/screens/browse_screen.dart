@@ -402,7 +402,7 @@ class _BrowseScreenState extends State<BrowseScreen> with PagedLoading<BrowseScr
     final items = _paged.items;
     if (items.isEmpty) {
       if (_loadingFirst || _paged.loading || _paged.canLoadMore) {
-        return const _GridSkeleton(key: ValueKey('loading'));
+        return const GridSkeleton(key: ValueKey('loading'), gridDelegate: _gridDelegate, padding: _gridPadding);
       }
       if (_firstFailed || _paged.failed) {
         return LoadErrorView(
@@ -677,29 +677,4 @@ class _MultiChoiceSheetState extends State<_MultiChoiceSheet> {
       child: widget.chips(_selected, _toggle),
     );
   }
-}
-
-/// Placeholder shaped like the grid of cards.
-class _GridSkeleton extends StatelessWidget {
-  const _GridSkeleton({super.key});
-
-  @override
-  Widget build(BuildContext context) => Skeleton(
-        child: GridView.builder(
-          physics: const NeverScrollableScrollPhysics(),
-          padding: _gridPadding,
-          gridDelegate: _gridDelegate,
-          itemCount: 12,
-          itemBuilder: (_, _) => const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: SkeletonBox(height: double.infinity, radius: 8)),
-              SizedBox(height: 6),
-              SkeletonBox(height: 12),
-              SizedBox(height: 4),
-              SkeletonBox(width: 40, height: 10),
-            ],
-          ),
-        ),
-      );
 }

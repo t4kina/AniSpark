@@ -157,7 +157,16 @@ class _StudioScreenState extends State<StudioScreen> with PagedLoading {
               name,
               lang,
               key: const ValueKey('loading'),
-              slivers: const [SliverToBoxAdapter(child: _GridSkeleton())],
+              slivers: const [
+                SliverToBoxAdapter(
+                  child: GridSkeleton(
+                    gridDelegate: mediaCoverGridDelegate,
+                    padding: EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    count: 9,
+                    shrinkWrap: true,
+                  ),
+                ),
+              ],
             ),
           (null, false) => _page(
               name,
@@ -272,32 +281,6 @@ class _StudioScreenState extends State<StudioScreen> with PagedLoading {
               heroTag: heroTag,
             );
           },
-        ),
-      );
-}
-
-/// Placeholder shaped like the cover grid.
-class _GridSkeleton extends StatelessWidget {
-  const _GridSkeleton();
-
-  @override
-  Widget build(BuildContext context) => Skeleton(
-        child: GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          gridDelegate: mediaCoverGridDelegate,
-          itemCount: 9,
-          itemBuilder: (_, _) => const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: SkeletonBox(height: double.infinity, radius: 8)),
-              SizedBox(height: 5),
-              SkeletonBox(height: 12),
-              SizedBox(height: 4),
-              SkeletonBox(width: 60, height: 10),
-            ],
-          ),
         ),
       );
 }

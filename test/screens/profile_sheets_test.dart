@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anispark/screens/profile_screen.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -102,5 +103,33 @@ void main() {
 
     expect(offline.requests, 2);
     expect(find.text(loadErrorText), findsOneWidget);
+  });
+
+  testWidgets('followers show the shape of their rows, not a spinner, while they load', (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(appWith(const ProfileScreen(), cache: ApiCache(MemoryCacheStore()), auth: _FollowingAuth()));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('0 Followers'));
+    await tester.pump();
+
+    expect(find.descendant(of: find.byType(BottomSheet), matching: find.byType(PeopleSkeleton)), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await tester.pumpAndSettle();
+    expect(find.byType(PeopleSkeleton), findsNothing);
+  });
+
+  testWidgets('a session whose user has not arrived yet shows the shape of the profile', (tester) async {
+    await tester.pumpWidget(appWith(
+      const ProfileScreen(),
+      cache: ApiCache(MemoryCacheStore()),
+      auth: FakeAuthService(fakeToken: 'token'),
+    ));
+
+    expect(find.byType(ProfileSkeleton), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 }

@@ -15,6 +15,7 @@ import '../widgets/profile/affinity_card.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
 import '../widgets/sheet_list_surface.dart';
+import '../widgets/skeletons.dart';
 import '../widgets/state_message.dart';
 import 'detail_screen.dart';
 import '../widgets/load_error_view.dart';
@@ -183,7 +184,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         children: [
           FadeSwitcher(
             child: _loading
-                ? KeyedSubtree(key: const ValueKey('uprof-loading'), child: _buildShimmer())
+                // Below the back button that floats over the page.
+                ? const ProfileSkeleton(key: ValueKey('uprof-loading'), topGap: 52)
                 : _buildContent(lang),
           ),
           // 44px touch target around a 36px circle, so the offset is 4px smaller.
@@ -243,29 +245,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildShimmer() {
-    final topPadding = MediaQuery.of(context).padding.top;
-    return Column(
-      children: [
-        Container(
-          height: 200 + topPadding,
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        ),
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Container(
-            height: 100,
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Theme.of(context).colorScheme.outline),
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -792,7 +771,7 @@ class _UserListSheetState extends State<_UserListSheet>
             // Content
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const ListSkeleton(coverSize: Size(46, 64))
                   : _isPrivate
                   ? StateMessage(icon: Icons.lock_outline, message: tr('affinity_private', lang))
                   : _hasError

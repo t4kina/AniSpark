@@ -6,6 +6,7 @@ import 'package:anispark/services/people_api.dart';
 import 'package:anispark/utils/translations.dart';
 import 'package:anispark/widgets/motion/cover_hero.dart';
 import 'package:anispark/widgets/people/media_cover_tile.dart';
+import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 
@@ -147,5 +148,21 @@ void main() {
     await settle(tester);
 
     expect(log, hasLength(2));
+  });
+
+  testWidgets('shows the shape of the cover grid, with its spacing, while the studio loads', (tester) async {
+    final api = apiAnswering((_) => _studio(main: _page([1]), other: _page([])));
+    await tester.pumpWidget(appWith(StudioScreen(studioId: 11, name: 'Madhouse', api: api), cache: cache));
+
+    final skeleton = tester.widget<GridSkeleton>(find.byType(GridSkeleton));
+    expect(skeleton.gridDelegate, mediaCoverGridDelegate);
+    expect(skeleton.shrinkWrap, isTrue, reason: 'it sits in the page, under the header');
+
+    await settle(tester);
+    // Past the cross-fade.
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(GridSkeleton), findsNothing);
+    expect(find.text('Show 1'), findsOneWidget);
   });
 }

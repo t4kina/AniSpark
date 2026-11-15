@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:anispark/screens/home_screen.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/memory_cache_store.dart';
@@ -63,5 +64,14 @@ void main() {
     await tester.pump();
 
     expect(offline.requests, 6, reason: 'only the uncached sections');
+  });
+
+  testWidgets('shows the shape of its rows in the app skeleton while they load', (tester) async {
+    await tester.pumpWidget(screenApp(const HomeScreen(), cache: cache));
+
+    expect(find.byType(Skeleton), findsOneWidget);
+    expect(find.descendant(of: find.byType(Skeleton), matching: find.byType(SkeletonBox)), findsWidgets);
+    // Let the failed requests settle.
+    await tester.pump();
   });
 }

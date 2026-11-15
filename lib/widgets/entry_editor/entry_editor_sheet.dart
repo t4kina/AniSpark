@@ -15,6 +15,7 @@ import '../../utils/translations.dart';
 import '../app_button.dart';
 import '../motion/pop_on_change.dart';
 import '../sheet_list_surface.dart';
+import '../skeletons.dart';
 import 'entry_draft.dart';
 import 'entry_editor_api.dart';
 import 'entry_editor_fields.dart';
@@ -321,11 +322,7 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final Widget body;
     if (_lookingUp) {
-      body = const Padding(
-        key: ValueKey('entry-editor-loading'),
-        padding: EdgeInsets.all(40),
-        child: Center(child: CircularProgressIndicator()),
-      );
+      body = const _FormSkeleton(key: ValueKey('entry-editor-loading'));
     } else if (_lookupFailed || draft == null) {
       body = LoadErrorView(key: const ValueKey('entry-editor-lookup-error'), onRetry: _retryLookUp);
     } else {
@@ -680,6 +677,43 @@ class _Header extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Placeholder shaped like the top of the form: the status chips, then a
+/// few labelled fields.
+class _FormSkeleton extends StatelessWidget {
+  const _FormSkeleton({super.key});
+
+  static const _chipWidths = [84.0, 72.0, 96.0, 64.0, 80.0];
+  static const _fields = 3;
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeleton(
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SkeletonBox(width: 60, height: 12),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [for (final width in _chipWidths) SkeletonBox(width: width, height: 32, radius: 16)],
+            ),
+            for (var i = 0; i < _fields; i++) ...const [
+              SizedBox(height: 22),
+              SkeletonBox(width: 60, height: 12),
+              SizedBox(height: 10),
+              SkeletonBox(height: 44, radius: 10),
+            ],
+          ],
+        ),
       ),
     );
   }
