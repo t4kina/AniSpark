@@ -83,19 +83,17 @@ class ProfileCard extends StatefulWidget {
         avatarSize,
       );
 
-  /// A round glass button for [cornerButton].
+  /// A round glass button for [cornerButton]. [tooltip] names it for screen
+  /// readers; holding the button shows no label.
   static Widget roundButton({required IconData icon, required String tooltip, required VoidCallback onPressed}) =>
-      Tooltip(
-        message: tooltip,
-        child: Semantics(
-          button: true,
-          label: tooltip,
-          child: Pressable(
-            onTap: onPressed,
-            child: _Glass(
-              shape: const CircleBorder(),
-              child: SizedBox.square(dimension: 46, child: Icon(icon, size: 20, color: Colors.white)),
-            ),
+      Semantics(
+        button: true,
+        label: tooltip,
+        child: Pressable(
+          onTap: onPressed,
+          child: _Glass(
+            shape: const CircleBorder(),
+            child: SizedBox.square(dimension: 46, child: Icon(icon, size: 20, color: Colors.white)),
           ),
         ),
       );

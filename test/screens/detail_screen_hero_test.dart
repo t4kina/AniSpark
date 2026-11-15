@@ -219,7 +219,10 @@ void main() {
 
     expect(barTitle, findsOneWidget);
     expect(tester.getCenter(barTitle).dx, 200, reason: 'centred, clear of the buttons');
-    expect(find.byTooltip(tr('tooltip_back', 'English')), findsOneWidget, reason: 'the buttons stay over the bar');
+    expect(find.bySemanticsLabel(tr('tooltip_back', 'English')), findsOneWidget,
+        reason: 'the buttons stay over the bar');
+    expect(find.byTooltip(tr('tooltip_back', 'English')), findsNothing,
+        reason: 'named for screen readers only: holding one shows no label');
 
     await tester.drag(find.byType(CustomScrollView), const Offset(0, 450));
     await tester.pump();

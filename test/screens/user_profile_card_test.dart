@@ -108,7 +108,7 @@ void main() {
   testWidgets('the more button offers Block and Report, not Unfollow, when not following', (tester) async {
     await pumpProfile(tester);
 
-    await tester.tap(find.byTooltip('More options'));
+    await tester.tap(find.bySemanticsLabel('More options'));
     await tester.pumpAndSettle();
 
     expect(find.text('Block'), findsOneWidget);
@@ -121,6 +121,6 @@ void main() {
 
     expect(find.text('Faye Valentine'), findsOneWidget);
     expect(find.text('Follow'), findsNothing);
-    expect(find.byTooltip('More options'), findsNothing);
+    expect(find.bySemanticsLabel('More options'), findsNothing);
   });
 }
