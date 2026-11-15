@@ -1,5 +1,6 @@
 import 'package:anispark/providers/media_list_store.dart';
 import 'package:anispark/providers/settings_provider.dart';
+import 'package:anispark/screens/completion_celebration.dart';
 import 'package:anispark/screens/my_list_screen.dart';
 import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
@@ -228,5 +229,31 @@ void main() {
       find.descendant(of: empty, matching: find.widgetWithText(AppButton, 'Discover Manga')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('adding the last chapter opens the celebration of that manga', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30, progress: 99)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+
+    await tester.drag(find.text('Manga 30'), const Offset(500, 0));
+    for (var i = 0; i < 40 && find.byType(CompletionCelebration).evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final celebration = tester.widget<CompletionCelebration>(find.byType(CompletionCelebration));
+    expect(celebration.title, 'Manga 30');
+    expect(celebration.isManga, isTrue);
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(CompletionCelebration), findsNothing);
+    // Let anything still pending (the undo snack bar) time out.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(seconds: 1));
   });
 }
