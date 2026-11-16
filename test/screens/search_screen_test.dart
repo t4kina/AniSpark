@@ -55,6 +55,26 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(offline.requests, 2);
+    final badge = tester.widget<Badge>(find.byType(Badge));
+    expect(badge.isLabelVisible, isTrue);
+    expect(find.descendant(of: find.byType(Badge), matching: find.text('1')), findsOneWidget,
+        reason: 'the filter button counts the genres picked');
+  });
+
+  testWidgets('the content type and the sort are pickers of the same shape, and no filter is counted yet',
+      (tester) async {
+    await tester.pumpWidget(screenApp(const SearchScreen(), cache: ApiCache(MemoryCacheStore())));
+    await tester.pump();
+
+    BoxDecoration pillOf(String label) => tester
+        .widget<Container>(find.ancestor(of: find.text(label), matching: find.byType(Container)).first)
+        .decoration! as BoxDecoration;
+    final type = pillOf('All');
+    final sort = pillOf('Popularity');
+    expect(type.color, isNotNull);
+    expect(type.color, sort.color);
+    expect(type.borderRadius, sort.borderRadius);
+    expect(tester.widget<Badge>(find.byType(Badge)).isLabelVisible, isFalse);
   });
 
   testWidgets('clearing the query dismisses the error', (tester) async {

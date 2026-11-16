@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_layout.dart';
+import '../theme/app_text.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/app_sheet.dart';
 import '../widgets/genre_filter_sheet.dart';
@@ -304,31 +307,18 @@ class _SearchScreenState extends State<SearchScreen> {
                     current: _contentType,
                     onSelected: _onContentTypeChanged,
                   ),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.withValues(alpha: 0.4)),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _typeLabel(_contentType, lang),
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.keyboard_arrow_down, size: 16),
-                      ],
-                    ),
-                  ),
+                  child: _controlPill(_typeLabel(_contentType, lang)),
                 ),
                 const Spacer(),
                 // Filter button
                 IconButton(
-                  icon: Icon(
-                    Icons.tune,
-                    color: hasFilters ? accentColor : Colors.grey,
+                  // Counts the genres the results are filtered by.
+                  icon: Badge(
+                    isLabelVisible: hasFilters,
+                    label: Text('${_selectedGenres.length}'),
+                    backgroundColor: accentColor,
+                    textColor: Theme.of(context).colorScheme.onPrimary,
+                    child: Icon(Icons.tune, color: hasFilters ? accentColor : context.colors.textSecondary),
                   ),
                   onPressed: _showFilters,
                   tooltip: tr('filters', lang),
@@ -345,19 +335,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     current: _sort,
                     onSelected: _onSortChanged,
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          tr(_sortLabelKeys[_sort] ?? 'search_sort', lang),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                        const Icon(Icons.keyboard_arrow_down, size: 16),
-                      ],
-                    ),
-                  ),
+                  child: _controlPill(tr(_sortLabelKeys[_sort] ?? 'search_sort', lang)),
                 ),
               ],
             ),
@@ -383,6 +361,24 @@ class _SearchScreenState extends State<SearchScreen> {
         label: name,
         value: value,
         child: Pressable(onTap: onTap, child: ExcludeSemantics(child: child)),
+      );
+
+  /// What a picker of the control row shows: its current choice in a pill,
+  /// the same for the content type and the sort.
+  Widget _controlPill(String label) => Container(
+        padding: const EdgeInsets.fromLTRB(14, 7, 10, 7),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: AppRadius.pillAll,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: AppText.footnote.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(width: 2),
+            Icon(Icons.keyboard_arrow_down, size: 16, color: context.colors.textSecondary),
+          ],
+        ),
       );
 
   /// The area under the controls; each state has its own key so changing
