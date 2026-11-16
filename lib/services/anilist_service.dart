@@ -265,7 +265,7 @@ class AniListService {
           season seasonYear
           nextAiringEpisode { episode airingAt }
           rankings { rank type allTime season year }
-          tags { name isMediaSpoiler }
+          tags { name rank isMediaSpoiler }
           isFavourite
           mediaListEntry {
             id status progress progressVolumes score(format: POINT_10_DECIMAL)
@@ -301,7 +301,7 @@ class AniListService {
             }
           }
           trailer { id site }
-          externalLinks { url site color icon type }
+          externalLinks { url site color icon type language }
           streamingEpisodes { title thumbnail url site }
         }
       }

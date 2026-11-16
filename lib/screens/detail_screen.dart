@@ -14,6 +14,7 @@ import '../utils/score_utils.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/detail/detail_header.dart';
+import '../widgets/detail/detail_labels.dart';
 import '../widgets/detail/list_action_button.dart';
 import '../widgets/detail/following_section.dart';
 import '../widgets/detail/media_row.dart';
@@ -575,7 +576,14 @@ class _DetailScreenState extends State<DetailScreen> {
 
         // ── Tags ──
         if (tags.isNotEmpty) ...[
-          _TagsSection(tags: tags),
+          _sectionPad(Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DetailSectionTitle(tr('detail_tags', lang)),
+              const SizedBox(height: 10),
+              TagChips(tags: tags),
+            ],
+          )),
           const Divider(height: 1),
         ],
 
@@ -586,11 +594,7 @@ class _DetailScreenState extends State<DetailScreen> {
             children: [
               DetailSectionTitle(tr('detail_genres', lang)),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: genres.map((g) => _chip(context, g)).toList(),
-              ),
+              GenreChips(genres: genres, isManga: isManga),
             ],
           )),
           const Divider(height: 1),
@@ -677,7 +681,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
         // ── External links ──
         if (externalLinks.isNotEmpty)
-          _ExternalLinksSection(links: externalLinks, onOpenUrl: _openUrl),
+          _sectionPad(ExternalLinks(links: externalLinks, isManga: isManga, onOpenUrl: _openUrl)),
 
         const SizedBox(height: 32),
       ]),
@@ -888,16 +892,6 @@ class _DetailScreenState extends State<DetailScreen> {
         ),
       );
 
-  Widget _chip(BuildContext context, String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Theme.of(context).colorScheme.outline),
-        ),
-        child: Text(label, style: const TextStyle(fontSize: 11)),
-      );
-
   String _airingCountdown(int airingAt, String lang) {
     final diff = DateTime.fromMillisecondsSinceEpoch(airingAt * 1000).difference(DateTime.now());
     if (diff.inDays > 0) {
@@ -1020,93 +1014,6 @@ class _SummarySectionState extends State<_SummarySection> {
                     )),
                   ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TagsSection extends StatefulWidget {
-  final List<Map<String, dynamic>> tags;
-  const _TagsSection({required this.tags});
-  @override
-  State<_TagsSection> createState() => _TagsSectionState();
-}
-
-class _TagsSectionState extends State<_TagsSection> {
-  bool _showAll = false;
-  bool _showSpoilers = false;
-
-  Widget _tagChip(String name, bool spoiler) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: spoiler
-              ? Colors.orange.withValues(alpha: 0.15)
-              : Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(20),
-          border: spoiler ? Border.all(color: Colors.orange.withValues(alpha: 0.4)) : null,
-        ),
-        child: Text(name,
-            style: TextStyle(fontSize: 11, color: spoiler ? Colors.orange : null)),
-      );
-
-  Widget _smallBtn(String label, VoidCallback onTap) => Pressable(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-        ),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    final lang = context.watch<SettingsProvider>().language;
-    final spoilerCount = widget.tags.where((t) => t['isMediaSpoiler'] == true).length;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: DetailSectionTitle(tr('detail_tags', lang)),
-              ),
-              if (spoilerCount > 0)
-                _smallBtn(
-                  _showSpoilers
-                      ? tr('detail_hide_spoiler_tags', lang)
-                      : trf('detail_show_spoiler_tags', lang, {'n': spoilerCount}),
-                  () => setState(() => _showSpoilers = !_showSpoilers),
-                ),
-              const SizedBox(width: 8),
-              _smallBtn(
-                _showAll
-                    ? tr('detail_show_less', lang)
-                    : trf('detail_show_all_tags', lang, {'n': widget.tags.length}),
-                () => setState(() => _showAll = !_showAll),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          AnimatedSize(
-            duration: AppMotion.of(context, AppMotion.medium),
-            curve: AppMotion.standard,
-            alignment: AlignmentDirectional.topStart,
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: widget.tags
-                  .where((t) => _showAll || t['isMediaSpoiler'] != true || _showSpoilers)
-                  .take(_showAll ? 999 : 9)
-                  .map((t) => _tagChip(t['name'] as String, t['isMediaSpoiler'] == true))
-                  .toList(),
             ),
           ),
         ],
@@ -1290,49 +1197,6 @@ class _StreamingEpisodesSection extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _ExternalLinksSection extends StatelessWidget {
-  final List<Map<String, dynamic>> links;
-  final Future<void> Function(String url) onOpenUrl;
-  const _ExternalLinksSection({required this.links, required this.onOpenUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final lang = context.watch<SettingsProvider>().language;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          DetailSectionTitle(tr('detail_external_links', lang)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: links.map((link) {
-              final site = link['site'] as String? ?? '';
-              final url = link['url'] as String? ?? '';
-              return Pressable(
-                onTap: () => onOpenUrl(url),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: cs.outline, width: 1),
-                  ),
-                  child: Text(site,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
     );
   }
 }
