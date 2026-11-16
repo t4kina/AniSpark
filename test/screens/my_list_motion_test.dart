@@ -8,6 +8,7 @@ import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/utils/tab_reselect.dart';
 import 'package:anispark/widgets/app_button.dart';
+import 'package:anispark/widgets/genre_filter_sheet.dart';
 import 'package:anispark/widgets/motion/animated_count.dart';
 import 'package:anispark/widgets/motion/progress_moment.dart';
 import 'package:anispark/widgets/motion/staggered_entrance.dart';
@@ -118,6 +119,41 @@ void main() {
         reason: 'titled with the user\'s name');
     expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Profile')), findsOneWidget);
     expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Settings')), findsOneWidget);
+  });
+
+  testWidgets('a section folds with its chevron turning to point at it', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+    double turns() => tester.widget<AnimatedRotation>(find.byType(AnimatedRotation)).turns;
+    expect(turns(), 0);
+    expect(find.text('Manga 30'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.expand_more));
+    await tester.pumpAndSettle();
+
+    expect(turns(), -0.25);
+    expect(find.text('Manga 30'), findsNothing);
+  });
+
+  testWidgets('the filter button counts the genres the list is filtered by', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+    Badge badge() => tester.widget<Badge>(find.byType(Badge));
+    expect(badge().isLabelVisible, isFalse);
+
+    await tester.tap(find.byTooltip('Filters'));
+    await tester.pumpAndSettle();
+    expect(find.byType(FilterOptionChip), findsWidgets, reason: 'the same chips as every other filter');
+    await tester.tap(find.widgetWithText(FilterOptionChip, 'Action'));
+    await tester.tap(find.widgetWithText(FilterOptionChip, 'Drama'));
+    await tester.pumpAndSettle();
+
+    expect(badge().isLabelVisible, isTrue);
+    expect(find.descendant(of: find.byType(Badge), matching: find.text('2')), findsOneWidget);
   });
 
   testWidgets('settings in the avatar menu opens the settings', (tester) async {

@@ -11,9 +11,12 @@ import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
 import '../utils/tab_reselect.dart';
+import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
+import '../theme/app_text.dart';
 import '../widgets/app_refresh_indicator.dart';
 import '../widgets/app_sheet.dart';
+import '../widgets/genre_filter_sheet.dart' show FilterOptionChip;
 import '../widgets/app_button.dart';
 import '../widgets/media_preview.dart';
 import '../widgets/motion/animated_count.dart';
@@ -101,7 +104,6 @@ class _ListTabScreenState extends State<_ListTabScreen> {
   }
 
   void _showGenreFilter(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final lang = context.read<SettingsProvider>().language;
     showAppSheet<void>(
       context: context,
@@ -114,11 +116,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
             children: [
               Row(
                 children: [
-                  Text(tr('list_filter_by_genre', lang),
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface)),
+                  Text(tr('list_filter_by_genre', lang), style: AppText.headline),
                   const Spacer(),
                   if (_activeGenres.isNotEmpty)
                     TextButton(
@@ -134,42 +132,21 @@ class _ListTabScreenState extends State<_ListTabScreen> {
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
-                runSpacing: 8,
-                children: _genreKeys.entries.map((genre) {
-                  final g = genre.key;
-                  final selected = _activeGenres.contains(g);
-                  return Pressable(
-                    onTap: () {
-                      setState(() {
-                        if (selected) {
-                          _activeGenres.remove(g);
-                        } else {
-                          _activeGenres.add(g);
-                        }
-                      });
-                      setSheet(() {});
-                    },
-                    child: AnimatedContainer(
-                      duration: AppMotion.of(ctx, AppMotion.short),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: selected ? cs.primary : cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: selected ? cs.primary : cs.outline.withValues(alpha: 0.4),
-                        ),
-                      ),
-                      child: Text(
-                        tr(genre.value, lang),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                          color: selected ? Colors.white : cs.onSurface,
-                        ),
-                      ),
+                children: [
+                  for (final genre in _genreKeys.entries)
+                    FilterOptionChip(
+                      label: tr(genre.value, lang),
+                      selected: _activeGenres.contains(genre.key),
+                      onTap: () {
+                        setState(() {
+                          _activeGenres = _activeGenres.contains(genre.key)
+                              ? _activeGenres.difference({genre.key})
+                              : {..._activeGenres, genre.key};
+                        });
+                        setSheet(() {});
+                      },
                     ),
-                  );
-                }).toList(),
+                ],
               ),
             ],
           ),
@@ -194,10 +171,18 @@ class _ListTabScreenState extends State<_ListTabScreen> {
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         actions: [
           IconButton(
-            icon: Icon(
-              Icons.tune_rounded,
-              size: 22,
-              color: _activeGenres.isNotEmpty ? Theme.of(context).colorScheme.primary : Colors.grey,
+            icon: Badge(
+              isLabelVisible: _activeGenres.isNotEmpty,
+              label: Text('${_activeGenres.length}'),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              textColor: Theme.of(context).colorScheme.onPrimary,
+              child: Icon(
+                Icons.tune_rounded,
+                size: 22,
+                color: _activeGenres.isNotEmpty
+                    ? Theme.of(context).colorScheme.primary
+                    : context.colors.textSecondary,
+              ),
             ),
             onPressed: () => _showGenreFilter(context),
             tooltip: tr('filters', lang),
@@ -207,7 +192,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: IconButton(
-              icon: const Icon(Icons.swap_vert, color: Colors.grey, size: 22),
+              icon: Icon(Icons.swap_vert, color: context.colors.textSecondary, size: 22),
               tooltip: tr('search_sort', lang),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -242,7 +227,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: tr('filter_by_name', lang),
-                prefixIcon: const Icon(Icons.search, size: 20, color: Colors.grey),
+                prefixIcon: Icon(Icons.search, size: 20, color: context.colors.textSecondary),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.close, size: 18),
@@ -702,14 +687,10 @@ class _MediaListState extends State<_MediaList>
         child: Row(
           children: [
             if (isCustom) ...[
-              const Icon(Icons.playlist_add_check, size: 16, color: Colors.grey),
+              Icon(Icons.playlist_add_check, size: 16, color: context.colors.textSecondary),
               const SizedBox(width: 6),
             ],
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey)),
+            Text(label, style: AppText.subhead),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -726,10 +707,12 @@ class _MediaListState extends State<_MediaList>
               ),
             ),
             const SizedBox(width: 6),
-            Icon(
-              collapsed ? Icons.chevron_right : Icons.expand_more,
-              color: Colors.grey,
-              size: 20,
+            // Turns to point at the folded section instead of swapping icons.
+            AnimatedRotation(
+              turns: collapsed ? -0.25 : 0,
+              duration: AppMotion.of(context, AppMotion.short),
+              curve: AppMotion.standard,
+              child: Icon(Icons.expand_more, color: context.colors.textSecondary, size: 20),
             ),
           ],
         ),
