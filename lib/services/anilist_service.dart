@@ -133,7 +133,7 @@ class AniListService {
       Page(page: 1, perPage: 20) {
         media(sort: TRENDING_DESC, type: ANIME, isAdult: false) {
           id title { romaji english native }
-          coverImage { large } episodes averageScore genres
+          coverImage { large } bannerImage episodes averageScore genres
         }
       }
     }

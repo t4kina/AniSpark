@@ -12,7 +12,10 @@ import '../utils/anime_season.dart';
 import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/app_refresh_indicator.dart';
+import '../theme/app_text.dart';
 import '../widgets/anime_card.dart';
+import '../widgets/app_button.dart';
+import '../widgets/home_spotlight.dart';
 import '../widgets/media_preview.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
@@ -286,6 +289,9 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // What is trending most leads the page, on its own banner.
+              if (_trending.isNotEmpty && _trending.first is Map<String, dynamic>)
+                HomeSpotlight(media: _trending.first as Map<String, dynamic>),
               _buildShortcuts(lang),
               const SizedBox(height: 12),
               if (_weeklySchedule.isNotEmpty) ...[
@@ -351,18 +357,22 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Row(
           children: [
             Expanded(
-              child: FilledButton.tonalIcon(
+              child: AppButton(
+                label: tr('cal_shortcut', lang),
+                icon: Icons.calendar_month_outlined,
+                kind: AppButtonKind.tonal,
+                expand: true,
                 onPressed: _openCalendar,
-                icon: const Icon(Icons.calendar_month_outlined, size: 18),
-                label: Text(tr('cal_shortcut', lang), overflow: TextOverflow.ellipsis),
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: FilledButton.tonalIcon(
+              child: AppButton(
+                label: tr('season_shortcut', lang),
+                icon: Icons.grid_view_outlined,
+                kind: AppButtonKind.tonal,
+                expand: true,
                 onPressed: () => _openSeason(_currentSeason),
-                icon: const Icon(Icons.grid_view_outlined, size: 18),
-                label: Text(tr('season_shortcut', lang), overflow: TextOverflow.ellipsis),
               ),
             ),
           ],
@@ -388,27 +398,31 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Row(
           children: [
             Expanded(
+              // The page's own text colour, not grey: these name what the
+              // eye is looking for.
               child: Text(
                 title,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey,
-                  letterSpacing: 0.5,
-                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.footnote.copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.6),
               ),
             ),
             if (seeAll != null)
               Pressable.dim(
                 onTap: seeAll,
-                child: Builder(builder: (ctx) => Text(
-                  tr('home_see_all', lang),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(ctx).colorScheme.primary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                )),
+                child: Builder(builder: (ctx) {
+                  final accent = Theme.of(ctx).colorScheme.primary;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        tr('home_see_all', lang),
+                        style: AppText.caption.copyWith(color: accent, fontWeight: FontWeight.w600),
+                      ),
+                      Icon(Icons.chevron_right_rounded, size: 16, color: accent),
+                    ],
+                  );
+                }),
               ),
           ],
         ),
