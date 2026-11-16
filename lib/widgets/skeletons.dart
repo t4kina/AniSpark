@@ -102,15 +102,17 @@ class FeedSkeleton extends StatelessWidget {
   Widget build(BuildContext context) => Skeleton(
         child: ListView.builder(
           physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(12),
+          // Rows of a small avatar, two lines and a cover, as in the feed's
+          // timeline, the inbox and a thread.
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 0),
           itemCount: cards,
           itemBuilder: (_, _) => const Padding(
-            padding: EdgeInsets.only(bottom: 12),
+            padding: EdgeInsets.only(bottom: 22),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SkeletonBox(width: 36, height: 36, radius: 18),
-                SizedBox(width: 10),
+                SkeletonBox(width: 28, height: 28, radius: 14),
+                SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -123,8 +125,8 @@ class FeedSkeleton extends StatelessWidget {
                     ],
                   ),
                 ),
-                SizedBox(width: 10),
-                SkeletonBox(width: 45, height: 64),
+                SizedBox(width: 12),
+                SkeletonBox(width: 40, height: 58, radius: 8),
               ],
             ),
           ),

@@ -6,9 +6,9 @@ import '../services/auth_service.dart';
 import '../services/notification_service.dart';
 import '../services/social_api.dart';
 import '../providers/settings_provider.dart';
-import '../utils/activity_status.dart';
-import '../utils/activity_text.dart' show relativeTime;
+import '../utils/activity_text.dart' show feedDayLabel, sameFeedDay;
 import '../utils/refresh_notifier.dart';
+import '../theme/app_layout.dart';
 import '../theme/app_motion.dart';
 import '../widgets/app_refresh_indicator.dart';
 import '../widgets/app_sheet.dart';
@@ -22,11 +22,10 @@ import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
 import '../widgets/state_message.dart';
-import '../widgets/social/social_widgets.dart';
+import '../widgets/social/feed_timeline_item.dart';
 import 'activity_thread_screen.dart';
 import 'notifications_screen.dart';
 import '../widgets/load_error_view.dart';
-import '../widgets/app_image.dart';
 
 enum _FeedType { following, global, personal }
 
@@ -463,7 +462,7 @@ class _FeedScreenState extends State<FeedScreen>
           onRefresh: _load,
           child: ListView.builder(
             controller: _scrollController,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.only(bottom: AppSpace.xl),
             itemCount: _activities.length + (_hasMore ? 1 : 0),
             // Cards keep their state when a post is inserted above them, so
             // they don't replay their entrance.
@@ -478,11 +477,16 @@ class _FeedScreenState extends State<FeedScreen>
                 );
               }
               final activity = _activities[i];
+              final createdAt = activity['createdAt'] as int? ?? 0;
+              // The first entry of each day carries the day's heading.
+              final startsDay =
+                  i == 0 || !sameFeedDay(_activities[i - 1]['createdAt'] as int? ?? 0, createdAt);
               final card = StaggeredEntrance(
                 index: i,
-                child: _ActivityCard(
+                child: FeedTimelineItem(
                   activity: activity,
                   lang: lang,
+                  dayLabel: startsDay ? feedDayLabel(createdAt, lang) : null,
                   onToggleLike: () => _toggleLike(activity),
                   onOpenThread: () => _openThread(activity),
                 ),
@@ -506,178 +510,6 @@ class _FeedScreenState extends State<FeedScreen>
 /// Identifies a feed card by its activity id.
 class _CardKey extends ValueKey<int> {
   const _CardKey(super.value);
-}
-
-class _ActivityCard extends StatelessWidget {
-  final Map<String, dynamic> activity;
-  final String lang;
-  final VoidCallback onToggleLike;
-  final VoidCallback onOpenThread;
-
-  // Long posts are cut in the feed; the thread shows them in full.
-  static const _maxTextLines = 10;
-
-  const _ActivityCard({
-    required this.activity,
-    required this.lang,
-    required this.onToggleLike,
-    required this.onOpenThread,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final type = activity['type'] as String?;
-    final user = asJsonMap(activity['user']);
-    final username = user?['name'] as String? ?? tr('feed_unknown', lang);
-    final createdAt = activity['createdAt'] as int? ?? 0;
-
-    if (type == 'TEXT') {
-      return _buildTextActivity(context, user, username, createdAt);
-    }
-    return _buildListActivity(context, user, username, createdAt);
-  }
-
-  /// Tells this post's avatar apart from the author's other posts.
-  String get _heroScope => 'feed-${activity['id']}';
-
-  BoxDecoration _cardDecoration(BuildContext context) => BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-      );
-
-  /// Time on the left, replies and likes on the right.
-  Widget _footer(int createdAt) => Row(children: [
-        const Icon(Icons.access_time, size: 12, color: Colors.grey),
-        const SizedBox(width: 3),
-        Expanded(
-          child: Text(relativeTime(createdAt, lang),
-              style: const TextStyle(fontSize: 11, color: Colors.grey)),
-        ),
-        ReplyCountButton(
-          count: activity['replyCount'] as int? ?? 0,
-          onPressed: onOpenThread,
-        ),
-        LikeButton(
-          isLiked: activity['isLiked'] == true,
-          count: activity['likeCount'] as int? ?? 0,
-          onPressed: onToggleLike,
-        ),
-      ]);
-
-  Widget _buildListActivity(BuildContext context, Map<String, dynamic>? user, String username, int createdAt) {
-    final media = asJsonMap(activity['media']);
-    final mediaId = media?['id'] as int?;
-    final status = activity['status'] as String?;
-    final progress = activity['progress'];
-    final coverImage = asJsonMap(media?['coverImage'])?['large'] as String?;
-    final titleMap = asJsonMap(media?['title']);
-    final title = titleMap == null
-        ? tr('feed_unknown', lang)
-        : context.read<SettingsProvider>().resolveTitle(titleMap);
-    final actionText = activityStatusText(status, progress, lang);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      decoration: _cardDecoration(context),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ProfileAvatar(user: user, heroScope: _heroScope),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TappableUserName(
-                  onTap: () => openUserProfile(context, user, heroScope: _heroScope),
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(fontSize: 13),
-                      children: [
-                        TextSpan(
-                            text: username,
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary)),
-                        TextSpan(
-                            text: ' $actionText',
-                            style: const TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
-                _footer(createdAt),
-              ],
-            ),
-          ),
-          if (coverImage != null) ...[
-            const SizedBox(width: 10),
-            Pressable(
-              onTap: mediaId != null ? () => openMediaDetail(context, mediaId) : null,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: AppImage(url: coverImage, cacheWidth: 90, width: 45, height: 64),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTextActivity(BuildContext context, Map<String, dynamic>? user, String username, int createdAt) {
-    final text = activityPlainText(activity['text'] as String?, lang);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      decoration: _cardDecoration(context),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ProfileAvatar(user: user, heroScope: _heroScope),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TappableUserName(
-                  onTap: () => openUserProfile(context, user, heroScope: _heroScope),
-                  child: Text(username,
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                          fontSize: 13)),
-                ),
-                const SizedBox(height: 4),
-                Pressable.dim(
-                  onTap: onOpenThread,
-                  child: text.isEmpty
-                      ? Text(tr('social_media_post', lang),
-                          style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 13,
-                              fontStyle: FontStyle.italic))
-                      : Text(text,
-                          maxLines: _maxTextLines,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                ),
-                _footer(createdAt),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Bottom sheet for writing and posting a status update.

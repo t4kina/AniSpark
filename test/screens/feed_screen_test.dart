@@ -6,6 +6,9 @@ import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/services/social_api.dart';
 import 'package:anispark/utils/tab_reselect.dart';
+import 'package:anispark/widgets/social/feed_timeline_item.dart';
+import 'package:anispark/widgets/social/social_widgets.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -82,7 +85,8 @@ void main() {
     var page2Attempts = 0;
     await pumpFeed(tester, (request) {
       if (isFeedPage(request, 1)) {
-        return jsonResponse(_feedPage([for (var i = 1; i <= 12; i++) _textActivity(i)], hasNextPage: true));
+        // Enough entries to push the load-more footer below the screen.
+        return jsonResponse(_feedPage([for (var i = 1; i <= 24; i++) _textActivity(i)], hasNextPage: true));
       }
       if (isFeedPage(request, 2)) {
         page2Attempts++;
@@ -221,5 +225,89 @@ void main() {
     await tester.tap(find.text('Post'));
     await tester.pumpAndSettle();
     expect(posts, 1);
+  });
+
+  group('the timeline', () {
+    int secondsAgo(Duration ago) => DateTime.now().subtract(ago).millisecondsSinceEpoch ~/ 1000;
+
+    Map<String, dynamic> listActivity(int id, int createdAt) => {
+          'id': id,
+          'type': 'ANIME_LIST',
+          'status': 'watched episode',
+          'progress': '5',
+          'createdAt': createdAt,
+          'isLiked': false,
+          'likeCount': 4,
+          'replyCount': 1,
+          'user': {'id': 2, 'name': 'faye', 'avatar': null},
+          'media': {
+            'id': 5,
+            'type': 'ANIME',
+            'title': {'romaji': 'Frieren'},
+            'coverImage': {'large': 'https://img.example/frieren.jpg'},
+          },
+        };
+
+    Future<void> pumpTimeline(WidgetTester tester, List<Map<String, dynamic>> activities) => pumpFeed(tester, (request) {
+          if (isFeedPage(request, 1)) return jsonResponse(_feedPage(activities));
+          return jsonResponse({'data': {'Viewer': {'id': 1, 'unreadNotificationCount': 0}}});
+        });
+
+    testWidgets('groups what happened under the day it happened, each day named once', (tester) async {
+      final today = DateTime.now();
+      final noon = DateTime(today.year, today.month, today.day, 12);
+      int at(DateTime time) => time.millisecondsSinceEpoch ~/ 1000;
+      await pumpTimeline(tester, [
+        {..._textActivity(1), 'createdAt': at(noon)},
+        {..._textActivity(2), 'createdAt': at(noon.subtract(const Duration(days: 1)))},
+        {..._textActivity(3), 'createdAt': at(noon.subtract(const Duration(days: 1, hours: 2)))},
+        {..._textActivity(4), 'createdAt': at(noon.subtract(const Duration(days: 400)))},
+      ]);
+
+      expect(find.byType(FeedTimelineItem), findsNWidgets(4));
+      expect(find.text('TODAY'), findsOneWidget);
+      expect(find.text('YESTERDAY'), findsOneWidget, reason: 'two posts, one heading');
+      final labels = [
+        for (final item in tester.widgetList<FeedTimelineItem>(find.byType(FeedTimelineItem))) item.dayLabel,
+      ];
+      expect(labels[2], isNull);
+      expect(labels[3], contains('${noon.subtract(const Duration(days: 400)).year}'), reason: 'another year is dated in full');
+      expect(tester.getTopLeft(find.text('TODAY')).dy, lessThan(tester.getTopLeft(find.text('post 1')).dy));
+    });
+
+    testWidgets('a list entry says who did what, to what, with its cover and no card around it', (tester) async {
+      await pumpTimeline(tester, [listActivity(7, secondsAgo(const Duration(hours: 2)))]);
+
+      final entry = find.byType(FeedTimelineItem);
+      expect(find.descendant(of: entry, matching: find.textContaining('faye', findRichText: true)), findsOneWidget);
+      expect(find.descendant(of: entry, matching: find.textContaining('watched episode', findRichText: true)), findsOneWidget);
+      expect(find.descendant(of: entry, matching: find.text('Frieren')), findsOneWidget);
+      final cover = find.descendant(of: entry, matching: find.byType(CachedNetworkImage));
+      expect(tester.getSize(cover.last), FeedTimelineItem.coverSize);
+      expect(tester.getTopLeft(cover.last).dx, greaterThan(tester.getTopRight(find.text('Frieren')).dx),
+          reason: 'the cover closes the row, at the right');
+      expect(
+        find.descendant(
+          of: entry,
+          matching: find.byWidgetPredicate(
+            (widget) => widget is Container && (widget.decoration as BoxDecoration?)?.borderRadius != null,
+          ),
+        ),
+        findsNothing,
+        reason: 'entries hang from the line, they are not rounded cards',
+      );
+    });
+
+    testWidgets('likes and replies are still a tap away on each entry', (tester) async {
+      await pumpTimeline(tester, [listActivity(7, secondsAgo(const Duration(hours: 2)))]);
+
+      expect(find.descendant(of: find.byType(LikeButton), matching: find.text('4')), findsOneWidget);
+      expect(find.descendant(of: find.byType(ReplyCountButton), matching: find.text('1')), findsOneWidget);
+
+      await tester.tap(find.byType(LikeButton));
+      await tester.pump();
+      expect(log.any((request) => request.query.contains('ToggleLike')), isTrue);
+      await tester.pumpAndSettle();
+    });
   });
 }
