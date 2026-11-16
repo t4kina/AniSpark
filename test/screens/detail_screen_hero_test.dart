@@ -249,4 +249,43 @@ void main() {
     expect(await highlights({'id': 5, 'status': 'CURRENT', 'progress': 3, 'score': 0}), [true, false, false]);
     expect(find.text(tr('add_to_list', 'English').toUpperCase()), findsNothing);
   });
+
+  testWidgets('a series still airing says when the next episode is, in an accent pill under the title', (tester) async {
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final cache = ApiCache(MemoryCacheStore());
+    final airingAt = DateTime.now().add(const Duration(days: 2, hours: 3)).millisecondsSinceEpoch ~/ 1000;
+    await cache.write('anon:media:1', {
+      ..._media(),
+      'format': 'TV',
+      'nextAiringEpisode': {'episode': 5, 'airingAt': airingAt},
+    });
+    await tester.pumpWidget(appWith(const DetailScreen(animeId: 1), cache: cache));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+
+    final clock = find.byIcon(Icons.schedule_rounded);
+    expect(clock, findsOneWidget);
+    final accent = Theme.of(tester.element(clock)).colorScheme.primary;
+    expect(tester.widget<Icon>(clock).color, accent);
+    final pill = find.ancestor(of: clock, matching: find.byType(Row)).first;
+    final label = tester.widget<Text>(find.descendant(of: pill, matching: find.byType(Text)));
+    expect(label.data, contains('5'));
+    expect(label.style?.color, accent);
+    expect(tester.getTopLeft(clock).dy, greaterThan(tester.getTopLeft(find.text('Cowboy Bebop').first).dy));
+
+    // The facts of the series sit together in one card.
+    final type = find.text('TV');
+    expect(
+      find.ancestor(
+        of: type,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is Container && (widget.decoration as BoxDecoration?)?.borderRadius != null,
+        ),
+      ),
+      findsWidgets,
+    );
+  });
 }

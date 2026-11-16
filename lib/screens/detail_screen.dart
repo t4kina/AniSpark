@@ -6,7 +6,10 @@ import 'package:provider/provider.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_layout.dart';
 import '../theme/app_motion.dart';
+import '../theme/app_text.dart';
 import '../utils/haptics.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/external_url.dart';
@@ -384,13 +387,11 @@ class _DetailScreenState extends State<DetailScreen> {
               ],
               if (nextAiring != null) ...[
                 const SizedBox(height: 8),
-                Text(
-                  trf('detail_episode_airs_in', lang, {
+                _AiringPill(
+                  text: trf('detail_episode_airs_in', lang, {
                     'n': '${nextAiring['episode']}',
                     'time': _airingCountdown(nextAiring['airingAt'] as int, lang),
                   }),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.grey, fontSize: 13),
                 ),
               ],
             ]),
@@ -404,7 +405,7 @@ class _DetailScreenState extends State<DetailScreen> {
               children: [
                 _statCell(tr('detail_average_score', lang),
                     score != null ? '$score%' : '—',
-                    score != null && score >= 70 ? Colors.green : Colors.grey),
+                    score != null && score >= 70 ? context.colors.success : context.colors.textSecondary),
                 if (highestRated != null) ...[
                   _vDivider(),
                   _statCell(tr('detail_highest_rated', lang), '#${highestRated['rank']}', null,
@@ -759,7 +760,7 @@ class _DetailScreenState extends State<DetailScreen> {
       coverUrl: node['coverImage']?['large'] as String?,
       subtitle: Text(
         _relationLabel(edge['relationType'] as String? ?? '', settings.language),
-        style: const TextStyle(fontSize: 10, color: Colors.grey),
+        style: TextStyle(fontSize: 10, color: context.colors.textSecondary),
       ),
     );
   }
@@ -774,9 +775,9 @@ class _DetailScreenState extends State<DetailScreen> {
       title: _titleOf(rec, settings),
       coverUrl: rec['coverImage']?['large'] as String?,
       subtitle: Row(children: [
-        const Icon(Icons.thumb_up_outlined, size: 10, color: Colors.grey),
+        Icon(Icons.thumb_up_outlined, size: 10, color: context.colors.textSecondary),
         const SizedBox(width: 3),
-        Text('$rating', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text('$rating', style: TextStyle(fontSize: 10, color: context.colors.textSecondary)),
       ]),
     );
   }
@@ -817,7 +818,7 @@ class _DetailScreenState extends State<DetailScreen> {
           children: [
             Text(label,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 9, color: Colors.grey, fontWeight: FontWeight.w600, letterSpacing: 0.3)),
+                style: TextStyle(fontSize: 9, color: context.colors.textSecondary, fontWeight: FontWeight.w600, letterSpacing: 0.3)),
             const SizedBox(height: 4),
             Text(value,
                 style: TextStyle(
@@ -825,7 +826,7 @@ class _DetailScreenState extends State<DetailScreen> {
                     fontWeight: FontWeight.bold,
                     color: valueColor)),
             if (sub != null)
-              Text(sub, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              Text(sub, style: TextStyle(fontSize: 10, color: context.colors.textSecondary)),
           ],
         ),
       );
@@ -868,13 +869,23 @@ class _DetailScreenState extends State<DetailScreen> {
       ));
       if (i + 2 < items.length) rows.add(const SizedBox(height: 12));
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows);
+    // A card of its own, so the facts read as one block and not as loose
+    // text between the sections.
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: AppRadius.mdAll,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
+    );
   }
 
   Widget _infoCell(String label, String value) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w600)),
+          Text(label, style: TextStyle(fontSize: 10, color: context.colors.textSecondary, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
           Text(value, style: const TextStyle(fontSize: 13)),
         ],
@@ -885,7 +896,7 @@ class _DetailScreenState extends State<DetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w600)),
+            Text(label, style: TextStyle(fontSize: 10, color: context.colors.textSecondary, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
             Text(value, style: const TextStyle(fontSize: 13)),
           ],
@@ -999,7 +1010,7 @@ class _SummarySectionState extends State<_SummarySection> {
                   onTap: () => setState(() => _expanded = !_expanded),
                   child: Text(
                     widget.description,
-                    style: const TextStyle(color: Colors.grey, height: 1.6, fontSize: 13),
+                    style: TextStyle(color: context.colors.textSecondary, height: 1.6, fontSize: 13),
                     maxLines: _expanded ? null : 4,
                     overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
                   ),
@@ -1076,7 +1087,7 @@ class _CharactersSection extends StatelessWidget {
                     Text(name, maxLines: 2, overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
-                    Text(role, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+                    Text(role, style: TextStyle(fontSize: 9, color: context.colors.textSecondary)),
                   ],
                 ),
               ),
@@ -1202,6 +1213,38 @@ class _StreamingEpisodesSection extends StatelessWidget {
 }
 
 // ── Data class ────────────────────────────────────────────────────────────
+
+/// When the next episode airs, as a pill in the accent colour under the
+/// title: the one fact of a series still airing that changes every day.
+class _AiringPill extends StatelessWidget {
+  const _AiringPill({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(color: accent.withValues(alpha: 0.14), borderRadius: AppRadius.pillAll),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.schedule_rounded, size: 14, color: accent),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption.copyWith(color: accent, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _InfoItem {
   final String label;
