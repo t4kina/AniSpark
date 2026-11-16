@@ -119,4 +119,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(dialog, findsNothing);
   });
+
+  testWidgets('each setting has its icon on a tinted square: the accent, or red for logging out', (tester) async {
+    await openSettings(tester);
+
+    Color tintOf(IconData icon) {
+      final square = tester.widget<Container>(
+        find.ancestor(of: find.byIcon(icon), matching: find.byType(Container)).first,
+      );
+      expect((square.decoration! as BoxDecoration).borderRadius, isNotNull);
+      return tester.widget<Icon>(find.byIcon(icon)).color!;
+    }
+
+    final accent = Theme.of(tester.element(find.byType(SettingsScreen))).colorScheme.primary;
+    expect(tintOf(Icons.language), accent);
+    expect(tintOf(Icons.info_outline), accent);
+    expect(tintOf(Icons.logout), Colors.red);
+  });
 }

@@ -13,6 +13,7 @@ import '../providers/settings_provider.dart' show SettingsProvider, accentColorO
 import '../services/auth_service.dart';
 import '../utils/translations.dart';
 import '../utils/refresh_notifier.dart';
+import '../theme/app_colors.dart';
 import '../theme/app_layout.dart';
 import '../theme/app_text.dart';
 import '../widgets/app_button.dart';
@@ -196,7 +197,7 @@ class _CacheSizeLabelState extends State<_CacheSizeLabel> {
           final bytes = snapshot.data;
           return Text(
             kIsWeb || bytes == null ? '' : trf('cache_size', widget.lang, {'size': _format(bytes)}),
-            style: const TextStyle(color: Colors.grey, fontSize: 13),
+            style: TextStyle(color: context.colors.textSecondary, fontSize: 13),
           );
         },
       );
@@ -230,7 +231,7 @@ class SettingsScreen extends StatelessWidget {
             icon: Icons.language,
             label: tr('language', lang),
             trailing: Text(_languageNames[lang] ?? lang,
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
             onTap: () => showOptionSheet<String>(
               context: context,
               title: tr('language', lang),
@@ -245,7 +246,7 @@ class SettingsScreen extends StatelessWidget {
             icon: Icons.palette_outlined,
             label: tr('appearance', lang),
             trailing: Text(_labelOf(_appearanceKeys, settings.appearance, lang),
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
             onTap: () => showOptionSheet<String>(
               context: context,
               title: tr('appearance', lang),
@@ -272,7 +273,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(_labelOf(_accentColorKeys, settings.accentColorName, lang),
-                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                    style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
               ],
             ),
             onTap: () => _showAccentColorPicker(context, settings, lang),
@@ -282,7 +283,7 @@ class SettingsScreen extends StatelessWidget {
             icon: Icons.title,
             label: tr('title_language', lang),
             trailing: Text(_labelOf(_titleLanguageKeys, settings.titleLanguage, lang),
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
             onTap: () => showOptionSheet<String>(
               context: context,
               title: tr('title_language', lang),
@@ -297,7 +298,7 @@ class SettingsScreen extends StatelessWidget {
             icon: Icons.tab_outlined,
             label: tr('default_tab', lang),
             trailing: Text(tr(_tabLabelKeys[settings.defaultTab] ?? 'nav_anime', lang),
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
             onTap: () => showOptionSheet<int>(
               context: context,
               title: tr('default_tab', lang),
@@ -455,7 +456,7 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(height: 24),
           Center(
             child: _AppVersion(
-              builder: (v) => Text('AniSpark v$v', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              builder: (v) => Text('AniSpark v$v', style: TextStyle(color: context.colors.textSecondary, fontSize: 12)),
             ),
           ),
           const SizedBox(height: 32),
@@ -466,9 +467,12 @@ class SettingsScreen extends StatelessWidget {
 
   static Widget _sectionHeader(String title) => Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-        child: Text(title,
-            style: const TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
+        child: Builder(
+          builder: (context) => Text(
+            title.toUpperCase(),
+            style: AppText.overline.copyWith(color: context.colors.textSecondary),
+          ),
+        ),
       );
 
   /// A setting switched on or off, by the switch or the whole row, with a
@@ -486,7 +490,7 @@ class SettingsScreen extends StatelessWidget {
     }
 
     return ListTile(
-      leading: Icon(icon, color: Colors.grey, size: 22),
+      leading: _SettingIcon(icon),
       title: Text(label, style: const TextStyle(fontSize: 14)),
       trailing: Builder(builder: (ctx) => Transform.scale(
         scale: 0.75,
@@ -508,9 +512,12 @@ class SettingsScreen extends StatelessWidget {
     required VoidCallback onTap,
   }) =>
       ListTile(
-        leading: Icon(icon, color: color ?? Colors.grey, size: 22),
+        leading: _SettingIcon(icon, color: color),
         title: Text(label, style: TextStyle(color: color, fontSize: 14)),
-        trailing: trailing ?? const Icon(Icons.chevron_right, color: Colors.grey, size: 18),
+        trailing: trailing ??
+            Builder(
+              builder: (context) => Icon(Icons.chevron_right, color: context.colors.textTertiary, size: 18),
+            ),
         onTap: onTap,
       );
 
@@ -700,5 +707,27 @@ class SettingsScreen extends StatelessWidget {
     // login screen once the session has ended, whenever logout() reports it.
     Navigator.of(context).popUntil((route) => route.isFirst);
     auth.logout();
+  }
+}
+
+/// A setting's icon on a rounded square tinted with its colour (the accent
+/// unless the row has one of its own, like the red of logging out).
+class _SettingIcon extends StatelessWidget {
+  const _SettingIcon(this.icon, {this.color});
+
+  final IconData icon;
+  final Color? color;
+
+  static const _size = 30.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final tint = color ?? Theme.of(context).colorScheme.primary;
+    return Container(
+      width: _size,
+      height: _size,
+      decoration: BoxDecoration(color: tint.withValues(alpha: 0.14), borderRadius: AppRadius.smAll),
+      child: Icon(icon, size: 18, color: tint),
+    );
   }
 }
