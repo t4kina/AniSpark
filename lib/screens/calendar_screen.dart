@@ -9,7 +9,11 @@ import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../services/device_calendar.dart';
 import '../services/discover_api.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_layout.dart';
 import '../theme/app_motion.dart';
+import '../theme/app_text.dart';
+import '../widgets/media_preview.dart';
 import '../utils/airing_calendar.dart';
 import '../utils/airing_event.dart';
 import '../utils/haptics.dart';
@@ -281,6 +285,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         child: StaggeredEntrance(
                           index: firstIndexOfDay[d],
                           child: _DayHeader(
+                            isToday: calendarDaysBetween(today, day.date) == 0,
+                            count: day.episodes.length,
                             label: _dayLabel(day.date, today, lang),
                             date: trf('cal_month_day', lang, {
                               'month': tr('detail_month_${day.date.month}', lang),
@@ -341,10 +347,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
 /// Sticky "Today · Oct 10" header above one day's episodes.
 class _DayHeader extends StatelessWidget {
-  const _DayHeader({required this.label, required this.date});
+  const _DayHeader({required this.label, required this.date, required this.isToday, required this.count});
 
   final String label;
   final String date;
+
+  /// Today stands out in the accent colour.
+  final bool isToday;
+
+  /// How many episodes air that day.
+  final int count;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -357,10 +369,29 @@ class _DayHeader extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                style: AppText.subhead.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: isToday ? Theme.of(context).colorScheme.primary : null,
+                ),
               ),
               const SizedBox(width: 8),
-              Text(date, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+              Expanded(child: Text(date, style: AppText.footnote.copyWith(color: context.colors.textSecondary))),
+              // How busy the day is, at a glance.
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: AppRadius.pillAll,
+                ),
+                child: Text(
+                  '$count',
+                  style: AppText.caption.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: context.colors.textSecondary,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -427,6 +458,7 @@ class _EpisodeRow extends StatelessWidget {
     final row = Pressable(
       // A full-width row only needs a hint of a press.
       pressedScale: 0.98,
+      onLongPress: id == null ? null : () => showMediaPreview(context, media: media),
       onTap: id == null
           ? null
           : () => Navigator.push(
@@ -481,7 +513,7 @@ class _EpisodeRow extends StatelessWidget {
                               if (episode != null)
                                 Text(
                                   trf('list_episode_n', lang, {'n': episode}),
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  style: TextStyle(fontSize: 12, color: context.colors.textSecondary),
                                 ),
                               if (statusKey != null) _ListBadge(label: tr(statusKey, lang)),
                             ],
@@ -499,13 +531,13 @@ class _EpisodeRow extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: aired ? Colors.grey : cs.primary,
+                              color: aired ? context.colors.textSecondary : cs.primary,
                             ),
                           ),
                         if (aired)
                           Text(
                             tr('cal_aired', lang),
-                            style: const TextStyle(fontSize: 11, color: Colors.grey),
+                            style: TextStyle(fontSize: 11, color: context.colors.textSecondary),
                           ),
                       ],
                     ),

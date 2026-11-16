@@ -333,4 +333,22 @@ void main() {
 
     expect(log.length, greaterThan(requests));
   });
+
+  testWidgets('today stands out in the accent colour, and each day says how many episodes it has', (tester) async {
+    await pumpCalendar(tester, apiAnswering((_) => _page(schedules)));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+
+    final todayLabel = tester.widget<Text>(find.text(_en('cal_today')));
+    final tomorrowLabel = tester.widget<Text>(find.text(_en('cal_tomorrow')));
+    final accent = Theme.of(tester.element(find.text(_en('cal_today')))).colorScheme.primary;
+    expect(todayLabel.style?.color, accent);
+    expect(tomorrowLabel.style?.color, isNot(accent));
+
+    // One episode today, two tomorrow, each count level with its heading.
+    final todayY = tester.getCenter(find.text(_en('cal_today'))).dy;
+    final tomorrowY = tester.getCenter(find.text(_en('cal_tomorrow'))).dy;
+    expect(tester.getCenter(find.text('1')).dy, moreOrLessEquals(todayY, epsilon: 4));
+    expect(tester.getCenter(find.text('2')).dy, moreOrLessEquals(tomorrowY, epsilon: 4));
+  });
 }
