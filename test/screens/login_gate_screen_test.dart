@@ -165,4 +165,16 @@ void main() {
       expect(find.byType(Hero), findsNothing);
     });
   });
+
+  testWidgets('the logo sits on a soft glow of the accent colour, centred on it', (tester) async {
+    await pumpGate(tester);
+
+    final glow = find.byKey(const ValueKey('login-glow'));
+    expect(glow, findsOneWidget);
+    final gradient = (tester.widget<Container>(glow).decoration! as BoxDecoration).gradient! as RadialGradient;
+    final accent = Theme.of(tester.element(glow)).colorScheme.primary;
+    expect(gradient.colors.first.withValues(alpha: 1), accent.withValues(alpha: 1));
+    expect(gradient.colors.last.a, 0, reason: 'it fades out to nothing');
+    expect(tester.getCenter(glow), tester.getCenter(find.byType(AppLogo)));
+  });
 }
