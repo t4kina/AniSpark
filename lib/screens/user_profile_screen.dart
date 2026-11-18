@@ -378,7 +378,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               final count = type == 'MANGA' ? totalManga : totalAnime;
               if (count > 0) _showListSheet(context, type);
             },
-            cornerButton: canFollow
+            // Following them, the Following button opens these same actions.
+            cornerButton: canFollow && !_isFollowing
                 ? ProfileCard.roundButton(
                     icon: Icons.more_horiz_rounded,
                     tooltip: tr('tooltip_more', lang),

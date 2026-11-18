@@ -110,6 +110,7 @@ void main() {
     following = true;
     await pumpProfile(tester, isFollower: true);
     expect(find.text('Follows You'), findsOneWidget);
+    expect(find.bySemanticsLabel('More options'), findsNothing, reason: 'Following already opens the same actions');
 
     await tester.tap(find.text('Following'));
     await tester.pumpAndSettle();
@@ -122,6 +123,7 @@ void main() {
     expect(toggles(), 1);
     expect(following, isFalse);
     expect(find.text('Follow'), findsOneWidget);
+    expect(find.bySemanticsLabel('More options'), findsOneWidget, reason: 'back once not following');
   });
 
   testWidgets('the more button offers Block and Report, not Unfollow, when not following', (tester) async {
