@@ -157,6 +157,9 @@ class _AffinityCardState extends State<AffinityCard> {
 
     final lang = context.watch<SettingsProvider>().language;
     final cs = Theme.of(context).colorScheme;
+    final rows = _rows(lang);
+    // Nothing to compare yet: no card at all rather than one saying so.
+    if (rows.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
       child: Container(
@@ -186,7 +189,7 @@ class _AffinityCardState extends State<AffinityCard> {
                 ),
               ),
               const SizedBox(height: 6),
-              ..._rows(lang),
+              ...rows,
             ],
           ),
         ),
@@ -200,11 +203,10 @@ class _AffinityCardState extends State<AffinityCard> {
     if (loads.any((entry) => entry.load is _Private)) {
       return [_Message(icon: Icons.lock_outline_rounded, text: tr('affinity_private', lang))];
     }
-    // A media type with nothing in common gets no row.
+    // A media type without enough titles scored by both gets no row: a
+    // percentage is all the row is for.
     final shown = [for (final entry in loads) if (!_isEmpty(entry.load)) entry];
-    if (shown.isEmpty) {
-      return [_Message(icon: Icons.people_outline_rounded, text: tr('affinity_no_titles_in_common', lang))];
-    }
+    if (shown.isEmpty) return const [];
     // Offline, everything fails at once: one retry covers it.
     if (shown.every((entry) => entry.load is _Failed)) {
       return [
@@ -232,7 +234,7 @@ class _AffinityCardState extends State<AffinityCard> {
   }
 }
 
-bool _isEmpty(_Load load) => load is _Loaded && load.affinity.shared.isEmpty;
+bool _isEmpty(_Load load) => load is _Loaded && load.affinity.outcome == AffinityOutcome.notEnoughTitles;
 
 String _typeLabel(String type, String lang) => tr(type == 'MANGA' ? 'nav_manga' : 'nav_anime', lang);
 

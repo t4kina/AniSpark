@@ -113,18 +113,17 @@ void main() {
     );
   });
 
-  testWidgets('shows a negative affinity for opposite tastes', (tester) async {
+  testWidgets('shows a low affinity for scores far apart', (tester) async {
+    // 8, 16 … 96 against the same reversed: most titles 4+ points apart.
     await pumpCard(tester, api: apiWith(() => jsonResponse(_collection(_rows(12, reversed: true)))), auth: loggedIn());
 
-    expect(find.text('-100%'), findsOneWidget);
+    expect(find.text('20%'), findsOneWidget);
   });
 
-  testWidgets('shows no percentage when too few titles are scored by both', (tester) async {
+  testWidgets('with too few titles scored by both there is no card at all', (tester) async {
     await pumpCard(tester, api: apiWith(() => jsonResponse(_collection(_rows(minScoredInCommon - 1)))), auth: loggedIn());
 
-    expect(find.text('Anime'), findsOneWidget);
-    expect(find.textContaining('%'), findsNothing);
-    expect(find.text('–'), findsOneWidget);
+    expect(find.descendant(of: find.byType(AffinityCard), matching: find.byType(Text)), findsNothing);
   });
 
   testWidgets('shows a private state instead of crashing when the list is private', (tester) async {
