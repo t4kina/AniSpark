@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:anispark/screens/detail_screen.dart';
 import 'package:anispark/screens/home_screen.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/theme/app_layout.dart';
 import 'package:anispark/widgets/anime_card.dart';
 import 'package:anispark/widgets/home_spotlight.dart';
 import 'package:anispark/widgets/skeletons.dart';
@@ -54,6 +55,18 @@ void main() {
     // Once leading the page, once in its row.
     expect(find.text('Cowboy Bebop'), findsNWidgets(2));
     expect(find.text(loadErrorText), findsNothing);
+  });
+
+  testWidgets('what scrolls under the search bar keeps a margin from it', (tester) async {
+    await cache.write('discover:trending', [
+      {'id': 1, 'title': {'english': 'Cowboy Bebop'}, 'averageScore': 86},
+    ]);
+    await tester.pumpWidget(screenApp(const HomeScreen(), cache: cache));
+    await tester.pump();
+
+    final field = tester.getRect(find.byType(TextField));
+    final page = tester.getRect(find.byType(SingleChildScrollView).first);
+    expect(page.top - field.bottom, greaterThanOrEqualTo(AppSpace.md));
   });
 
   group('the spotlight', () {

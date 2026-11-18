@@ -248,7 +248,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, AppSpace.md),
             child: Pressable(
               pressedScale: 0.98,
               onTap: () => Navigator.push(
@@ -355,7 +355,7 @@ class _HomeScreenState extends State<HomeScreen> {
   /// "Calendar" and "Seasons" shortcuts at the top of Discover.
   Widget _buildShortcuts(String lang) => Padding(
         // Room to breathe under the spotlight above.
-        padding: const EdgeInsets.fromLTRB(16, AppSpace.lg, 16, 0),
+        padding: const EdgeInsets.fromLTRB(16, AppSpace.md, 16, 0),
         child: Row(
           children: [
             Expanded(
