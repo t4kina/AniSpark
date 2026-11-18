@@ -86,4 +86,39 @@ void main() {
     expect(find.text(loadErrorText), findsNothing);
     expect(find.text('Search for anime or manga'), findsOneWidget);
   });
+
+  testWidgets('without Cancel the field keeps the page margin at its right', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(screenApp(const SearchScreen(), cache: ApiCache(MemoryCacheStore())));
+    await tester.pump();
+    expect(find.text('Cancel'), findsOneWidget, reason: 'it opens focused');
+    expect(tester.getTopRight(find.byType(TextField)).dx, lessThan(tester.getTopLeft(find.text('Cancel')).dx));
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cancel'), findsNothing);
+    expect(tester.getTopRight(find.byType(TextField)).dx, 400 - 16);
+  });
+
+  testWidgets('a recent search is removed with a cross that has a whole finger of room', (tester) async {
+    SharedPreferences.setMockInitialValues({recentSearchesPrefsKey: ['frieren', 'bebop']});
+    await tester.pumpWidget(screenApp(const SearchScreen(), cache: ApiCache(MemoryCacheStore())));
+    await tester.pumpAndSettle();
+    expect(find.text('frieren'), findsOneWidget);
+
+    final cross = find.bySemanticsLabel('Remove from recent searches').first;
+    expect(tester.getSize(cross).width, greaterThanOrEqualTo(36));
+    expect(tester.getSize(cross).height, greaterThanOrEqualTo(36));
+
+    // Near the edge of its area, well away from the drawn cross.
+    await tester.tapAt(tester.getTopLeft(cross) + const Offset(3, 3));
+    await tester.pumpAndSettle();
+
+    expect(find.text('frieren'), findsNothing);
+    expect(find.text('bebop'), findsOneWidget);
+    expect(offline.requests, 0, reason: 'removing it does not search for it');
+  });
 }

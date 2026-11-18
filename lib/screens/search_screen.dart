@@ -39,6 +39,9 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
+  /// The tap area of a recent search's remove cross.
+  static const _removeTapSize = 36.0;
+
   late final _service = widget.service ?? AniListService();
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
@@ -242,7 +245,9 @@ class _SearchScreenState extends State<SearchScreen> {
       appBar: AppBar(
         titleSpacing: 0,
         title: Padding(
-          padding: const EdgeInsets.only(left: 16, right: 8),
+          // The field keeps the page's margin at the right; Cancel, when
+          // it shows, brings its own.
+          padding: EdgeInsets.only(left: 16, right: _focused || _controller.text.isNotEmpty ? 4 : 16),
           child: TextField(
             controller: _controller,
             focusNode: _focusNode,
@@ -250,7 +255,8 @@ class _SearchScreenState extends State<SearchScreen> {
             decoration: InputDecoration(
               hintText: tr('search_hint', lang),
               border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
+              prefixIcon: Icon(Icons.search, size: 20, color: context.colors.textSecondary),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
               suffixIcon: _controller.text.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.clear, size: 18),
@@ -452,7 +458,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 _search(q);
               },
               child: Container(
-                padding: const EdgeInsets.fromLTRB(12, 7, 6, 7),
+                padding: const EdgeInsets.only(left: 12),
                 decoration: BoxDecoration(
                   color: cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(20),
@@ -467,11 +473,17 @@ class _SearchScreenState extends State<SearchScreen> {
                     Text(q,
                         style: TextStyle(
                             fontSize: 13, color: cs.onSurface.withValues(alpha: 0.85))),
-                    const SizedBox(width: 4),
-                    Pressable.dim(
-                      onTap: () => _removeRecentSearch(q),
-                      child: Icon(Icons.close_rounded, size: 14,
-                          color: cs.onSurface.withValues(alpha: 0.35)),
+                    // A whole finger's room to remove it, not just the cross.
+                    Semantics(
+                      button: true,
+                      label: tr('search_remove_recent', lang),
+                      child: Pressable.dim(
+                        onTap: () => _removeRecentSearch(q),
+                        child: SizedBox.square(
+                          dimension: _removeTapSize,
+                          child: Icon(Icons.close_rounded, size: 16, color: cs.onSurface.withValues(alpha: 0.5)),
+                        ),
+                      ),
                     ),
                   ],
                 ),
