@@ -1,17 +1,19 @@
 import 'dart:math' as math;
 
+import 'package:flutter/cupertino.dart' show CupertinoActivityIndicator;
 import 'package:flutter/material.dart';
 
+import '../theme/app_colors.dart';
 import '../theme/app_motion.dart';
 import '../utils/haptics.dart';
 
-/// Pull-to-refresh with the app's own indicator: a spark that grows and
-/// turns as the list is pulled, clicks when it has been pulled far enough,
-/// and spins while [onRefresh] runs.
+/// Pull-to-refresh with the iPhone's own indicator: its spokes appear one
+/// by one as the list is pulled, it clicks when it has been pulled far
+/// enough, and it spins while [onRefresh] runs. No disc around it.
 ///
 /// When a pull counts as a refresh is Flutter's own rule (see
 /// [RefreshIndicator]); only what is shown differs. [edgeOffset] moves the
-/// spark down, for a list that starts under a floating button or the status
+/// indicator down, for a list that starts under a floating button or the status
 /// bar.
 class AppRefreshIndicator extends StatefulWidget {
   const AppRefreshIndicator({super.key, required this.onRefresh, required this.child, this.edgeOffset = 0});
@@ -27,14 +29,12 @@ class AppRefreshIndicator extends StatefulWidget {
 class _AppRefreshIndicatorState extends State<AppRefreshIndicator> with TickerProviderStateMixin {
   // The share of the list's height a pull must cover: Flutter's own.
   static const _pullShare = 0.25;
-  static const _size = 40.0;
+  static const _radius = 11.0;
   static const _restTop = 12.0;
   static const _travel = 24.0;
 
-  /// How far out the spark is: 0 away, 1 fully there.
+  /// How far out the indicator is: 0 away, 1 fully there.
   late final AnimationController _shown = AnimationController(vsync: this, duration: AppMotion.medium);
-  late final AnimationController _spin =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
   RefreshIndicatorStatus? _status;
   // On Android the list does not move past its edge: the pull is added up.
   double _overscroll = 0;
@@ -44,7 +44,6 @@ class _AppRefreshIndicatorState extends State<AppRefreshIndicator> with TickerPr
   @override
   void dispose() {
     _shown.dispose();
-    _spin.dispose();
     super.dispose();
   }
 
@@ -57,18 +56,17 @@ class _AppRefreshIndicatorState extends State<AppRefreshIndicator> with TickerPr
       case RefreshIndicatorStatus.snap || RefreshIndicatorStatus.refresh:
         if (wasRefreshing) return;
         _shown.animateTo(1, curve: AppMotion.standard);
-        if (!AppMotion.reduced(context)) _spin.repeat();
+        setState(() {});
       case RefreshIndicatorStatus.done || RefreshIndicatorStatus.canceled || null:
         _overscroll = 0;
-        _shown.animateTo(0, curve: AppMotion.exit).whenCompleteOrCancel(() {
-          if (mounted && !_refreshing) _spin.reset();
-        });
+        _shown.animateTo(0, curve: AppMotion.exit);
+        setState(() {});
       case RefreshIndicatorStatus.drag:
         break;
     }
   }
 
-  /// Follows the finger: the spark is as far out as the list is pulled.
+  /// Follows the finger: the indicator is as far out as the list is pulled.
   bool _scrolled(ScrollNotification notification) {
     if (notification.depth != 0 || notification.metrics.axis != Axis.vertical || _refreshing) return false;
     final metrics = notification.metrics;
@@ -98,7 +96,8 @@ class _AppRefreshIndicatorState extends State<AppRefreshIndicator> with TickerPr
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    final color = context.colors.textSecondary;
+    final spinning = _refreshing && !AppMotion.reduced(context);
     return Stack(
       children: [
         NotificationListener<ScrollNotification>(
@@ -115,35 +114,22 @@ class _AppRefreshIndicatorState extends State<AppRefreshIndicator> with TickerPr
           right: 0,
           child: IgnorePointer(
             child: AnimatedBuilder(
-              animation: Listenable.merge([_shown, _spin]),
+              animation: _shown,
               builder: (context, _) {
                 final shown = _shown.value;
                 if (shown == 0) return const SizedBox.shrink();
-                // A pull turns it half way round; refreshing keeps it turning.
-                final turns = shown * 0.5 + _spin.value;
                 return Transform.translate(
                   offset: Offset(0, _travel * shown),
                   child: Center(
                     child: Opacity(
                       opacity: math.min(1, shown * 2),
-                      child: Transform.scale(
-                        scale: 0.5 + 0.5 * shown,
-                        child: Container(
-                          width: _size,
-                          height: _size,
-                          decoration: BoxDecoration(
-                            color: cs.surfaceContainerHighest,
-                            shape: BoxShape.circle,
-                            boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 10, offset: Offset(0, 3))],
-                          ),
-                          child: Center(
-                            child: Transform.rotate(
-                              angle: turns * 2 * math.pi,
-                              child: SparkMark(size: _size * 0.5, color: cs.primary),
+                      child: _refreshing
+                          ? CupertinoActivityIndicator(radius: _radius, color: color, animating: spinning)
+                          : CupertinoActivityIndicator.partiallyRevealed(
+                              radius: _radius,
+                              color: color,
+                              progress: shown,
                             ),
-                          ),
-                        ),
-                      ),
                     ),
                   ),
                 );
@@ -154,42 +140,4 @@ class _AppRefreshIndicatorState extends State<AppRefreshIndicator> with TickerPr
       ],
     );
   }
-}
-
-/// AniSpark's spark: a four-pointed star with pinched sides.
-class SparkMark extends StatelessWidget {
-  const SparkMark({super.key, required this.size, required this.color});
-
-  final double size;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) => CustomPaint(size: Size.square(size), painter: _SparkPainter(color));
-}
-
-class _SparkPainter extends CustomPainter {
-  const _SparkPainter(this.color);
-
-  final Color color;
-
-  /// How far in the sides are pinched, as a share of the radius.
-  static const _waist = 0.16;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final r = size.shortestSide / 2;
-    final c = size.center(Offset.zero);
-    final w = r * _waist;
-    final path = Path()
-      ..moveTo(c.dx, c.dy - r)
-      ..quadraticBezierTo(c.dx + w, c.dy - w, c.dx + r, c.dy)
-      ..quadraticBezierTo(c.dx + w, c.dy + w, c.dx, c.dy + r)
-      ..quadraticBezierTo(c.dx - w, c.dy + w, c.dx - r, c.dy)
-      ..quadraticBezierTo(c.dx - w, c.dy - w, c.dx, c.dy - r)
-      ..close();
-    canvas.drawPath(path, Paint()..color = color);
-  }
-
-  @override
-  bool shouldRepaint(_SparkPainter oldDelegate) => oldDelegate.color != color;
 }

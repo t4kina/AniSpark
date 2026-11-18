@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:anispark/theme/app_colors.dart';
 import 'package:anispark/theme/app_theme.dart';
 import 'package:anispark/widgets/app_refresh_indicator.dart';
+import 'package:flutter/cupertino.dart' show CupertinoActivityIndicator;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -41,24 +43,19 @@ void main() {
     ));
   }
 
-  /// A second of frames: the pull, the snap and the spark each need several.
+  /// A second of frames: the pull, the snap and the indicator each need several.
   Future<void> frames(WidgetTester tester) async {
     for (var i = 0; i < 20; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
   }
 
-  final spark = find.byType(SparkMark);
+  final spark = find.byType(CupertinoActivityIndicator);
 
-  double sparkScale(WidgetTester tester) => tester
-      .widget<Transform>(find.ancestor(of: spark, matching: find.byType(Transform)).at(1))
-      .transform
-      .entry(0, 0);
+  /// How many of its spokes the indicator shows (1: all of them).
+  double revealed(WidgetTester tester) => tester.widget<CupertinoActivityIndicator>(spark).progress;
 
-  double sparkAngle(WidgetTester tester) {
-    final matrix = tester.widget<Transform>(find.ancestor(of: spark, matching: find.byType(Transform)).first).transform;
-    return matrix.entry(1, 0);
-  }
+  bool spinning(WidgetTester tester) => tester.widget<CupertinoActivityIndicator>(spark).animating;
 
   for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
     group('on ${platform.name}', () {
@@ -68,7 +65,7 @@ void main() {
         expect(spark, findsNothing);
       }, variant: TargetPlatformVariant.only(platform));
 
-      testWidgets('the spark comes out and grows with the pull', (tester) async {
+      testWidgets('the indicator comes out, its spokes appearing with the pull', (tester) async {
         await pumpList(tester);
 
         final gesture = await tester.startGesture(const Offset(200, 200));
@@ -76,36 +73,34 @@ void main() {
         await gesture.moveBy(const Offset(0, 50));
         await tester.pump();
         expect(spark, findsOneWidget);
-        final small = sparkScale(tester);
-        expect(small, lessThan(1));
+        final some = revealed(tester);
+        expect(some, lessThan(1));
+        expect(spinning(tester), isFalse, reason: 'it only spins once it refreshes');
 
         await gesture.moveBy(const Offset(0, 120));
         await tester.pump();
-        expect(sparkScale(tester), greaterThan(small));
+        expect(revealed(tester), greaterThan(some));
 
         await gesture.up();
         await frames(tester);
       }, variant: TargetPlatformVariant.only(platform));
 
-      testWidgets('a long pull refreshes: the spark stays, turning, until it is done', (tester) async {
+      testWidgets('a long pull refreshes: the indicator stays, spinning, until it is done', (tester) async {
         await pumpList(tester);
 
         await tester.fling(find.text('first row'), const Offset(0, 400), 1000);
         await frames(tester);
         expect(refreshes, 1);
         expect(spark, findsOneWidget);
-        expect(sparkScale(tester), 1);
-
-        final angle = sparkAngle(tester);
-        await tester.pump(const Duration(milliseconds: 200));
-        expect(sparkAngle(tester), isNot(angle), reason: 'it keeps turning while refreshing');
+        expect(revealed(tester), 1);
+        expect(spinning(tester), isTrue, reason: 'it keeps spinning while refreshing');
 
         refreshing.complete();
         await frames(tester);
         expect(spark, findsNothing);
       }, variant: TargetPlatformVariant.only(platform));
 
-      testWidgets('a short pull refreshes nothing and the spark goes away', (tester) async {
+      testWidgets('a short pull refreshes nothing and the indicator goes away', (tester) async {
         await pumpList(tester);
 
         final gesture = await tester.startGesture(const Offset(200, 200));
@@ -146,15 +141,14 @@ void main() {
     await tester.fling(find.text('first row'), const Offset(0, 400), 1000);
     await frames(tester);
     expect(refreshes, 1);
-    final angle = sparkAngle(tester);
-    await tester.pump(const Duration(milliseconds: 200));
-    expect(sparkAngle(tester), angle);
+    expect(spark, findsOneWidget);
+    expect(spinning(tester), isFalse);
 
     refreshing.complete();
     await frames(tester);
   });
 
-  testWidgets('taps reach the list under the spark', (tester) async {
+  testWidgets('taps reach the list under the indicator', (tester) async {
     var taps = 0;
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
@@ -176,6 +170,25 @@ void main() {
     await tester.tapAt(tester.getCenter(spark));
     expect(taps, 1);
 
+    refreshing.complete();
+    await frames(tester);
+  });
+
+  testWidgets('is the bare indicator, in the secondary text colour, with no disc around it', (tester) async {
+    await pumpList(tester);
+    await tester.fling(find.text('first row'), const Offset(0, 400), 1000);
+    await frames(tester);
+
+    final indicator = tester.widget<CupertinoActivityIndicator>(spark);
+    final theme = Theme.of(tester.element(spark));
+    expect(indicator.color, theme.extension<AppColors>()!.textSecondary);
+    expect(
+      find.ancestor(
+        of: spark,
+        matching: find.byWidgetPredicate((widget) => widget is Container && widget.decoration != null),
+      ),
+      findsNothing,
+    );
     refreshing.complete();
     await frames(tester);
   });
