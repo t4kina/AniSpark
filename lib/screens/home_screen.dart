@@ -12,6 +12,7 @@ import '../utils/anime_season.dart';
 import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/app_refresh_indicator.dart';
+import '../theme/app_layout.dart';
 import '../theme/app_text.dart';
 import '../widgets/anime_card.dart';
 import '../widgets/app_button.dart';
@@ -353,7 +354,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// "Calendar" and "Seasons" shortcuts at the top of Discover.
   Widget _buildShortcuts(String lang) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        // Room to breathe under the spotlight above.
+        padding: const EdgeInsets.fromLTRB(16, AppSpace.lg, 16, 0),
         child: Row(
           children: [
             Expanded(
