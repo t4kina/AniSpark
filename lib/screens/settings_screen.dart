@@ -9,6 +9,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/external_url.dart';
 import '../utils/haptics.dart';
+import '../utils/performance_graphs.dart';
 import '../providers/settings_provider.dart' show SettingsProvider, accentColorOptions;
 import '../services/auth_service.dart';
 import '../utils/translations.dart';
@@ -82,6 +83,45 @@ const _accentColorKeys = {
 String _labelOf(Map<String, String> keys, String value, String lang) {
   final key = keys[value];
   return key == null ? value : tr(key, lang);
+}
+
+/// The version line, which switches the frame timing graphs on or off
+/// after [taps] taps in a row (see `performanceGraphsNotifier`): a tool to
+/// find what stutters on a real phone, out of everyone's way.
+class _VersionTapper extends StatefulWidget {
+  const _VersionTapper({required this.child});
+
+  final Widget child;
+
+  static const taps = 7;
+
+  /// Taps further apart than this start the count again.
+  static const _window = Duration(seconds: 2);
+
+  @override
+  State<_VersionTapper> createState() => _VersionTapperState();
+}
+
+class _VersionTapperState extends State<_VersionTapper> {
+  int _count = 0;
+  DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _tap() {
+    final now = DateTime.now();
+    _count = now.difference(_last) > _VersionTapper._window ? 1 : _count + 1;
+    _last = now;
+    if (_count < _VersionTapper.taps) return;
+    _count = 0;
+    performanceGraphsNotifier.value = !performanceGraphsNotifier.value;
+    mediumHaptic();
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _tap,
+        child: Padding(padding: const EdgeInsets.all(AppSpace.sm), child: widget.child),
+      );
 }
 
 /// Shows the installed app's version (from the build, e.g. pubspec's 1.0.0).
@@ -437,8 +477,10 @@ class SettingsScreen extends StatelessWidget {
 
           const SizedBox(height: 24),
           Center(
-            child: _AppVersion(
-              builder: (v) => Text('AniSpark v$v', style: TextStyle(color: context.colors.textSecondary, fontSize: 12)),
+            child: _VersionTapper(
+              child: _AppVersion(
+                builder: (v) => Text('AniSpark v$v', style: TextStyle(color: context.colors.textSecondary, fontSize: 12)),
+              ),
             ),
           ),
           const SizedBox(height: 32),

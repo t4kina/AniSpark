@@ -23,6 +23,7 @@ import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/feed_screen.dart';
 import 'theme/app_theme.dart';
+import 'utils/performance_graphs.dart';
 import 'utils/haptics.dart';
 import 'utils/translations.dart' show tr;
 import 'widgets/rate_limit_notice.dart';
@@ -129,7 +130,11 @@ class MyAnimeApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
-    return MaterialApp(
+    return ValueListenableBuilder<bool>(
+      valueListenable: performanceGraphsNotifier,
+      builder: (context, showGraphs, _) => MaterialApp(
+      // Frame timing graphs, switched on from Settings to find what stutters.
+      showPerformanceOverlay: showGraphs,
       scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'AniSpark',
       debugShowCheckedModeBanner: false,
@@ -143,6 +148,7 @@ class MyAnimeApp extends StatelessWidget {
         );
       },
       home: const SplashScreen(),
+      ),
     );
   }
 }

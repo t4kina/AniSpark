@@ -1,5 +1,6 @@
 import 'package:anispark/screens/settings_screen.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/utils/performance_graphs.dart';
 import 'package:anispark/utils/translations.dart';
 import 'package:anispark/widgets/app_button.dart';
 import 'package:anispark/widgets/app_dialog.dart';
@@ -128,5 +129,25 @@ void main() {
     expect(rows.where((row) => row.leading != null), isEmpty);
     // Logging out still reads as the one that ends something.
     expect(tester.widget<Text>(find.text('Logout')).style?.color, Colors.red);
+  });
+
+  testWidgets('seven taps in a row on the version switch the frame graphs on, seven more off', (tester) async {
+    addTearDown(() => performanceGraphsNotifier.value = false);
+    await openSettings(tester);
+    final version = find.textContaining('AniSpark v');
+    await tester.ensureVisible(version);
+    await tester.pumpAndSettle();
+
+    for (var i = 0; i < 6; i++) {
+      await tester.tap(version);
+    }
+    expect(performanceGraphsNotifier.value, isFalse, reason: 'six are not enough');
+    await tester.tap(version);
+    expect(performanceGraphsNotifier.value, isTrue);
+
+    for (var i = 0; i < 7; i++) {
+      await tester.tap(version);
+    }
+    expect(performanceGraphsNotifier.value, isFalse);
   });
 }
