@@ -12,6 +12,7 @@ import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
 import '../utils/tab_reselect.dart';
 import '../theme/app_colors.dart';
+import '../theme/app_layout.dart';
 import '../theme/app_motion.dart';
 import '../theme/app_text.dart';
 import '../widgets/app_refresh_indicator.dart';
@@ -222,7 +223,9 @@ class _ListTabScreenState extends State<_ListTabScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            // The same room under the field as on Discover, so the list does
+            // not scroll right up against it.
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, AppSpace.md),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(

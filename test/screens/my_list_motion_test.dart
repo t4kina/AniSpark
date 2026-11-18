@@ -6,6 +6,7 @@ import 'package:anispark/screens/settings_screen.dart';
 import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
+import 'package:anispark/theme/app_layout.dart';
 import 'package:anispark/utils/tab_reselect.dart';
 import 'package:anispark/widgets/app_button.dart';
 import 'package:anispark/widgets/genre_filter_sheet.dart';
@@ -358,5 +359,16 @@ void main() {
     expect(rows.first.crossAxisAlignment, CrossAxisAlignment.center, reason: 'centred on the count');
     expect(find.descendant(of: reading, matching: find.byKey(const ValueKey('progress-finished'))), findsNothing);
     expect(find.descendant(of: reading, matching: find.byType(ProgressLine)), findsOneWidget);
+  });
+
+  testWidgets('what scrolls under the name filter keeps the same margin from it as on Discover', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+
+    final field = tester.getRect(find.byType(TextField));
+    final list = tester.getRect(find.byType(ListView).first);
+    expect(list.top - field.bottom, AppSpace.md);
   });
 }
