@@ -228,7 +228,6 @@ class SettingsScreen extends StatelessWidget {
           // ── General ──
           _sectionHeader(tr('general', lang)),
           _tile(
-            icon: Icons.language,
             label: tr('language', lang),
             trailing: Text(_languageNames[lang] ?? lang,
                 style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
@@ -243,7 +242,6 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           _tile(
-            icon: Icons.palette_outlined,
             label: tr('appearance', lang),
             trailing: Text(_labelOf(_appearanceKeys, settings.appearance, lang),
                 style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
@@ -258,7 +256,6 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           _tile(
-            icon: Icons.color_lens_outlined,
             label: tr('accent_color', lang),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
@@ -280,7 +277,6 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           _tile(
-            icon: Icons.title,
             label: tr('title_language', lang),
             trailing: Text(_labelOf(_titleLanguageKeys, settings.titleLanguage, lang),
                 style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
@@ -295,7 +291,6 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           _tile(
-            icon: Icons.tab_outlined,
             label: tr('default_tab', lang),
             trailing: Text(tr(_tabLabelKeys[settings.defaultTab] ?? 'nav_anime', lang),
                 style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
@@ -311,7 +306,6 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           _switchTile(
-            icon: Icons.vibration,
             label: tr('haptic_feedback', lang),
             value: settings.hapticsEnabled,
             onChanged: (v) => context.read<SettingsProvider>().setHapticsEnabled(v),
@@ -323,7 +317,6 @@ class SettingsScreen extends StatelessWidget {
           // ── Notifications ──
           _sectionHeader(tr('notifications', lang)),
           _switchTile(
-            icon: Icons.notifications_outlined,
             label: tr('push_notifications', lang),
             value: settings.pushNotifications,
             onChanged: (v) async {
@@ -345,7 +338,6 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           _switchTile(
-            icon: Icons.new_releases_outlined,
             label: tr('new_episode_alerts', lang),
             value: settings.newEpisodeAlerts,
             onChanged: (v) async {
@@ -369,7 +361,6 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           _switchTile(
-            icon: Icons.group_outlined,
             label: tr('friend_activity_alerts', lang),
             value: settings.friendActivityAlerts,
             onChanged: (v) async {
@@ -383,20 +374,17 @@ class SettingsScreen extends StatelessWidget {
           // ── Data ──
           _sectionHeader(tr('data_storage', lang)),
           _tile(
-            icon: Icons.cached,
             label: tr('clear_cache', lang),
             trailing: _CacheSizeLabel(lang: lang),
             onTap: () => _clearImageCache(context, lang),
           ),
           const SizedBox(height: 4),
           _tile(
-            icon: Icons.sync,
             label: tr('sync_anilist', lang),
             onTap: () => _syncWithAniList(context, auth, lang),
           ),
           const SizedBox(height: 4),
           _tile(
-            icon: Icons.history_toggle_off,
             label: tr('clear_recent_searches', lang),
             onTap: () => _clearRecentSearches(context, lang),
           ),
@@ -408,7 +396,6 @@ class SettingsScreen extends StatelessWidget {
           _sectionHeader(tr('account', lang)),
           if (username != null) _SignedInAsRow(auth: auth, lang: lang),
           _tile(
-            icon: Icons.open_in_new,
             label: tr('view_on_anilist', lang),
             onTap: () {
               if (username != null) {
@@ -418,7 +405,6 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           _tile(
-            icon: Icons.logout,
             label: tr('logout', lang),
             color: Colors.red,
             onTap: () => _confirmLogout(context, auth, lang),
@@ -430,25 +416,21 @@ class SettingsScreen extends StatelessWidget {
           // ── About ──
           _sectionHeader(tr('about', lang)),
           _tile(
-            icon: Icons.info_outline,
             label: tr('about_anispark', lang),
             onTap: () => _showAbout(context, lang),
           ),
           const SizedBox(height: 4),
           _tile(
-            icon: Icons.description_outlined,
             label: tr('terms', lang),
             onTap: () => _openUrl('https://anilist.co/terms'),
           ),
           const SizedBox(height: 4),
           _tile(
-            icon: Icons.privacy_tip_outlined,
             label: tr('privacy', lang),
             onTap: () => _showPrivacy(context, lang),
           ),
           const SizedBox(height: 4),
           _tile(
-            icon: Icons.feedback_outlined,
             label: tr('send_feedback', lang),
             onTap: () => _openUrl('https://github.com/t4kina/AniSpark/issues/new'),
           ),
@@ -478,7 +460,6 @@ class SettingsScreen extends StatelessWidget {
   /// A setting switched on or off, by the switch or the whole row, with a
   /// selection tick.
   static Widget _switchTile({
-    required IconData icon,
     required String label,
     required bool value,
     required ValueChanged<bool> onChanged,
@@ -490,7 +471,6 @@ class SettingsScreen extends StatelessWidget {
     }
 
     return ListTile(
-      leading: _SettingIcon(icon),
       title: Text(label, style: const TextStyle(fontSize: 14)),
       trailing: Builder(builder: (ctx) => Transform.scale(
         scale: 0.75,
@@ -504,15 +484,16 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  /// A setting's row: its name, what it is set to (or a chevron) at the
+  /// right. No icon: the names say enough, and a column of icons only
+  /// crowds the page.
   static Widget _tile({
-    required IconData icon,
     required String label,
     Color? color,
     Widget? trailing,
     required VoidCallback onTap,
   }) =>
       ListTile(
-        leading: _SettingIcon(icon, color: color),
         title: Text(label, style: TextStyle(color: color, fontSize: 14)),
         trailing: trailing ??
             Builder(
@@ -707,27 +688,5 @@ class SettingsScreen extends StatelessWidget {
     // login screen once the session has ended, whenever logout() reports it.
     Navigator.of(context).popUntil((route) => route.isFirst);
     auth.logout();
-  }
-}
-
-/// A setting's icon on a rounded square tinted with its colour (the accent
-/// unless the row has one of its own, like the red of logging out).
-class _SettingIcon extends StatelessWidget {
-  const _SettingIcon(this.icon, {this.color});
-
-  final IconData icon;
-  final Color? color;
-
-  static const _size = 30.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final tint = color ?? Theme.of(context).colorScheme.primary;
-    return Container(
-      width: _size,
-      height: _size,
-      decoration: BoxDecoration(color: tint.withValues(alpha: 0.14), borderRadius: AppRadius.smAll),
-      child: Icon(icon, size: 18, color: tint),
-    );
   }
 }

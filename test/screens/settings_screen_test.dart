@@ -120,20 +120,13 @@ void main() {
     expect(dialog, findsNothing);
   });
 
-  testWidgets('each setting has its icon on a tinted square: the accent, or red for logging out', (tester) async {
+  testWidgets('settings rows carry no icons: the names are enough', (tester) async {
     await openSettings(tester);
 
-    Color tintOf(IconData icon) {
-      final square = tester.widget<Container>(
-        find.ancestor(of: find.byIcon(icon), matching: find.byType(Container)).first,
-      );
-      expect((square.decoration! as BoxDecoration).borderRadius, isNotNull);
-      return tester.widget<Icon>(find.byIcon(icon)).color!;
-    }
-
-    final accent = Theme.of(tester.element(find.byType(SettingsScreen))).colorScheme.primary;
-    expect(tintOf(Icons.language), accent);
-    expect(tintOf(Icons.info_outline), accent);
-    expect(tintOf(Icons.logout), Colors.red);
+    final rows = tester.widgetList<ListTile>(find.byType(ListTile));
+    expect(rows, isNotEmpty);
+    expect(rows.where((row) => row.leading != null), isEmpty);
+    // Logging out still reads as the one that ends something.
+    expect(tester.widget<Text>(find.text('Logout')).style?.color, Colors.red);
   });
 }
