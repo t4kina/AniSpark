@@ -369,8 +369,20 @@ class _MediaPreviewState extends State<MediaPreview> {
                         const SizedBox(height: AppSpace.md),
                         _synopsis(context),
                         const SizedBox(height: AppSpace.lg),
+                        // Add or edit first, open at the right.
                         Row(
                           children: [
+                            if (loggedIn) ...[
+                              Expanded(
+                                child: AppButton(
+                                  key: const ValueKey('preview-edit'),
+                                  label: tr(inList ? 'tooltip_edit_entry' : 'add_to_list', lang),
+                                  expand: true,
+                                  onPressed: _edit,
+                                ),
+                              ),
+                              const SizedBox(width: AppSpace.md),
+                            ],
                             Expanded(
                               child: AppButton(
                                 key: const ValueKey('preview-open'),
@@ -380,17 +392,6 @@ class _MediaPreviewState extends State<MediaPreview> {
                                 onPressed: _open,
                               ),
                             ),
-                            if (loggedIn) ...[
-                              const SizedBox(width: AppSpace.md),
-                              Expanded(
-                                child: AppButton(
-                                  key: const ValueKey('preview-edit'),
-                                  label: tr(inList ? 'tooltip_edit_entry' : 'add_to_list', lang),
-                                  expand: true,
-                                  onPressed: _edit,
-                                ),
-                              ),
-                            ],
                           ],
                         ),
                       ],

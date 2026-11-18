@@ -213,4 +213,14 @@ void main() {
     expect(find.byType(Skeleton), findsNothing);
     expect(find.byKey(const ValueKey('preview-open')), findsOneWidget);
   });
+
+  testWidgets('add or edit comes first, open at the right', (tester) async {
+    await openPreview(tester, service: answering((_) => _answer()), auth: _loggedIn());
+    await arrive(tester);
+
+    expect(
+      tester.getCenter(find.byKey(const ValueKey('preview-edit'))).dx,
+      lessThan(tester.getCenter(find.byKey(const ValueKey('preview-open'))).dx),
+    );
+  });
 }
