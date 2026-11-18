@@ -67,6 +67,25 @@ void main() {
     expect(find.text(loadErrorText), findsNothing);
   });
 
+  testWidgets('shows only their latest three activities', (tester) async {
+    tester.view.physicalSize = const Size(400, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await cache.write('anon:profile:7', {'id': 7, 'name': 'Faye Valentine', 'isFollowing': false, 'isFollower': false});
+    final createdAt = DateTime.now().millisecondsSinceEpoch ~/ 1000 - 60;
+    await cache.write('anon:activity:7', [
+      {}, // a kind the query asks nothing of
+      for (var i = 1; i <= 5; i++) {'id': i, 'type': 'TEXT', 'text': 'Post $i', 'createdAt': createdAt},
+    ]);
+
+    await pumpProfile(tester);
+
+    for (var i = 1; i <= 3; i++) {
+      expect(find.text('Post $i'), findsOneWidget);
+    }
+    expect(find.text('Post 4'), findsNothing);
+  });
+
   testWidgets('the genres they watch most say so, each in its own colour', (tester) async {
     tester.view.physicalSize = const Size(400, 1600);
     tester.view.devicePixelRatio = 1;

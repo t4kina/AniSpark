@@ -59,6 +59,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   List<dynamic> _recentActivity = [];
   bool _loading = true;
 
+  /// How many of their latest activities the page shows.
+  static const _recentActivityShown = 3;
+
   // The page swaps its placeholder once the profile and the activity have
   // both answered (or failed), so the activity does not drop in after it.
   bool _profileArrived = false;
@@ -342,6 +345,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         .toList();
 
     final about = (p['about'] as String? ?? '').trim();
+    // A glimpse is enough: the latest few that can be shown (AniList also
+    // sends kinds the query asks nothing of, as empty entries).
+    final recentActivity = [
+      for (final activity in _recentActivity)
+        if (activity is Map && (activity['type'] == 'TEXT' || activity['media'] != null)) activity,
+    ].take(_recentActivityShown).toList();
     final auth = context.watch<AuthService>();
     // Shown from the first frame so the card keeps its height; it only acts
     // once AniList has confirmed the follow state (see [_profileIsFresh]).
@@ -496,7 +505,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         SliverToBoxAdapter(child: AffinityCard(userId: widget.userId, userName: name)),
 
         // ── Recent activity ────────────────────────────────────────────
-        if (_recentActivity.isNotEmpty) ...[
+        if (recentActivity.isNotEmpty) ...[
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
@@ -507,8 +516,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           ),
           SliverList(
             delegate: SliverChildBuilderDelegate(
-              (_, i) => _recentActivityRow(_recentActivity[i], lang),
-              childCount: _recentActivity.length,
+              (_, i) => _recentActivityRow(recentActivity[i], lang),
+              childCount: recentActivity.length,
             ),
           ),
         ],
