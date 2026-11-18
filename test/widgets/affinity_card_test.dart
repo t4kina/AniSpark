@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:anispark/screens/compare_screen.dart';
 import 'package:anispark/services/affinity_api.dart';
 import 'package:anispark/services/anilist_service.dart';
@@ -5,9 +7,11 @@ import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/utils/affinity.dart';
 import 'package:anispark/widgets/profile/affinity_card.dart';
+import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import '../helpers/fake_auth_service.dart';
 import '../helpers/memory_cache_store.dart';
@@ -111,6 +115,34 @@ void main() {
       unorderedEquals([(_viewerId, 'ANIME'), (_otherId, 'ANIME'), (_viewerId, 'MANGA')]),
       reason: 'the other user\'s manga is skipped when the viewer has none',
     );
+  });
+
+  testWidgets('draws nothing while it loads, then arrives whole', (tester) async {
+    final other = Completer<http.Response>();
+    final api = AffinityApi(
+      service: AniListService(
+        client: MockClient((request) {
+          final variables = RecordedRequest(request).variables;
+          if (variables['type'] == 'MANGA') return Future.value(jsonResponse(_collection([])));
+          if (variables['userId'] == _viewerId) return Future.value(jsonResponse(_viewerAnime));
+          return other.future;
+        }),
+      ),
+    );
+    await tester.pumpWidget(appWith(
+      Scaffold(body: ListView(children: [AffinityCard(userId: _otherId, userName: 'faye', api: api)])),
+      cache: cache,
+      auth: loggedIn(),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(find.byType(Skeleton), findsNothing, reason: 'no placeholder that may turn into nothing');
+    expect(find.descendant(of: find.byType(AffinityCard), matching: find.byType(Text)), findsNothing);
+
+    other.complete(jsonResponse(_sameScores));
+    await tester.pumpAndSettle();
+    expect(find.text('100%'), findsOneWidget);
   });
 
   testWidgets('shows a low affinity for scores far apart', (tester) async {

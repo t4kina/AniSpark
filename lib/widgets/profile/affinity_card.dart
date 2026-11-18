@@ -8,6 +8,7 @@ import '../../screens/compare_screen.dart';
 import '../../services/affinity_api.dart';
 import '../../services/api_cache.dart';
 import '../../services/auth_service.dart';
+import '../../theme/app_motion.dart';
 import '../../utils/affinity.dart';
 import '../../utils/translations.dart';
 import '../skeletons.dart';
@@ -66,12 +67,18 @@ class _AffinityCardState extends State<AffinityCard> {
   /// The viewer the current [_loads] belong to.
   int? _loadedFor;
 
+  /// Whether every media type has answered once. Until then the card is
+  /// not drawn at all, so it arrives whole (or never) instead of showing
+  /// placeholders that turn into rows or vanish.
+  bool _settled = false;
+
   @override
   void didUpdateWidget(AffinityCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.userId != widget.userId) {
       _loadedFor = null;
       _loads = const {};
+      _settled = false;
     }
   }
 
@@ -86,6 +93,7 @@ class _AffinityCardState extends State<AffinityCard> {
   void _startLoading(int viewerId) {
     _loadedFor = viewerId;
     _loads = const {};
+    _settled = false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || _loadedFor != viewerId) return;
       for (final type in _types) {
@@ -132,7 +140,10 @@ class _AffinityCardState extends State<AffinityCard> {
     }
   }
 
-  void _set(String type, _Load load) => setState(() => _loads = {..._loads, type: load});
+  void _set(String type, _Load load) => setState(() {
+        _loads = {..._loads, type: load};
+        _settled = _settled || _types.every((type) => _loads[type] is! _Loading && _loads[type] != null);
+      });
 
   void _retry(Iterable<String> types) {
     final retried = types.toList();
@@ -156,10 +167,20 @@ class _AffinityCardState extends State<AffinityCard> {
     if (_loadedFor != viewerId) _startLoading(viewerId);
 
     final lang = context.watch<SettingsProvider>().language;
-    final cs = Theme.of(context).colorScheme;
     final rows = _rows(lang);
-    // Nothing to compare yet: no card at all rather than one saying so.
-    if (rows.isEmpty) return const SizedBox.shrink();
+    // It opens out of the page once it has something to say, rather than
+    // pushing the profile around while it loads.
+    return AnimatedSize(
+      duration: AppMotion.of(context, AppMotion.medium),
+      curve: AppMotion.enter,
+      alignment: Alignment.topCenter,
+      // Nothing to compare (yet): no card at all rather than one saying so.
+      child: rows.isEmpty ? const SizedBox(width: double.infinity) : _FadeIn(child: _card(rows, lang)),
+    );
+  }
+
+  Widget _card(List<Widget> rows, String lang) {
+    final cs = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
       child: Container(
@@ -203,6 +224,7 @@ class _AffinityCardState extends State<AffinityCard> {
     if (loads.any((entry) => entry.load is _Private)) {
       return [_Message(icon: Icons.lock_outline_rounded, text: tr('affinity_private', lang))];
     }
+    if (!_settled) return const [];
     // A media type without enough titles scored by both gets no row: a
     // percentage is all the row is for.
     final shown = [for (final entry in loads) if (!_isEmpty(entry.load)) entry];
@@ -232,6 +254,22 @@ class _AffinityCardState extends State<AffinityCard> {
         },
     ];
   }
+}
+
+/// Fades its child in once, when it is first built.
+class _FadeIn extends StatelessWidget {
+  const _FadeIn({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: AppMotion.of(context, AppMotion.medium),
+        curve: AppMotion.standard,
+        builder: (context, opacity, child) => Opacity(opacity: opacity, child: child),
+        child: child,
+      );
 }
 
 bool _isEmpty(_Load load) => load is _Loaded && load.affinity.outcome == AffinityOutcome.notEnoughTitles;
