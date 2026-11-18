@@ -228,15 +228,19 @@ void main() {
       {'name': 'No Id', 'isAnimationStudio': false},
     ];
 
-    testWidgets('shows the producers that can be opened, each with its monogram', (tester) async {
+    testWidgets('shows the producers that can be opened, in plain chips', (tester) async {
       await pump(tester, const ProducerChips(studios: studios));
 
       expect(find.text('Aniplex'), findsOneWidget);
       expect(find.text('Square Enix'), findsOneWidget);
       expect(find.text('Bones'), findsNothing, reason: 'the animation studio is shown under the title');
       expect(find.text('No Id'), findsNothing);
-      expect(find.text('A'), findsOneWidget);
-      expect(find.text('S'), findsOneWidget);
+      expect(find.byIcon(Icons.business_rounded), findsNWidgets(2));
+      final quiet = Theme.of(tester.element(find.text('Aniplex'))).colorScheme.surfaceContainerHighest;
+      final chip = tester.widget<Container>(
+        find.ancestor(of: find.text('Aniplex'), matching: find.byType(Container)).first,
+      );
+      expect((chip.decoration! as BoxDecoration).color, quiet, reason: 'the genres carry the colour, not the producers');
     });
 
     testWidgets('a producer opens its studio page', (tester) async {
@@ -247,10 +251,6 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
 
       expect(tester.widget<StudioScreen>(find.byType(StudioScreen)).studioId, 1);
-    });
-
-    test('the same studio always gets the same colour', () {
-      expect(ProducerChips.colorOf('Aniplex'), ProducerChips.colorOf('Aniplex'));
     });
   });
 }

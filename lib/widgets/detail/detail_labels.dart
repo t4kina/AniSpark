@@ -96,7 +96,7 @@ class GenreChips extends StatelessWidget {
   }
 }
 
-/// A chip tinted with [color]: its [lead] (an icon, a monogram) in that
+/// A chip tinted with [color]: its [lead] icon in that
 /// colour, its [label] in the page's text colour so it reads on any tint,
 /// and a chevron that says it opens something.
 class _ColouredChip extends StatelessWidget {
@@ -137,26 +137,19 @@ class _ColouredChip extends StatelessWidget {
   }
 }
 
-/// A media's producers (the studios that are not its animation studio),
-/// each with a monogram in a colour of its own, opening the studio's page.
-/// Studios without an id are left out, as they can not be opened.
+/// A media's producers (the studios that are not its animation studio), in
+/// plain chips that open the studio's page: the genres carry the colour, the
+/// producers stay quiet beside them. Studios without an id are left out, as
+/// they can not be opened.
 class ProducerChips extends StatelessWidget {
   const ProducerChips({super.key, required this.studios});
 
   /// The detail query's `studios { nodes { id name isAnimationStudio } }`.
   final List<dynamic> studios;
 
-  static const _palette = [
-    Color(0xFF5C7CFA), Color(0xFF2FB67C), Color(0xFFF2A65A), Color(0xFFC77DFF),
-    Color(0xFF3DB8F5), Color(0xFFFF6B3D), Color(0xFF2EC4C4), Color(0xFFFF5C8A),
-  ];
-
-  /// The same studio always gets the same colour.
-  static Color colorOf(String name) =>
-      _palette[name.codeUnits.fold<int>(0, (sum, unit) => (sum * 31 + unit) & 0x7fffffff) % _palette.length];
-
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final producers = [
       for (final studio in StudioRef.listFromJson(studios))
         if (!studio.isAnimationStudio && studio.id != null) studio,
@@ -170,38 +163,32 @@ class ProducerChips extends StatelessWidget {
             button: true,
             child: Pressable(
               onTap: () => openStudio(context, studio.id!, name: studio.name),
-              child: _ColouredChip(
-                color: colorOf(studio.name),
-                lead: _Monogram(name: studio.name, color: colorOf(studio.name)),
-                label: studio.name,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(10, 6, 8, 6),
+                decoration: BoxDecoration(color: cs.surfaceContainerHighest, borderRadius: AppRadius.pillAll),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.business_rounded, size: 14, color: context.colors.textSecondary),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        studio.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.caption.copyWith(color: cs.onSurface, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    const SizedBox(width: 2),
+                    Icon(Icons.chevron_right_rounded, size: 16, color: context.colors.textSecondary),
+                  ],
+                ),
               ),
             ),
           ),
       ],
     );
   }
-}
-
-/// A studio's first letter on a small disc of its colour.
-class _Monogram extends StatelessWidget {
-  const _Monogram({required this.name, required this.color});
-
-  final String name;
-  final Color color;
-
-  static const _size = 18.0;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: _size,
-        height: _size,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        child: Text(
-          name.isEmpty ? '' : name.characters.first.toUpperCase(),
-          style: AppText.micro.copyWith(color: Colors.white, fontWeight: FontWeight.w700, height: 1),
-        ),
-      );
 }
 
 /// A media's tags with how much each weighs in it (AniList's rank, out of
