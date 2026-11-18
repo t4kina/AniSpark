@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:anispark/screens/browse_screen.dart';
+import 'package:anispark/screens/studio_screen.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/browse_api.dart';
 import 'package:anispark/utils/translations.dart';
@@ -67,11 +68,15 @@ void main() {
       expect(tester.widget<BrowseScreen>(find.byType(BrowseScreen)).query.type, BrowseQuery.manga);
     });
 
-    testWidgets('is in the accent colour', (tester) async {
-      await pump(tester, const GenreChips(genres: ['Action'], isManga: false));
+    testWidgets('each genre has its own colour and icon, the name in the page text colour', (tester) async {
+      await pump(tester, const GenreChips(genres: ['Action', 'Romance', 'Made Up'], isManga: false));
 
-      final accent = Theme.of(tester.element(find.text('Action'))).colorScheme.primary;
-      expect(tester.widget<Text>(find.text('Action')).style?.color, accent);
+      Color? iconColor(IconData icon) => IconTheme.of(tester.element(find.byIcon(icon))).color;
+      expect(iconColor(Icons.bolt_rounded), genreStyles['Action']!.color);
+      expect(iconColor(Icons.favorite_rounded), genreStyles['Romance']!.color);
+      expect(find.byIcon(fallbackGenreStyle.icon), findsOneWidget, reason: 'a genre AniList adds later');
+      final onSurface = Theme.of(tester.element(find.text('Action'))).colorScheme.onSurface;
+      expect(tester.widget<Text>(find.text('Action')).style?.color, onSurface);
     });
   });
 
@@ -125,6 +130,24 @@ void main() {
 
       expect(find.textContaining('Spoiler'), findsNothing);
       expect(find.text(_en('detail_show_less')), findsNothing);
+    });
+
+    testWidgets('showing the spoilers shows all of them, folded or not', (tester) async {
+      final tags = [
+        for (var i = 1; i <= 12; i++) _tag('Tag $i', 100 - i),
+        for (var i = 1; i <= 3; i++) _tag('Spoiler $i', 50 - i, spoiler: true),
+      ];
+      await pump(tester, TagChips(tags: tags));
+
+      expect(find.text(_en('detail_show_all_tags', {'n': 12})), findsOneWidget,
+          reason: 'show all counts the tags that are not spoilers');
+      await tester.tap(find.text(_en('detail_show_spoiler_tags', {'n': 3})));
+      await tester.pumpAndSettle();
+
+      for (var i = 1; i <= 3; i++) {
+        expect(find.text('Spoiler $i'), findsOneWidget);
+      }
+      expect(find.text('Tag 12'), findsNothing, reason: 'the other tags stay folded');
     });
   });
 
@@ -194,6 +217,40 @@ void main() {
       expect(ExternalLinks.colorOf({'color': 'orange'}), isNull);
       expect(ExternalLinks.colorOf({'color': '#FFF'}), isNull);
       expect(ExternalLinks.colorOf({'color': null}), isNull);
+    });
+  });
+
+  group('ProducerChips', () {
+    const studios = [
+      {'id': 1, 'name': 'Aniplex', 'isAnimationStudio': false},
+      {'id': 2, 'name': 'Bones', 'isAnimationStudio': true},
+      {'id': 3, 'name': 'Square Enix', 'isAnimationStudio': false},
+      {'name': 'No Id', 'isAnimationStudio': false},
+    ];
+
+    testWidgets('shows the producers that can be opened, each with its monogram', (tester) async {
+      await pump(tester, const ProducerChips(studios: studios));
+
+      expect(find.text('Aniplex'), findsOneWidget);
+      expect(find.text('Square Enix'), findsOneWidget);
+      expect(find.text('Bones'), findsNothing, reason: 'the animation studio is shown under the title');
+      expect(find.text('No Id'), findsNothing);
+      expect(find.text('A'), findsOneWidget);
+      expect(find.text('S'), findsOneWidget);
+    });
+
+    testWidgets('a producer opens its studio page', (tester) async {
+      await pump(tester, const ProducerChips(studios: studios));
+
+      await tester.tap(find.text('Aniplex'));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(tester.widget<StudioScreen>(find.byType(StudioScreen)).studioId, 1);
+    });
+
+    test('the same studio always gets the same colour', () {
+      expect(ProducerChips.colorOf('Aniplex'), ProducerChips.colorOf('Aniplex'));
     });
   });
 }

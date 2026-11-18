@@ -12,12 +12,42 @@ import '../../utils/translations.dart' show tr, trf;
 import '../app_image.dart';
 import '../genre_filter_sheet.dart' show genreLabel;
 import '../motion/pressable.dart';
+import '../people/people_routes.dart';
+import '../../services/people_api.dart' show StudioRef;
 
 const _chipPadding = EdgeInsets.symmetric(horizontal: 12, vertical: 6);
 const _chipGap = 6.0;
 
-/// A media's genres, in the accent colour: each opens the grid of that
-/// genre's anime or manga.
+/// The colour and icon each of AniList's genres is drawn with.
+typedef GenreStyle = ({Color color, IconData icon});
+
+/// One per AniList genre, so a page's genres read at a glance; a genre
+/// AniList adds later falls back to [fallbackGenreStyle].
+const genreStyles = <String, GenreStyle>{
+  'Action': (color: Color(0xFFFF6B3D), icon: Icons.bolt_rounded),
+  'Adventure': (color: Color(0xFF2FB67C), icon: Icons.explore_rounded),
+  'Comedy': (color: Color(0xFFF5B82E), icon: Icons.sentiment_very_satisfied_rounded),
+  'Drama': (color: Color(0xFFB565F2), icon: Icons.theater_comedy_rounded),
+  'Ecchi': (color: Color(0xFFFF5DA2), icon: Icons.local_fire_department_rounded),
+  'Fantasy': (color: Color(0xFF8B7CFF), icon: Icons.auto_awesome_rounded),
+  'Horror': (color: Color(0xFFE0475B), icon: Icons.nightlight_round),
+  'Mahou Shoujo': (color: Color(0xFFFF7FD0), icon: Icons.star_rounded),
+  'Mecha': (color: Color(0xFF6C8EAD), icon: Icons.precision_manufacturing_rounded),
+  'Music': (color: Color(0xFF3DB8F5), icon: Icons.music_note_rounded),
+  'Mystery': (color: Color(0xFF5C7CFA), icon: Icons.search_rounded),
+  'Psychological': (color: Color(0xFFC77DFF), icon: Icons.psychology_rounded),
+  'Romance': (color: Color(0xFFFF5C8A), icon: Icons.favorite_rounded),
+  'Sci-Fi': (color: Color(0xFF2EC4C4), icon: Icons.rocket_launch_rounded),
+  'Slice of Life': (color: Color(0xFFF2A65A), icon: Icons.local_cafe_rounded),
+  'Sports': (color: Color(0xFF4CC36B), icon: Icons.sports_soccer_rounded),
+  'Supernatural': (color: Color(0xFFA78BFA), icon: Icons.flare_rounded),
+  'Thriller': (color: Color(0xFFF25F5C), icon: Icons.timer_rounded),
+};
+
+const GenreStyle fallbackGenreStyle = (color: Color(0xFF8E8E93), icon: Icons.label_rounded);
+
+/// A media's genres, each in its own colour and with its icon: each opens
+/// the grid of that genre's anime or manga.
 class GenreChips extends StatelessWidget {
   const GenreChips({super.key, required this.genres, required this.isManga});
 
@@ -44,7 +74,6 @@ class GenreChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final lang = context.watch<SettingsProvider>().language;
     return Wrap(
       spacing: _chipGap,
@@ -55,28 +84,124 @@ class GenreChips extends StatelessWidget {
             button: true,
             child: Pressable(
               onTap: () => _open(context, genre, genreLabel(genre, lang)),
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
-                decoration: BoxDecoration(
-                  color: cs.primary.withValues(alpha: 0.16),
-                  borderRadius: AppRadius.pillAll,
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      genreLabel(genre, lang),
-                      style: AppText.caption.copyWith(color: cs.primary, fontWeight: FontWeight.w600),
-                    ),
-                    Icon(Icons.chevron_right_rounded, size: 16, color: cs.primary.withValues(alpha: 0.8)),
-                  ],
-                ),
+              child: _ColouredChip(
+                color: (genreStyles[genre] ?? fallbackGenreStyle).color,
+                lead: Icon((genreStyles[genre] ?? fallbackGenreStyle).icon, size: 15),
+                label: genreLabel(genre, lang),
               ),
             ),
           ),
       ],
     );
   }
+}
+
+/// A chip tinted with [color]: its [lead] (an icon, a monogram) in that
+/// colour, its [label] in the page's text colour so it reads on any tint,
+/// and a chevron that says it opens something.
+class _ColouredChip extends StatelessWidget {
+  const _ColouredChip({required this.color, required this.lead, required this.label});
+
+  final Color color;
+  final Widget lead;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: Color.alphaBlend(color.withValues(alpha: 0.16), cs.surfaceContainerHighest),
+        borderRadius: AppRadius.pillAll,
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconTheme.merge(data: IconThemeData(color: color), child: lead),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption.copyWith(color: cs.onSurface, fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 2),
+          Icon(Icons.chevron_right_rounded, size: 16, color: context.colors.textSecondary),
+        ],
+      ),
+    );
+  }
+}
+
+/// A media's producers (the studios that are not its animation studio),
+/// each with a monogram in a colour of its own, opening the studio's page.
+/// Studios without an id are left out, as they can not be opened.
+class ProducerChips extends StatelessWidget {
+  const ProducerChips({super.key, required this.studios});
+
+  /// The detail query's `studios { nodes { id name isAnimationStudio } }`.
+  final List<dynamic> studios;
+
+  static const _palette = [
+    Color(0xFF5C7CFA), Color(0xFF2FB67C), Color(0xFFF2A65A), Color(0xFFC77DFF),
+    Color(0xFF3DB8F5), Color(0xFFFF6B3D), Color(0xFF2EC4C4), Color(0xFFFF5C8A),
+  ];
+
+  /// The same studio always gets the same colour.
+  static Color colorOf(String name) =>
+      _palette[name.codeUnits.fold<int>(0, (sum, unit) => (sum * 31 + unit) & 0x7fffffff) % _palette.length];
+
+  @override
+  Widget build(BuildContext context) {
+    final producers = [
+      for (final studio in StudioRef.listFromJson(studios))
+        if (!studio.isAnimationStudio && studio.id != null) studio,
+    ];
+    return Wrap(
+      spacing: _chipGap,
+      runSpacing: _chipGap,
+      children: [
+        for (final studio in producers)
+          Semantics(
+            button: true,
+            child: Pressable(
+              onTap: () => openStudio(context, studio.id!, name: studio.name),
+              child: _ColouredChip(
+                color: colorOf(studio.name),
+                lead: _Monogram(name: studio.name, color: colorOf(studio.name)),
+                label: studio.name,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// A studio's first letter on a small disc of its colour.
+class _Monogram extends StatelessWidget {
+  const _Monogram({required this.name, required this.color});
+
+  final String name;
+  final Color color;
+
+  static const _size = 18.0;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: _size,
+        height: _size,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        child: Text(
+          name.isEmpty ? '' : name.characters.first.toUpperCase(),
+          style: AppText.micro.copyWith(color: Colors.white, fontWeight: FontWeight.w700, height: 1),
+        ),
+      );
 }
 
 /// A media's tags with how much each weighs in it (AniList's rank, out of
@@ -150,12 +275,14 @@ class _TagChipsState extends State<TagChips> {
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
-    final spoilers = widget.tags.where((tag) => tag['isMediaSpoiler'] == true).length;
-    final visible = [
-      for (final tag in widget.tags)
-        if (_showSpoilers || tag['isMediaSpoiler'] != true) tag,
+    // The spoilers are their own group: showing them shows every one of
+    // them, whether or not the other tags are folded.
+    final spoilers = [for (final tag in widget.tags) if (tag['isMediaSpoiler'] == true) tag];
+    final others = [for (final tag in widget.tags) if (tag['isMediaSpoiler'] != true) tag];
+    final shown = [
+      ...(_showAll ? others : others.take(TagChips.collapsedCount)),
+      if (_showSpoilers) ...spoilers,
     ];
-    final shown = _showAll ? visible : visible.take(TagChips.collapsedCount).toList();
     return AnimatedSize(
       duration: AppMotion.of(context, AppMotion.medium),
       curve: AppMotion.standard,
@@ -167,16 +294,16 @@ class _TagChipsState extends State<TagChips> {
           runSpacing: _chipGap,
           children: [
             for (final tag in shown) _tag(tag),
-            if (spoilers > 0)
+            if (spoilers.isNotEmpty)
               _toggle(
                 _showSpoilers
                     ? tr('detail_hide_spoiler_tags', lang)
-                    : trf('detail_show_spoiler_tags', lang, {'n': spoilers}),
+                    : trf('detail_show_spoiler_tags', lang, {'n': spoilers.length}),
                 () => setState(() => _showSpoilers = !_showSpoilers),
               ),
-            if (visible.length > TagChips.collapsedCount)
+            if (others.length > TagChips.collapsedCount)
               _toggle(
-                _showAll ? tr('detail_show_less', lang) : trf('detail_show_all_tags', lang, {'n': visible.length}),
+                _showAll ? tr('detail_show_less', lang) : trf('detail_show_all_tags', lang, {'n': others.length}),
                 () => setState(() => _showAll = !_showAll),
               ),
           ],

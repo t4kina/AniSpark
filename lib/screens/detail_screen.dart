@@ -608,7 +608,7 @@ class _DetailScreenState extends State<DetailScreen> {
             children: [
               DetailSectionTitle(tr('detail_producers', lang)),
               const SizedBox(height: 10),
-              StudioLinks(studios: studios, isAnimationStudio: false),
+              ProducerChips(studios: studios),
             ],
           )),
           const Divider(height: 1),
