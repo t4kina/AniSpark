@@ -285,7 +285,11 @@ class _LiquidNavigationBarState extends State<LiquidNavigationBar> with TickerPr
           onPointerMove: _onPointerMove,
           onPointerUp: _onPointerUp,
           onPointerCancel: _onPointerCancel,
-          child: NavigationBar(
+          // An empty tooltip still pops up as an empty bubble on a long
+          // press: the bar has none at all (the labels are always shown).
+          child: TooltipVisibility(
+            visible: false,
+            child: NavigationBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
             surfaceTintColor: Colors.transparent,
@@ -303,6 +307,7 @@ class _LiquidNavigationBarState extends State<LiquidNavigationBar> with TickerPr
                   tooltip: '',
                 ),
             ],
+          ),
           ),
         ),
       ],
