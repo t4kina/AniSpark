@@ -816,6 +816,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
     final unitLabel = widget.type == 'ANIME' ? tr('episode', lang) : tr('chapter', lang);
     final progressSuffix =
         '${total != null ? ' / $total' : ''} ${widget.type == 'ANIME' ? tr('episodes', lang) : tr('chapters', lang)}';
+    final finished = total != null && total > 0 && _progress >= total;
 
     // A quarter of the row is enough: right adds one, left takes one away.
     return SwipeAction(
@@ -893,6 +894,17 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                                 crossAxisAlignment: CrossAxisAlignment.baseline,
                                 textBaseline: TextBaseline.alphabetic,
                                 children: [
+                                  // Seen to the end: a check instead of a
+                                  // full line under every finished title.
+                                  if (finished) ...[
+                                    Icon(
+                                      Icons.task_alt_rounded,
+                                      key: const ValueKey('progress-finished'),
+                                      size: 13,
+                                      color: context.colors.success,
+                                    ),
+                                    const SizedBox(width: 4),
+                                  ],
                                   AnimatedCount(value: _progress),
                                   Flexible(child: Text(progressSuffix)),
                                 ],
@@ -905,10 +917,17 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                         ),
                       ),
                     ),
-                    if (total != null && total > 0) ...[
-                      const SizedBox(height: 6),
-                      ProgressLine(value: _progress, total: total),
-                    ],
+                    AnimatedSize(
+                      duration: AppMotion.of(context, AppMotion.medium),
+                      curve: AppMotion.standard,
+                      alignment: Alignment.topCenter,
+                      child: total != null && total > 0 && !finished
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: ProgressLine(value: _progress, total: total),
+                            )
+                          : const SizedBox(width: double.infinity),
+                    ),
                     if (score > 0) ...[
                       const SizedBox(height: 4),
                       Row(

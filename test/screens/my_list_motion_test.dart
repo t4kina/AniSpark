@@ -12,6 +12,7 @@ import 'package:anispark/widgets/genre_filter_sheet.dart';
 import 'package:anispark/widgets/motion/animated_count.dart';
 import 'package:anispark/widgets/motion/progress_moment.dart';
 import 'package:anispark/widgets/motion/staggered_entrance.dart';
+import 'package:anispark/widgets/motion/swipe_action.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -336,5 +337,20 @@ void main() {
     // Let the undo snack bar time out.
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('a finished title gets a check instead of a full line', (tester) async {
+    lists = [
+      _list('Completed', [_entry(30, progress: 100)], status: 'COMPLETED'),
+      _list('Reading', [_entry(31, progress: 40)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+
+    final finished = find.ancestor(of: find.text('Manga 30'), matching: find.byType(SwipeAction));
+    final reading = find.ancestor(of: find.text('Manga 31'), matching: find.byType(SwipeAction));
+    expect(find.descendant(of: finished, matching: find.byKey(const ValueKey('progress-finished'))), findsOneWidget);
+    expect(find.descendant(of: finished, matching: find.byType(ProgressLine)), findsNothing);
+    expect(find.descendant(of: reading, matching: find.byKey(const ValueKey('progress-finished'))), findsNothing);
+    expect(find.descendant(of: reading, matching: find.byType(ProgressLine)), findsOneWidget);
   });
 }
