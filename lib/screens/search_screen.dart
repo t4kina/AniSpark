@@ -235,6 +235,25 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  /// Clears and closes the keyboard; with nothing left to cancel, leaves the
+  /// search.
+  void _cancel() {
+    if (!_focused && _controller.text.isEmpty) {
+      Navigator.maybePop(context);
+      return;
+    }
+    _debounce?.cancel();
+    _focusNode.unfocus();
+    _controller.clear();
+    setState(() {
+      _results = [];
+      _searched = false;
+      _focused = false;
+      _loading = false;
+      _hasError = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
@@ -245,9 +264,9 @@ class _SearchScreenState extends State<SearchScreen> {
       appBar: AppBar(
         titleSpacing: 0,
         title: Padding(
-          // The field keeps the page's margin at the right; Cancel, when
-          // it shows, brings its own.
-          padding: EdgeInsets.only(left: 16, right: _focused || _controller.text.isNotEmpty ? 4 : 16),
+          // Cancel is always there at the right, so the field never
+          // changes width.
+          padding: const EdgeInsets.only(left: 16, right: 4),
           child: TextField(
             controller: _controller,
             focusNode: _focusNode,
@@ -277,21 +296,7 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ),
         actions: [
-          if (_focused || _controller.text.isNotEmpty)
-            TextButton(
-              onPressed: () {
-                _focusNode.unfocus();
-                _controller.clear();
-                setState(() {
-                  _results = [];
-                  _searched = false;
-                  _focused = false;
-                  _loading = false;
-                  _hasError = false;
-                });
-              },
-              child: Text(tr('cancel', lang)),
-            ),
+          TextButton(onPressed: _cancel, child: Text(tr('cancel', lang))),
         ],
       ),
       body: Column(

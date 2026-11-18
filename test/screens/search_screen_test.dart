@@ -87,20 +87,36 @@ void main() {
     expect(find.text('Search for anime or manga'), findsOneWidget);
   });
 
-  testWidgets('without Cancel the field keeps the page margin at its right', (tester) async {
+  testWidgets('Cancel stays and the field keeps its place; with nothing to cancel it leaves', (tester) async {
     tester.view.physicalSize = const Size(400, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(screenApp(const SearchScreen(), cache: ApiCache(MemoryCacheStore())));
+    await tester.pumpWidget(screenApp(
+      Builder(
+        builder: (context) => TextButton(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
+          child: const Text('open search'),
+        ),
+      ),
+      cache: ApiCache(MemoryCacheStore()),
+    ));
+    await tester.tap(find.text('open search'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'bebop');
     await tester.pump();
-    expect(find.text('Cancel'), findsOneWidget, reason: 'it opens focused');
-    expect(tester.getTopRight(find.byType(TextField)).dx, lessThan(tester.getTopLeft(find.text('Cancel')).dx));
+    final field = tester.getRect(find.byType(TextField));
+    expect(field.right, lessThan(tester.getTopLeft(find.text('Cancel')).dx));
 
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Cancel'), findsNothing);
-    expect(tester.getTopRight(find.byType(TextField)).dx, 400 - 16);
+    expect(find.text('Cancel'), findsOneWidget, reason: 'it does not go away');
+    expect(tester.getRect(find.byType(TextField)), field, reason: 'the field does not stretch');
+    expect(find.text('bebop'), findsNothing);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SearchScreen), findsNothing);
   });
 
   testWidgets('a recent search is removed with a cross that has a whole finger of room', (tester) async {
