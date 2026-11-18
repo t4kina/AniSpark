@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:anispark/screens/user_profile_screen.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/detail/detail_labels.dart';
 import 'package:anispark/widgets/profile/profile_card.dart';
 import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter/material.dart';
@@ -63,6 +65,32 @@ void main() {
     expect(find.text('Faye Valentine'), findsOneWidget);
     expect(find.text('Jackpot!'), findsOneWidget);
     expect(find.text(loadErrorText), findsNothing);
+  });
+
+  testWidgets('the genres they watch most say so, each in its own colour', (tester) async {
+    tester.view.physicalSize = const Size(400, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await cache.write('anon:profile:7', {
+      'id': 7,
+      'name': 'Faye Valentine',
+      'isFollowing': false,
+      'isFollower': false,
+      'statistics': {
+        'anime': {
+          'genres': [
+            {'genre': 'Action', 'count': 12},
+            {'genre': 'Romance', 'count': 30},
+          ],
+        },
+      },
+    });
+
+    await pumpProfile(tester);
+
+    expect(find.text(tr('profile_top_genres', 'English')), findsOneWidget);
+    final chips = find.byType(GenreChips);
+    expect(tester.widget<GenreChips>(chips).genres, ['Romance', 'Action'], reason: 'most watched first');
   });
 
   testWidgets('shows the shape of a profile, under the back button, while it loads', (tester) async {

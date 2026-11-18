@@ -9,6 +9,7 @@ import '../utils/haptics.dart';
 import '../utils/score_utils.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/app_sheet.dart';
+import '../widgets/detail/detail_labels.dart' show GenreChips;
 import '../widgets/motion/arrival_builder.dart';
 import '../widgets/motion/collapsing_title_bar.dart';
 import '../widgets/motion/fade_switcher.dart';
@@ -382,9 +383,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         if (about.isNotEmpty)
           SliverToBoxAdapter(child: _buildBio(about, lang)),
 
-        // ── Top genres ─────────────────────────────────────────────────
+        // ── Most watched genres ──────────────────────────────────────────
         if (topGenres.isNotEmpty)
-          SliverToBoxAdapter(child: _buildGenreChips(topGenres)),
+          SliverToBoxAdapter(child: _buildGenreChips(topGenres, lang)),
 
         // ── Favourite Anime ────────────────────────────────────────────
         if (favAnime.isNotEmpty) ...[
@@ -543,27 +544,25 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildGenreChips(List<String> genres) {
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 6,
-        children: genres.map((g) => Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-          decoration: BoxDecoration(
-            color: cs.primary.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
-          ),
-          child: Text(g,
-              style: TextStyle(fontSize: 12, color: cs.primary,
-                  fontWeight: FontWeight.w500)),
-        )).toList(),
-      ),
-    );
-  }
+  /// The genres this user watches most, each in its own colour, opening
+  /// the grid of that genre.
+  Widget _buildGenreChips(List<String> genres, String lang) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Semantics(
+              header: true,
+              child: Text(
+                tr('profile_top_genres', lang),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5),
+              ),
+            ),
+            const SizedBox(height: 10),
+            GenreChips(genres: genres, isManga: false),
+          ],
+        ),
+      );
 
   Widget _recentActivityRow(dynamic activity, String lang) {
     final type = activity['type'] as String?;
