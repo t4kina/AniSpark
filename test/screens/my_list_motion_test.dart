@@ -350,6 +350,12 @@ void main() {
     final reading = find.ancestor(of: find.text('Manga 31'), matching: find.byType(SwipeAction));
     expect(find.descendant(of: finished, matching: find.byKey(const ValueKey('progress-finished'))), findsOneWidget);
     expect(find.descendant(of: finished, matching: find.byType(ProgressLine)), findsNothing);
+    // The icon font's baseline is not the text's: lined up by baseline the
+    // check sits higher than the count on a phone (the test font hides it).
+    final rows = tester.widgetList<Row>(
+      find.ancestor(of: find.byKey(const ValueKey('progress-finished')), matching: find.byType(Row)),
+    );
+    expect(rows.first.crossAxisAlignment, CrossAxisAlignment.center, reason: 'centred on the count');
     expect(find.descendant(of: reading, matching: find.byKey(const ValueKey('progress-finished'))), findsNothing);
     expect(find.descendant(of: reading, matching: find.byType(ProgressLine)), findsOneWidget);
   });

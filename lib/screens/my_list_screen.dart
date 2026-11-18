@@ -888,23 +888,24 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
+                            // Seen to the end: a check instead of a full
+                            // line under every finished title, centred on
+                            // the text (an icon has no baseline of its own).
+                            if (finished) ...[
+                              Icon(
+                                Icons.task_alt_rounded,
+                                key: const ValueKey('progress-finished'),
+                                size: 13,
+                                color: context.colors.success,
+                              ),
+                              const SizedBox(width: 4),
+                            ],
                             Flexible(
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.baseline,
                                 textBaseline: TextBaseline.alphabetic,
                                 children: [
-                                  // Seen to the end: a check instead of a
-                                  // full line under every finished title.
-                                  if (finished) ...[
-                                    Icon(
-                                      Icons.task_alt_rounded,
-                                      key: const ValueKey('progress-finished'),
-                                      size: 13,
-                                      color: context.colors.success,
-                                    ),
-                                    const SizedBox(width: 4),
-                                  ],
                                   AnimatedCount(value: _progress),
                                   Flexible(child: Text(progressSuffix)),
                                 ],
