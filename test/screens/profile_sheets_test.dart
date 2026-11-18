@@ -12,11 +12,14 @@ import 'screen_harness.dart';
 
 /// Logged in, following a few people, with a fresh cached profile.
 class _FollowingAuth extends FakeAuthService {
-  _FollowingAuth({this.count = 3, this.followers = 0})
+  _FollowingAuth({this.count = 3, this.followers = 0, this.followerList})
       : super(fakeToken: 'token', fakeUser: {'id': 7, 'name': 'Faye'});
 
   final int count;
   final int followers;
+
+  /// The followers kept with the profile; an older cache has none.
+  final List<Map<String, dynamic>>? followerList;
 
   @override
   Map<String, dynamic>? get profileExtras => {
@@ -30,6 +33,7 @@ class _FollowingAuth extends FakeAuthService {
           for (var i = 1; i <= count; i++)
             {'id': i, 'name': 'Friend $i', 'avatar': null},
         ],
+        if (followerList != null) 'followers': followerList,
       };
 }
 
@@ -122,6 +126,32 @@ void main() {
 
     await tester.pumpAndSettle();
     expect(find.byType(PeopleSkeleton), findsNothing);
+  });
+
+  testWidgets('followers loaded with the profile open at once, without asking again', (tester) async {
+    tester.view.physicalSize = const Size(400, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(appWith(
+      const ProfileScreen(),
+      cache: ApiCache(MemoryCacheStore()),
+      auth: _FollowingAuth(followers: 2, followerList: [
+        {'id': 21, 'name': 'Jet', 'avatar': null},
+        {'id': 22, 'name': 'Ed', 'avatar': null},
+      ]),
+    ));
+    await tester.pumpAndSettle();
+    final before = offline.requests;
+
+    await tester.tap(find.text('2 Followers'));
+    await tester.pump();
+
+    expect(find.text('Jet'), findsOneWidget, reason: 'there from the first frame');
+    expect(find.byType(PeopleSkeleton), findsNothing);
+    final opening = tester.getSize(find.byType(BottomSheet)).height;
+    await tester.pumpAndSettle();
+    expect(tester.getSize(find.byType(BottomSheet)).height, opening);
+    expect(offline.requests, before);
   });
 
   testWidgets('a session whose user has not arrived yet shows the shape of the profile', (tester) async {

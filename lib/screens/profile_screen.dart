@@ -69,6 +69,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   bool _statsLoaded = false;
   Map<String, int> _activityDays = {};
   List<dynamic> _following = [];
+
+  /// Loaded with the profile, like [_following], so the followers sheet
+  /// opens with its people instead of fetching them and changing height.
+  /// Null until known (an older cache did not keep them).
+  List<dynamic>? _followers;
   bool _animeGenresExpanded = false;
   bool _mangaGenresExpanded = false;
   bool _scoreDistributionExpanded = false;
@@ -97,6 +102,14 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
+  /// The preloaded followers, unless they disagree with the count (an
+  /// answer AniList refused comes back empty): then the sheet asks again.
+  List<dynamic>? get _followersToShow {
+    final followers = _followers;
+    if (followers == null || (followers.isEmpty && _followersCount > 0)) return null;
+    return followers;
+  }
+
   void _loadFromCache(Map<String, dynamic> cached) {
     if (!mounted) return;
     setState(() {
@@ -108,6 +121,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       _activityDays = (cached['activityDays'] as Map<String, dynamic>? ?? {})
           .map((k, v) => MapEntry(k, (v as num).toInt()));
       _following = List<dynamic>.from(cached['following'] as List? ?? []);
+      final followers = cached['followers'] as List?;
+      _followers = followers == null ? null : List<dynamic>.from(followers);
       _statsLoaded = true;
     });
   }
@@ -139,6 +154,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         _service.getUserFollowCounts(userId, auth.token!),
         _service.getUserActivityDays(userId, auth.token!),
         _service.getFollowing(userId, auth.token!),
+        _service.getFollowers(userId, auth.token!),
       ]);
     } on Exception catch (e) {
       // Keep whatever is already on screen (cached stats) and try next time.
@@ -151,6 +167,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final followResult = results[1] as Map<String, int>;
     final activityResult = results[2] as Map<String, int>;
     final followingResult = results[3] as List<dynamic>;
+    final followersResult = results[4] as List<dynamic>;
 
     final user = statsResult['user'] as Map<String, dynamic>?;
     final newBanner = (user?['bannerImage'] as String?) ?? _bannerImage;
@@ -167,6 +184,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       _followingCount = newFollowing;
       _activityDays = activityResult;
       _following = followingResult;
+      _followers = followersResult;
       _statsLoaded = true;
     });
 
@@ -180,6 +198,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       'followingCount': newFollowing,
       'activityDays': activityResult,
       'following': followingResult,
+      'followers': followersResult,
     });
   }
 
@@ -231,7 +250,12 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                   // one action a card leads with (Follow on a friend's).
                   ProfileCard.secondaryButton(
                     label: '$_followersCount ${tr('followers', lang)}',
-                    onPressed: () => _showFollowSheet(context, tr('followers', lang), expected: _followersCount),
+                    onPressed: () => _showFollowSheet(
+                      context,
+                      tr('followers', lang),
+                      preloaded: _followersToShow,
+                      expected: _followersCount,
+                    ),
                   ),
                   ProfileCard.secondaryButton(
                     label: '$_followingCount ${tr('following', lang)}',
