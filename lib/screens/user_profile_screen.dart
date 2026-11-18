@@ -58,6 +58,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Map<String, dynamic>? _profile;
   List<dynamic> _recentActivity = [];
   bool _loading = true;
+
+  // The page swaps its placeholder once the profile and the activity have
+  // both answered (or failed), so the activity does not drop in after it.
+  bool _profileArrived = false;
+  bool _activityArrived = false;
   // ToggleFollow flips whatever AniList has, so the follow button waits for a
   // fresh profile instead of trusting a possibly stale cached isFollowing.
   bool _profileIsFresh = false;
@@ -115,7 +120,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             _profileIsFresh = isFresh;
             _isFollowing = data?['isFollowing'] == true;
             _isFollower = data?['isFollower'] == true;
-            _loading = false;
+            _profileArrived = true;
+            _loading = !_activityArrived;
           });
         },
         isValid: (data) => data != null,
@@ -132,7 +138,12 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         fetch: () => _service.getUserRecentActivity(widget.userId, token: token),
         decode: (json) => json as List<dynamic>,
         onData: (activity, {required isFresh}) {
-          if (mounted) setState(() => _recentActivity = activity);
+          if (!mounted) return;
+          setState(() {
+            _recentActivity = activity;
+            _activityArrived = true;
+            _loading = !_profileArrived;
+          });
         },
       );
     } on Exception catch (e) {
@@ -141,7 +152,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   }
 
   void _retry() {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _profileArrived = false;
+      _activityArrived = false;
+    });
     _load();
   }
 
@@ -328,7 +343,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
     final about = (p['about'] as String? ?? '').trim();
     final auth = context.watch<AuthService>();
-    final canFollow = _profileIsFresh && auth.isLoggedIn && auth.user?['id'] != widget.userId;
+    // Shown from the first frame so the card keeps its height; it only acts
+    // once AniList has confirmed the follow state (see [_profileIsFresh]).
+    final canFollow = auth.isLoggedIn && auth.user?['id'] != widget.userId;
+    final canAct = _profileIsFresh && !_togglingFollow;
 
     return CustomScrollView(
       key: const ValueKey('uprof-content'),
@@ -355,7 +373,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 ? ProfileCard.roundButton(
                     icon: Icons.more_horiz_rounded,
                     tooltip: tr('tooltip_more', lang),
-                    onPressed: () => _showProfileActions(context, lang),
+                    onPressed: () {
+                      if (_profileIsFresh) _showProfileActions(context, lang);
+                    },
                   )
                 : null,
             actions: [
@@ -365,19 +385,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         label: '${tr('uprof_following_button', lang)}${_togglingFollow ? '…' : ''}',
                         icon: Icons.check_rounded,
                         trailing: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.white),
-                        onPressed: () => _showProfileActions(context, lang),
+                        onPressed: canAct ? () => _showProfileActions(context, lang) : null,
                       )
                     : ProfileCard.primaryButton(
                         label: _togglingFollow ? '…' : tr('uprof_follow', lang),
                         icon: Icons.person_add_alt_1_rounded,
-                        onPressed: _togglingFollow ? null : _toggleFollow,
+                        onPressed: canAct ? _toggleFollow : null,
                       ),
             ],
           ),
         ),
-
-        // ── Affinity with the viewer (hides itself when not applicable) ──
-        SliverToBoxAdapter(child: AffinityCard(userId: widget.userId, userName: name)),
 
         // ── Bio ────────────────────────────────────────────────────────
         if (about.isNotEmpty)
@@ -472,6 +489,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ),
           ),
         ],
+
+        // ── Affinity with the viewer (hides itself when not applicable) ──
+        // Below what the profile itself shows: it answers later, and opening
+        // here it does not push the rest of the page down.
+        SliverToBoxAdapter(child: AffinityCard(userId: widget.userId, userName: name)),
 
         // ── Recent activity ────────────────────────────────────────────
         if (_recentActivity.isNotEmpty) ...[
