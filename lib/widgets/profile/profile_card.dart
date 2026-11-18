@@ -11,6 +11,7 @@ import '../genre_filter_sheet.dart' show genreLabel;
 import '../motion/fade_switcher.dart';
 import '../motion/pressable.dart';
 import '../motion/rounded_hero.dart';
+import 'avatar_viewer.dart';
 import 'count_up_text.dart';
 import '../app_image.dart';
 
@@ -117,6 +118,9 @@ const _avatarRing = 3.0;
 
 class _ProfileCardState extends State<ProfileCard> {
   bool _manga = false;
+
+  /// Flies the avatar into the viewer when the page was not opened from one.
+  final _viewerTag = Object();
 
   /// The genre the person has the most anime (else manga) in.
   String? get _topGenre {
@@ -240,13 +244,15 @@ class _ProfileCardState extends State<ProfileCard> {
     );
   }
 
+  /// Tapped, the picture opens large (see [showAvatarViewer]).
   Widget _avatar() {
     final avatar = widget.avatarUrl;
-    return Container(
+    final heroTag = widget.avatarHeroTag ?? _viewerTag;
+    final ringed = Container(
       padding: const EdgeInsets.all(_avatarRing),
       decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.35)),
       child: RoundedHero(
-        tag: widget.avatarHeroTag,
+        tag: heroTag,
         borderRadius: BorderRadius.circular(ProfileCard.avatarSize / 2),
         child: CircleAvatar(
           radius: ProfileCard.avatarSize / 2,
@@ -254,6 +260,15 @@ class _ProfileCardState extends State<ProfileCard> {
           backgroundImage: avatar == null ? null : CachedNetworkImageProvider(avatar),
           child: avatar == null ? const Icon(Icons.person, size: 38, color: Colors.white70) : null,
         ),
+      ),
+    );
+    if (avatar == null || avatar.isEmpty) return ringed;
+    return Semantics(
+      button: true,
+      label: tr('profile_picture', widget.lang),
+      child: Pressable(
+        onTap: () => showAvatarViewer(context, url: avatar, heroTag: heroTag),
+        child: ringed,
       ),
     );
   }

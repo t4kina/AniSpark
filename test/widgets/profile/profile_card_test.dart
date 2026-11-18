@@ -1,4 +1,5 @@
 import 'package:anispark/widgets/blurred_backdrop.dart';
+import 'package:anispark/widgets/profile/avatar_viewer.dart';
 import 'package:anispark/widgets/profile/profile_card.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -122,5 +123,35 @@ void main() {
     await tester.tap(find.text('321 anime'));
 
     expect(tapped, ['MANGA', 'ANIME']);
+  });
+
+  testWidgets('a tap on the avatar opens it large, and a tap closes it', (tester) async {
+    await pumpCard(tester);
+
+    await tester.tap(find.byType(CircleAvatar));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AvatarViewer), findsOneWidget);
+    final image = tester.widget<CachedNetworkImage>(
+      find.descendant(of: find.byType(AvatarViewer), matching: find.byType(CachedNetworkImage)),
+    );
+    expect(image.imageUrl, _avatar);
+    expect(
+      tester.getSize(find.descendant(of: find.byType(AvatarViewer), matching: find.byType(CachedNetworkImage))).width,
+      greaterThan(ProfileCard.avatarSize * 4),
+      reason: 'as large as the screen allows',
+    );
+
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.byType(AvatarViewer), findsNothing);
+  });
+
+  testWidgets('without a picture there is nothing to open', (tester) async {
+    await pumpCard(tester, avatar: null);
+
+    await tester.tap(find.byType(CircleAvatar));
+    await tester.pumpAndSettle();
+    expect(find.byType(AvatarViewer), findsNothing);
   });
 }
