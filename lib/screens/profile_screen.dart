@@ -269,7 +269,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             // ── Favorite Anime ─────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
+                padding: const EdgeInsets.fromLTRB(16, ProfileCard.followingGap, 16, 10),
                 child: Text(tr('favorite_anime', lang),
                     style: const TextStyle(
                         fontSize: 12,

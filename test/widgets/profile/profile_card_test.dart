@@ -79,8 +79,8 @@ void main() {
       for (final text in find.descendant(of: find.byType(ProfileCard), matching: find.byType(Text)).evaluate())
         tester.getRect(find.byElementPredicate((element) => element == text)).bottom,
     ];
-    expect(textBottoms.reduce((a, b) => a > b ? a : b), lessThan(fade.top + fade.height * 0.4),
-        reason: 'what is written stays over the banner, not over the fade');
+    expect(fade.top, greaterThanOrEqualTo(textBottoms.reduce((a, b) => a > b ? a : b) + 16),
+        reason: 'the banner stays whole past everything on it, and only then fades');
   });
 
   testWidgets('sits on the person\'s banner when they have one', (tester) async {

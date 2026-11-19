@@ -109,17 +109,22 @@ class ProfileCard extends StatefulWidget {
   static Widget secondaryButton({required String label, IconData? icon, Widget? trailing, VoidCallback? onPressed}) =>
       _ActionButton(label: label, icon: icon, trailing: trailing, onPressed: onPressed, primary: false);
 
+  /// The room above whatever the page shows right after the card: little,
+  /// since the card's fade ends in the page's own colour.
+  static const followingGap = 4.0;
+
   @override
   State<ProfileCard> createState() => _ProfileCardState();
 }
 
 const _padding = 20.0;
 
-/// How long the banner takes to dissolve into the page. Most of it is below
-/// everything on the card ([_belowContent]); the rest, under the buttons,
-/// barely starts, so white text keeps its dark backing even in light mode.
+/// How long the banner takes to dissolve into the page. It starts below
+/// everything on the card, after the banner runs on whole for a while, so
+/// it ends close to what the page shows next and white text keeps its dark
+/// backing even in light mode.
 const _fade = 112.0;
-const _belowContent = 72.0;
+const _belowContent = 16.0 + _fade;
 
 /// The fade's steps. Each one is [_dissolve]d, which starts and ends flat,
 /// so there is no line where the banner begins to go or the page takes over.

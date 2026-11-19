@@ -408,17 +408,19 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
         // ── Bio ────────────────────────────────────────────────────────
         if (about.isNotEmpty)
-          SliverToBoxAdapter(child: _buildBio(about, lang)),
+          SliverToBoxAdapter(child: _buildBio(about, lang, top: ProfileCard.followingGap)),
 
         // ── Most watched genres ──────────────────────────────────────────
         if (topGenres.isNotEmpty)
-          SliverToBoxAdapter(child: _buildGenreChips(topGenres, lang)),
+          SliverToBoxAdapter(child: _buildGenreChips(topGenres, lang, top: about.isEmpty ? ProfileCard.followingGap : 24)),
 
         // ── Favourite Anime ────────────────────────────────────────────
         if (favAnime.isNotEmpty) ...[
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 10),
+              // Right under the header when nothing comes between.
+              padding: EdgeInsets.fromLTRB(
+                  16, about.isEmpty && topGenres.isEmpty ? ProfileCard.followingGap : 24, 16, 10),
               child: Text(tr('favorite_anime', lang),
                   style: const TextStyle(
                       fontSize: 12,
@@ -528,10 +530,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildBio(String about, String lang) {
+  Widget _buildBio(String about, String lang, {double top = 20}) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      padding: EdgeInsets.fromLTRB(16, top, 16, 0),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(14),
@@ -578,8 +580,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
   /// The genres this user watches most, each in its own colour, opening
   /// the grid of that genre.
-  Widget _buildGenreChips(List<String> genres, String lang) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+  Widget _buildGenreChips(List<String> genres, String lang, {double top = 24}) => Padding(
+        padding: EdgeInsets.fromLTRB(16, top, 16, 0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
