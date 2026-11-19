@@ -54,6 +54,35 @@ void main() {
   Iterable<String> networkImages(WidgetTester tester) =>
       tester.widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage)).map((image) => image.imageUrl);
 
+  testWidgets('the banner dissolves into the page over a long, gentle stretch below everything', (tester) async {
+    await pumpCard(tester);
+
+    final page = Theme.of(tester.element(find.byType(ProfileCard))).scaffoldBackgroundColor;
+    final fadeFinder = find.byWidgetPredicate((widget) =>
+        widget is DecoratedBox &&
+        widget.decoration is BoxDecoration &&
+        ((widget.decoration as BoxDecoration).gradient?.colors.last == page));
+    expect(fadeFinder, findsOneWidget);
+    final fade = tester.getRect(fadeFinder);
+    final card = tester.getRect(find.byType(ProfileCard));
+    expect(fade.bottom, card.bottom);
+    expect(fade.height, greaterThanOrEqualTo(100), reason: 'long, not a line');
+
+    final alphas = (tester.widget<DecoratedBox>(fadeFinder).decoration as BoxDecoration).gradient!.colors.map((c) => c.a).toList();
+    expect(alphas.first, 0);
+    expect(alphas.last, 1);
+    expect(alphas.length, greaterThanOrEqualTo(8));
+    expect(alphas[1], lessThan(0.05), reason: 'starts softly');
+    expect(alphas[alphas.length - 2], greaterThan(0.95), reason: 'ends softly, with no edge');
+
+    final textBottoms = [
+      for (final text in find.descendant(of: find.byType(ProfileCard), matching: find.byType(Text)).evaluate())
+        tester.getRect(find.byElementPredicate((element) => element == text)).bottom,
+    ];
+    expect(textBottoms.reduce((a, b) => a > b ? a : b), lessThan(fade.top + fade.height * 0.4),
+        reason: 'what is written stays over the banner, not over the fade');
+  });
+
   testWidgets('sits on the person\'s banner when they have one', (tester) async {
     await pumpCard(tester, banner: _banner);
 

@@ -115,12 +115,18 @@ class ProfileCard extends StatefulWidget {
 
 const _padding = 20.0;
 
-/// The banner's last stretch, under the buttons, fades into the page.
-const _fade = 20.0;
+/// How long the banner takes to dissolve into the page. Most of it is below
+/// everything on the card ([_belowContent]); the rest, under the buttons,
+/// barely starts, so white text keeps its dark backing even in light mode.
+const _fade = 112.0;
+const _belowContent = 72.0;
 
-/// Where the fade's steps sit, eased so it has no soft start or end that
-/// reads as a blurred band.
-const _fadeStops = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0];
+/// The fade's steps. Each one is [_dissolve]d, which starts and ends flat,
+/// so there is no line where the banner begins to go or the page takes over.
+final _fadeStops = [for (var i = 0; i <= 11; i++) i / 11];
+
+/// Smootherstep: 0 to 1 with no slope or bend at either end.
+double _dissolve(double t) => t * t * t * (t * (t * 6 - 15) + 10);
 const _paddingTop = 22.0;
 const _avatarRing = 3.0;
 
@@ -183,7 +189,7 @@ class _ProfileCardState extends State<ProfileCard> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     stops: _fadeStops,
-                    colors: [for (final t in _fadeStops) page.withValues(alpha: Curves.easeInOut.transform(t))],
+                    colors: [for (final t in _fadeStops) page.withValues(alpha: _dissolve(t))],
                   ),
                 ),
               ),
@@ -195,7 +201,7 @@ class _ProfileCardState extends State<ProfileCard> {
                   _padding,
                   MediaQuery.paddingOf(context).top + widget.topGap + _paddingTop,
                   _padding,
-                  20 + _fade,
+                  _belowContent,
                 ),
                 child: DefaultTextStyle.merge(
                   style: const TextStyle(color: Colors.white),
