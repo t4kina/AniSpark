@@ -19,12 +19,8 @@ void main() {
       expect(provider.language, 'English');
       expect(provider.appearance, 'Dark');
       expect(provider.titleLanguage, 'English');
-      // NOTE: the in-class field defaults for these two flags are `true`
-      // (settings_provider.dart:17-18), but load() falls back to `false`
-      // when the key is absent (settings_provider.dart:54-55). This test
-      // pins the *current* post-load() behavior.
-      expect(provider.pushNotifications, isFalse);
-      expect(provider.newEpisodeAlerts, isFalse);
+      // Notifications stay off until asked for, with the permission.
+      expect(provider.episodeAlerts, isFalse);
       expect(provider.accentColorName, 'Blue');
     });
 
@@ -33,8 +29,7 @@ void main() {
         'language': 'Spanish',
         'appearance': 'Light',
         'titleLanguage': 'Native',
-        'pushNotifications': true,
-        'newEpisodeAlerts': true,
+        'episodeAlerts': true,
         'accentColorName': 'Purple',
       });
       final provider = SettingsProvider();
@@ -44,8 +39,7 @@ void main() {
       expect(provider.language, 'Spanish');
       expect(provider.appearance, 'Light');
       expect(provider.titleLanguage, 'Native');
-      expect(provider.pushNotifications, isTrue);
-      expect(provider.newEpisodeAlerts, isTrue);
+      expect(provider.episodeAlerts, isTrue);
       expect(provider.accentColorName, 'Purple');
     });
 
@@ -103,32 +97,52 @@ void main() {
       expect(prefs.getString('titleLanguage'), 'Romaji');
     });
 
-    test('setPushNotifications updates the getter, persists it, and notifies',
+    test('setEpisodeAlerts updates the getter, persists it, and notifies',
         () async {
       final provider = SettingsProvider();
       var notified = 0;
       provider.addListener(() => notified++);
 
-      await provider.setPushNotifications(false);
+      await provider.setEpisodeAlerts(true);
 
-      expect(provider.pushNotifications, isFalse);
+      expect(provider.episodeAlerts, isTrue);
       expect(notified, 1);
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('pushNotifications'), isFalse);
+      expect(prefs.getBool('episodeAlerts'), isTrue);
     });
 
-    test('setNewEpisodeAlerts updates the getter, persists it, and notifies',
+    test('the two old switches become one: on only when both were on',
         () async {
+      for (final (push, episodes, expected) in [
+        (true, true, true),
+        (true, false, false),
+        (false, true, false),
+        (null, null, false),
+      ]) {
+        SharedPreferences.setMockInitialValues({
+          'pushNotifications': ?push,
+          'newEpisodeAlerts': ?episodes,
+        });
+        final provider = SettingsProvider();
+
+        await provider.load();
+
+        expect(provider.episodeAlerts, expected, reason: 'push $push, episodes $episodes');
+      }
+    });
+
+    test('once the one switch is set, the old ones are forgotten', () async {
+      SharedPreferences.setMockInitialValues({'pushNotifications': true, 'newEpisodeAlerts': true});
       final provider = SettingsProvider();
-      var notified = 0;
-      provider.addListener(() => notified++);
+      await provider.load();
 
-      await provider.setNewEpisodeAlerts(false);
+      await provider.setEpisodeAlerts(false);
 
-      expect(provider.newEpisodeAlerts, isFalse);
-      expect(notified, 1);
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('newEpisodeAlerts'), isFalse);
+      expect(prefs.containsKey('pushNotifications'), isFalse);
+      expect(prefs.containsKey('newEpisodeAlerts'), isFalse);
+      await provider.load();
+      expect(provider.episodeAlerts, isFalse);
     });
 
     test('setAccentColor updates the getter, persists it, and notifies',

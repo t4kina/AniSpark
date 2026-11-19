@@ -16,8 +16,7 @@ class SettingsProvider extends ChangeNotifier {
   String _language = 'English';
   String _appearance = 'Dark';
   String _titleLanguage = 'English';
-  bool _pushNotifications = true;
-  bool _newEpisodeAlerts = true;
+  bool _episodeAlerts = false;
   String _accentColorName = 'Blue';
   // Index into MainNavigation's tabs: Anime, Manga, Discover, Feed, Profile.
   // Anime, where the app has always opened.
@@ -27,8 +26,9 @@ class SettingsProvider extends ChangeNotifier {
   String get language => _language;
   String get appearance => _appearance;
   String get titleLanguage => _titleLanguage;
-  bool get pushNotifications => _pushNotifications;
-  bool get newEpisodeAlerts => _newEpisodeAlerts;
+  /// The one notification setting: a notice when a new episode of
+  /// something being watched airs.
+  bool get episodeAlerts => _episodeAlerts;
   String get accentColorName => _accentColorName;
   int get defaultTab => _defaultTab;
   bool get hapticsEnabled => _hapticsEnabled;
@@ -59,8 +59,9 @@ class SettingsProvider extends ChangeNotifier {
     _language = prefs.getString('language') ?? 'English';
     _appearance = prefs.getString('appearance') ?? 'Dark';
     _titleLanguage = prefs.getString('titleLanguage') ?? 'English';
-    _pushNotifications = prefs.getBool('pushNotifications') ?? false;
-    _newEpisodeAlerts = prefs.getBool('newEpisodeAlerts') ?? false;
+    // Before, two switches had to be on together for the same notices.
+    _episodeAlerts = prefs.getBool(_episodeAlertsKey) ??
+        ((prefs.getBool(_oldPushKey) ?? false) && (prefs.getBool(_oldEpisodesKey) ?? false));
     _accentColorName = prefs.getString('accentColorName') ?? 'Blue';
     _defaultTab = prefs.getInt('defaultTab') ?? 0;
     _hapticsEnabled = prefs.getBool('hapticsEnabled') ?? true;
@@ -89,17 +90,16 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> setPushNotifications(bool value) async {
-    _pushNotifications = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('pushNotifications', value);
-    notifyListeners();
-  }
+  static const _episodeAlertsKey = 'episodeAlerts';
+  static const _oldPushKey = 'pushNotifications';
+  static const _oldEpisodesKey = 'newEpisodeAlerts';
 
-  Future<void> setNewEpisodeAlerts(bool value) async {
-    _newEpisodeAlerts = value;
+  Future<void> setEpisodeAlerts(bool value) async {
+    _episodeAlerts = value;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('newEpisodeAlerts', value);
+    await prefs.setBool(_episodeAlertsKey, value);
+    await prefs.remove(_oldPushKey);
+    await prefs.remove(_oldEpisodesKey);
     notifyListeners();
   }
 

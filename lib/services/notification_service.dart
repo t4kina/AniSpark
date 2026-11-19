@@ -54,8 +54,7 @@ class NotificationService {
     if (prefs.getBool('notification_asked') ?? false) return;
     await prefs.setBool('notification_asked', true);
     final granted = await requestPermission();
-    await settings.setPushNotifications(granted);
-    await settings.setNewEpisodeAlerts(granted);
+    await settings.setEpisodeAlerts(granted);
   }
 
   /// Returns true if permission was granted (or already granted).
@@ -81,7 +80,7 @@ class NotificationService {
     Map<String, List<dynamic>> lists,
     SettingsProvider settings,
   ) async {
-    if (!settings.pushNotifications || !settings.newEpisodeAlerts) return;
+    if (!settings.episodeAlerts) return;
     if (!_initialized) return;
     if (kIsWeb) return;
     if (defaultTargetPlatform != TargetPlatform.android &&

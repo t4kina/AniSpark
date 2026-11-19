@@ -386,36 +386,16 @@ class SettingsScreen extends StatelessWidget {
           _sectionHeader(tr('notifications', lang)),
           _Group(children: [
             _switchTile(
-              label: tr('push_notifications', lang),
-              value: settings.pushNotifications,
-              onChanged: (v) async {
-                final sp = context.read<SettingsProvider>();
-                final messenger = ScaffoldMessenger.of(context);
-                await sp.setPushNotifications(v);
-                if (v) {
-                  final granted = await NotificationService().requestPermission();
-                  if (!granted && context.mounted) {
-                    await sp.setPushNotifications(false);
-                    messenger.showSnackBar(SnackBar(
-                      content: Text(tr('settings_enable_notifications', lang)),
-                    ));
-                  }
-                } else {
-                  await NotificationService().cancelAll();
-                }
-              },
-            ),
-            _switchTile(
               label: tr('new_episode_alerts', lang),
-              value: settings.newEpisodeAlerts,
+              value: settings.episodeAlerts,
               onChanged: (v) async {
                 final sp = context.read<SettingsProvider>();
                 final messenger = ScaffoldMessenger.of(context);
-                await sp.setNewEpisodeAlerts(v);
+                await sp.setEpisodeAlerts(v);
                 if (v) {
                   final granted = await NotificationService().requestPermission();
                   if (!granted && context.mounted) {
-                    await sp.setNewEpisodeAlerts(false);
+                    await sp.setEpisodeAlerts(false);
                     messenger.showSnackBar(SnackBar(
                       content: Text(tr('settings_enable_notifications', lang)),
                     ));

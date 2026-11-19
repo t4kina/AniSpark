@@ -4,6 +4,7 @@ import 'package:anispark/utils/performance_graphs.dart';
 import 'package:anispark/utils/translations.dart';
 import 'package:anispark/widgets/app_button.dart';
 import 'package:anispark/widgets/app_dialog.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -145,6 +146,14 @@ void main() {
     expect(general.right, 400 - 16);
     final row = tester.getSize(find.ancestor(of: find.text('Language'), matching: find.byType(ListTile)));
     expect(row.height, lessThan(56), reason: 'short rows');
+  });
+
+  testWidgets('notifications are managed with one switch', (tester) async {
+    await openSettings(tester);
+
+    expect(find.text('Push Notifications'), findsNothing);
+    final block = find.ancestor(of: find.text(_en('new_episode_alerts')), matching: find.byType(Material)).first;
+    expect(find.descendant(of: block, matching: find.byType(CupertinoSwitch)), findsOneWidget);
   });
 
   testWidgets('seven taps in a row on the version switch the frame graphs on, seven more off', (tester) async {
