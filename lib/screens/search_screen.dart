@@ -235,6 +235,9 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  static const _cancelGap = 12.0;
+  static const _fieldBorder = OutlineInputBorder(borderRadius: AppRadius.mdAll, borderSide: BorderSide.none);
+
   /// Clears and closes the keyboard; with nothing left to cancel, leaves the
   /// search.
   void _cancel() {
@@ -266,14 +269,17 @@ class _SearchScreenState extends State<SearchScreen> {
         title: Padding(
           // Cancel is always there at the right, so the field never
           // changes width.
-          padding: const EdgeInsets.only(left: 16, right: 4),
+          padding: const EdgeInsets.only(left: AppSpace.page, right: _cancelGap),
           child: TextField(
             controller: _controller,
             focusNode: _focusNode,
             autofocus: true,
             decoration: InputDecoration(
               hintText: tr('search_hint', lang),
-              border: InputBorder.none,
+              // A filled box like Discover's search bar, with no outline when
+              // it takes the keyboard either.
+              enabledBorder: _fieldBorder,
+              focusedBorder: _fieldBorder,
               prefixIcon: Icon(Icons.search, size: 20, color: context.colors.textSecondary),
               contentPadding: const EdgeInsets.symmetric(vertical: 10),
               suffixIcon: _controller.text.isNotEmpty
@@ -296,7 +302,19 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ),
         actions: [
-          TextButton(onPressed: _cancel, child: Text(tr('cancel', lang))),
+          // Plain text that dims under the finger, at the page margin.
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpace.page),
+            child: Center(
+              child: Pressable.dim(
+                onTap: _cancel,
+                child: Text(
+                  tr('cancel', lang),
+                  style: TextStyle(color: accentColor, fontSize: 16, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
       body: Column(

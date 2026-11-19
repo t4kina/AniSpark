@@ -119,6 +119,26 @@ void main() {
     expect(find.byType(SearchScreen), findsNothing);
   });
 
+  testWidgets('Cancel is plain text at the page margin, and the field never draws an outline', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(screenApp(const SearchScreen(), cache: ApiCache(MemoryCacheStore())));
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopRight(find.text('Cancel')).dx, closeTo(400 - 16, 0.5), reason: 'lined up with the page margin');
+    expect(find.ancestor(of: find.text('Cancel'), matching: find.byType(TextButton)), findsNothing,
+        reason: 'no button box flashing under it');
+    final gap = tester.getTopLeft(find.text('Cancel')).dx - tester.getRect(find.byType(TextField)).right;
+    expect(gap, closeTo(12, 0.5));
+
+    final decoration = tester.widget<TextField>(find.byType(TextField)).decoration!;
+    for (final border in [decoration.enabledBorder, decoration.focusedBorder]) {
+      expect(border, isNotNull);
+      expect(border!.borderSide, BorderSide.none);
+    }
+  });
+
   testWidgets('a recent search is removed with a cross that has a whole finger of room', (tester) async {
     SharedPreferences.setMockInitialValues({recentSearchesPrefsKey: ['frieren', 'bebop']});
     await tester.pumpWidget(screenApp(const SearchScreen(), cache: ApiCache(MemoryCacheStore())));
