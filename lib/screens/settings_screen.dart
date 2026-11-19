@@ -25,6 +25,8 @@ import '../widgets/motion/pressable.dart';
 import '../widgets/option_sheet.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../services/notification_service.dart';
+import '../services/friend_alerts.dart';
+import '../widgets/friend_alert_sheet.dart';
 import 'search_screen.dart' show recentSearchesPrefsKey;
 
 // The pickers below store these maps' keys and only show their labels.
@@ -427,12 +429,17 @@ class SettingsScreen extends StatelessWidget {
                 }
               },
             ),
-            _switchTile(
-              label: tr('friend_activity_alerts', lang),
-              value: settings.friendActivityAlerts,
-              onChanged: (v) async {
-                await context.read<SettingsProvider>().setFriendActivityAlerts(v);
-              },
+            _tile(
+              label: tr('settings_friend_bells', lang),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('${context.watch<FriendAlertsStore?>()?.watches.length ?? 0}',
+                      style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+                  Icon(Icons.chevron_right, color: context.colors.textTertiary, size: 18),
+                ],
+              ),
+              onTap: () => showFriendBellsSheet(context),
             ),
           ]),
 

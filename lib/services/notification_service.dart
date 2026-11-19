@@ -24,7 +24,12 @@ class NotificationService {
   static const _friendChannelName = 'Friend Activity';
   static const _friendChannelDesc = 'Notifications when friends are active on AniList';
 
-  static const _friendNotifId = 99999;
+  // Episode alerts use 0-99999 (a media id's last digits): friend alerts
+  // keep clear of them.
+  static const _friendNotifBase = 200000;
+  static const _friendSummaryId = 199999;
+
+  // What the old, feed-driven friend alert remembered; cleared on logout.
   static const _prefLastActivityKey = 'last_seen_activity_at';
 
   Future<void> init() async {
@@ -160,43 +165,33 @@ class NotificationService {
     }
   }
 
-  /// Checks if there is new friend activity since the last time the feed was seen.
-  /// If [settings.friendActivityAlerts] is enabled and new activity exists, fires a notification.
-  /// Returns the number of new activities so the caller can update the last-seen timestamp.
-  Future<void> checkFriendActivity(
-    List<dynamic> activities,
-    SettingsProvider settings,
-  ) async {
-    if (!settings.pushNotifications || !settings.friendActivityAlerts) return;
+  /// How many friend activities get a notification of their own; the rest
+  /// are told in one.
+  static const friendAlertsShown = 3;
+
+  /// Tells about [activities] (oldest first) of the friends whose bell is
+  /// on: the latest [friendAlertsShown] each on its own, the others summed
+  /// up in one.
+  Future<void> showFriendAlerts(List<Map<String, dynamic>> activities, SettingsProvider settings) async {
+    if (!settings.pushNotifications || activities.isEmpty) return;
     if (!_initialized || kIsWeb) return;
     if (defaultTargetPlatform != TargetPlatform.android &&
         defaultTargetPlatform != TargetPlatform.iOS) { return; }
-    if (activities.isEmpty) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final lastSeenAt = prefs.getInt(_prefLastActivityKey) ?? 0;
-
-    final newActivities = activities
-        .where((a) => ((a['createdAt'] as int?) ?? 0) > lastSeenAt)
-        .toList();
-
-    if (newActivities.isEmpty) return;
-
-    // Persist the most recent timestamp so we don't notify again for the same events
-    final newestAt = newActivities
-        .map((a) => (a['createdAt'] as int?) ?? 0)
-        .reduce((a, b) => a > b ? a : b);
-    await prefs.setInt(_prefLastActivityKey, newestAt);
-
-    final count = newActivities.length;
     final lang = settings.language;
-    final body = count == 1
-        ? _activitySummary(newActivities.first, settings)
-        : trf('notif_friends_active', lang, {'count': count});
+    final skipped = activities.length - friendAlertsShown;
+    if (skipped > 0) {
+      await _showFriendAlert(_friendSummaryId, trf('notif_friends_more', lang, {'count': skipped}), lang);
+    }
+    for (final activity in activities.skip(skipped > 0 ? skipped : 0)) {
+      final id = (activity['id'] as int? ?? 0) % 100000;
+      await _showFriendAlert(_friendNotifBase + id, _activitySummary(activity, settings), lang);
+    }
+  }
 
+  Future<void> _showFriendAlert(int id, String body, String lang) async {
     try {
       await _plugin.show(
-        _friendNotifId,
+        id,
         tr('notif_friend_activity_title', lang),
         body,
         const NotificationDetails(
@@ -211,12 +206,12 @@ class NotificationService {
           iOS: DarwinNotificationDetails(
             presentAlert: true,
             presentBadge: false,
-            presentSound: false,
+            presentSound: true,
           ),
         ),
       );
-    } catch (e) {
-      debugPrint('[Notifications] Failed to show friend activity: $e');
+    } on Exception catch (e) {
+      debugPrint('[Notifications] Failed to show a friend alert: $e');
     }
   }
 

@@ -143,6 +143,16 @@ void main() {
     expect(find.text('Faye Valentine'), findsOneWidget);
     expect(find.text('Follow'), findsNothing);
     expect(find.bySemanticsLabel('More options'), findsNothing);
+    expect(find.bySemanticsLabel('Notify me of their activity'), findsNothing, reason: 'no bell for yourself');
+  });
+
+  testWidgets("another user's profile has a bell that sets what to be told about them", (tester) async {
+    await pumpProfile(tester);
+
+    await tester.tap(find.bySemanticsLabel('Notify me of their activity'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Notify me when'), findsOneWidget);
   });
 
   testWidgets('the follow button is there from the start, and acts once AniList has confirmed it', (tester) async {

@@ -18,7 +18,6 @@ class SettingsProvider extends ChangeNotifier {
   String _titleLanguage = 'English';
   bool _pushNotifications = true;
   bool _newEpisodeAlerts = true;
-  bool _friendActivityAlerts = false;
   String _accentColorName = 'Blue';
   // Index into MainNavigation's tabs: Anime, Manga, Discover, Feed, Profile.
   // Anime, where the app has always opened.
@@ -30,7 +29,6 @@ class SettingsProvider extends ChangeNotifier {
   String get titleLanguage => _titleLanguage;
   bool get pushNotifications => _pushNotifications;
   bool get newEpisodeAlerts => _newEpisodeAlerts;
-  bool get friendActivityAlerts => _friendActivityAlerts;
   String get accentColorName => _accentColorName;
   int get defaultTab => _defaultTab;
   bool get hapticsEnabled => _hapticsEnabled;
@@ -63,7 +61,6 @@ class SettingsProvider extends ChangeNotifier {
     _titleLanguage = prefs.getString('titleLanguage') ?? 'English';
     _pushNotifications = prefs.getBool('pushNotifications') ?? false;
     _newEpisodeAlerts = prefs.getBool('newEpisodeAlerts') ?? false;
-    _friendActivityAlerts = prefs.getBool('friendActivityAlerts') ?? false;
     _accentColorName = prefs.getString('accentColorName') ?? 'Blue';
     _defaultTab = prefs.getInt('defaultTab') ?? 0;
     _hapticsEnabled = prefs.getBool('hapticsEnabled') ?? true;
@@ -103,13 +100,6 @@ class SettingsProvider extends ChangeNotifier {
     _newEpisodeAlerts = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('newEpisodeAlerts', value);
-    notifyListeners();
-  }
-
-  Future<void> setFriendActivityAlerts(bool value) async {
-    _friendActivityAlerts = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('friendActivityAlerts', value);
     notifyListeners();
   }
 

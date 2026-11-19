@@ -1,6 +1,7 @@
 import 'package:anispark/providers/settings_provider.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
+import 'package:anispark/services/friend_alerts.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -23,8 +24,14 @@ class FakeAuthService extends AuthService {
 }
 
 /// Wraps [screen] with the providers screens read, using [auth] (logged out
-/// by default) and [settings] (defaults when omitted).
-Widget appWith(Widget screen, {required ApiCache cache, AuthService? auth, SettingsProvider? settings}) =>
+/// by default), [settings] and [friendAlerts] (empty defaults when omitted).
+Widget appWith(
+  Widget screen, {
+  required ApiCache cache,
+  AuthService? auth,
+  SettingsProvider? settings,
+  FriendAlertsStore? friendAlerts,
+}) =>
     MultiProvider(
       providers: [
         Provider.value(value: cache),
@@ -33,6 +40,10 @@ Widget appWith(Widget screen, {required ApiCache cache, AuthService? auth, Setti
           ChangeNotifierProvider.value(value: settings)
         else
           ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        if (friendAlerts != null)
+          ChangeNotifierProvider.value(value: friendAlerts)
+        else
+          ChangeNotifierProvider(create: (_) => FriendAlertsStore()),
       ],
       child: MaterialApp(home: screen),
     );

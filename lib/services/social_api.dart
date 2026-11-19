@@ -365,6 +365,34 @@ query(\$isFollowing: Boolean, \$page: Int, \$perPage: Int${byUser ? ', \$userId:
     return (activities: _entries(pageData['activities']), hasNextPage: _hasNextPage(pageData));
   }
 
+  /// How many activities one check for the watched friends reads.
+  static const friendActivitiesPerPage = 50;
+
+  /// What [userIds] did after [since] (Unix seconds), newest first: the
+  /// latest [friendActivitiesPerPage] at most.
+  Future<List<Map<String, dynamic>>> fetchActivitiesOf(
+    List<int> userIds, {
+    required int since,
+    required String token,
+  }) async {
+    if (userIds.isEmpty) return const [];
+    const query = '''
+query(\$userIds: [Int], \$since: Int, \$perPage: Int) {
+  Page(page: 1, perPage: \$perPage) {
+    activities(userId_in: \$userIds, createdAt_greater: \$since, sort: ID_DESC) {
+      $_listActivity
+      $_textActivity
+    }
+  }
+}''';
+    final data = await _service.request(
+      query,
+      {'userIds': userIds, 'since': since, 'perPage': friendActivitiesPerPage},
+      token: token,
+    );
+    return _entries(_page(data)['activities']);
+  }
+
   /// The viewer's unread notification count.
   Future<int> fetchUnreadCount(String token) async {
     final data = await _service.request(_unreadCountQuery, const {}, token: token);

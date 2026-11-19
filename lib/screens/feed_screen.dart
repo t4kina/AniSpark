@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
-import '../services/notification_service.dart';
 import '../services/social_api.dart';
 import '../providers/settings_provider.dart';
 import '../utils/activity_text.dart' show feedDayLabel, sameFeedDay;
@@ -146,8 +145,6 @@ class _FeedScreenState extends State<FeedScreen>
       _page = 1;
     });
     unawaited(_loadUnreadCount());
-    final feedType = _feedType;
-    final settings = context.read<SettingsProvider>();
     final ActivityPage result;
     try {
       result = await _fetchPage(token, auth, 1);
@@ -164,12 +161,6 @@ class _FeedScreenState extends State<FeedScreen>
       _hasMore = result.hasNextPage;
       _loading = false;
     });
-    if (feedType != _FeedType.following) return;
-    try {
-      await NotificationService().checkFriendActivity(result.activities, settings);
-    } on Exception catch (e) {
-      debugPrint('[FeedScreen] Checking friend activity failed: $e');
-    }
   }
 
   Future<void> _loadMore({bool retry = false}) async {

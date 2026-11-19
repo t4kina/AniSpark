@@ -25,7 +25,6 @@ void main() {
       // pins the *current* post-load() behavior.
       expect(provider.pushNotifications, isFalse);
       expect(provider.newEpisodeAlerts, isFalse);
-      expect(provider.friendActivityAlerts, isFalse);
       expect(provider.accentColorName, 'Blue');
     });
 
@@ -36,7 +35,6 @@ void main() {
         'titleLanguage': 'Native',
         'pushNotifications': true,
         'newEpisodeAlerts': true,
-        'friendActivityAlerts': true,
         'accentColorName': 'Purple',
       });
       final provider = SettingsProvider();
@@ -48,7 +46,6 @@ void main() {
       expect(provider.titleLanguage, 'Native');
       expect(provider.pushNotifications, isTrue);
       expect(provider.newEpisodeAlerts, isTrue);
-      expect(provider.friendActivityAlerts, isTrue);
       expect(provider.accentColorName, 'Purple');
     });
 
@@ -132,21 +129,6 @@ void main() {
       expect(notified, 1);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getBool('newEpisodeAlerts'), isFalse);
-    });
-
-    test(
-        'setFriendActivityAlerts updates the getter, persists it, and '
-        'notifies', () async {
-      final provider = SettingsProvider();
-      var notified = 0;
-      provider.addListener(() => notified++);
-
-      await provider.setFriendActivityAlerts(true);
-
-      expect(provider.friendActivityAlerts, isTrue);
-      expect(notified, 1);
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('friendActivityAlerts'), isTrue);
     });
 
     test('setAccentColor updates the getter, persists it, and notifies',
