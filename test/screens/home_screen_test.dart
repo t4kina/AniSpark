@@ -119,6 +119,27 @@ void main() {
       expect(tester.widget<DetailScreen>(find.byType(DetailScreen)).animeId, 1);
     });
 
+    testWidgets('its banner fills the box: no cover, the title large and a button to open it', (tester) async {
+      await pumpHome(tester, [
+        {
+          'id': 1,
+          'title': {'english': 'Cowboy Bebop'},
+          'averageScore': 86,
+          'bannerImage': 'https://img.example/banner.jpg',
+          'coverImage': {'large': 'https://img.example/cover.jpg'},
+        },
+      ]);
+
+      final spotlight = find.byType(HomeSpotlight);
+      final images = tester.widgetList<CachedNetworkImage>(
+        find.descendant(of: spotlight, matching: find.byType(CachedNetworkImage)),
+      );
+      expect(images.map((image) => image.imageUrl), ['https://img.example/banner.jpg']);
+      expect(find.descendant(of: spotlight, matching: find.text('Open')), findsOneWidget);
+      expect(find.descendant(of: spotlight, matching: find.text('trending')), findsOneWidget);
+      expect(tester.getSize(spotlight).height, greaterThanOrEqualTo(HomeSpotlight.height));
+    });
+
     testWidgets('is not there when nothing is trending', (tester) async {
       await pumpHome(tester, []);
 
