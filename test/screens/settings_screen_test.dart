@@ -1,3 +1,4 @@
+import 'package:anispark/providers/settings_provider.dart';
 import 'package:anispark/screens/settings_screen.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/utils/performance_graphs.dart';
@@ -7,6 +8,7 @@ import 'package:anispark/widgets/app_dialog.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../helpers/fake_auth_service.dart';
@@ -139,13 +141,37 @@ void main() {
           find.ancestor(of: find.text(label), matching: find.byType(Material)).first,
         );
     final general = blockOf('Language');
-    expect(blockOf('Appearance'), general, reason: 'the same block');
+    expect(blockOf('Title Language'), general, reason: 'the same block');
     expect(blockOf('Haptic Feedback'), general);
     expect(blockOf('Clear Recent Searches'), isNot(general), reason: 'another section, another block');
     expect(general.left, 16);
     expect(general.right, 400 - 16);
     final row = tester.getSize(find.ancestor(of: find.text('Language'), matching: find.byType(ListTile)));
     expect(row.height, lessThan(56), reason: 'short rows');
+  });
+
+  testWidgets('themes have their own section; picking one shows it at once', (tester) async {
+    await openSettings(tester);
+
+    expect(find.text(_en('settings_theme').toUpperCase()), findsOneWidget);
+    for (final name in ['theme_classic', 'theme_lilac', 'theme_midnight', 'theme_sakura', 'theme_forest', 'theme_black']) {
+      expect(find.text(_en(name)), findsOneWidget, reason: name);
+    }
+    final themeBlock = find.ancestor(of: find.text(_en('theme_classic')), matching: find.byType(Material)).first;
+    expect(find.descendant(of: themeBlock, matching: find.text('Appearance')), findsOneWidget,
+        reason: 'how the theme looks lives with it');
+    expect(find.descendant(of: themeBlock, matching: find.text('Accent Color')), findsOneWidget);
+
+    await tapRow(tester, _en('theme_lilac'));
+
+    final settings = Provider.of<SettingsProvider>(tester.element(find.byType(SettingsScreen)), listen: false);
+    expect(settings.themeName, 'Lilac');
+    expect(find.text('Appearance'), findsNothing, reason: 'Lilac only comes dark');
+    expect(find.text('Accent Color'), findsNothing, reason: 'Lilac brings its own');
+
+    await tapRow(tester, _en('theme_black'));
+    expect(find.text('Appearance'), findsNothing);
+    expect(find.text('Accent Color'), findsOneWidget, reason: 'pure black takes your accent');
   });
 
   testWidgets('notifications are managed with one switch', (tester) async {

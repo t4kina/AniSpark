@@ -23,6 +23,7 @@ import '../widgets/app_dialog.dart';
 import '../widgets/app_sheet.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/option_sheet.dart';
+import '../widgets/theme_picker.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../services/notification_service.dart';
 import 'search_screen.dart' show recentSearchesPrefsKey;
@@ -316,39 +317,6 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
             _tile(
-              label: tr('appearance', lang),
-              trailing: Text(_labelOf(_appearanceKeys, settings.appearance, lang),
-                  style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
-              onTap: () => showOptionSheet<String>(
-                context: context,
-                title: tr('appearance', lang),
-                options: _appearanceKeys.keys.toList(),
-                labelOf: (v) => _labelOf(_appearanceKeys, v, lang),
-                current: settings.appearance,
-                onSelected: (v) => context.read<SettingsProvider>().setAppearance(v),
-              ),
-            ),
-            _tile(
-              label: tr('accent_color', lang),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 16,
-                    height: 16,
-                    decoration: BoxDecoration(
-                      color: settings.accentColor,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(_labelOf(_accentColorKeys, settings.accentColorName, lang),
-                      style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
-                ],
-              ),
-              onTap: () => _showAccentColorPicker(context, settings, lang),
-            ),
-            _tile(
               label: tr('title_language', lang),
               trailing: Text(_labelOf(_titleLanguageKeys, settings.titleLanguage, lang),
                   style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
@@ -379,6 +347,49 @@ class SettingsScreen extends StatelessWidget {
               label: tr('haptic_feedback', lang),
               value: settings.hapticsEnabled,
               onChanged: (v) => context.read<SettingsProvider>().setHapticsEnabled(v),
+            ),
+          ]),
+
+          // ── Theme: the colours, and how they show ──
+          _sectionHeader(tr('settings_theme', lang)),
+          _Group(children: [
+            ThemePicker(lang: lang, inset: _Group.inset),
+            // Only a theme that comes in light follows Appearance, and only
+            // one without an accent of its own takes the one picked here.
+            if (settings.palette.hasLight)
+              _tile(
+              label: tr('appearance', lang),
+              trailing: Text(_labelOf(_appearanceKeys, settings.appearance, lang),
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+              onTap: () => showOptionSheet<String>(
+                context: context,
+                title: tr('appearance', lang),
+                options: _appearanceKeys.keys.toList(),
+                labelOf: (v) => _labelOf(_appearanceKeys, v, lang),
+                current: settings.appearance,
+                onSelected: (v) => context.read<SettingsProvider>().setAppearance(v),
+              ),
+            ),
+            if (settings.palette.accent == null)
+              _tile(
+              label: tr('accent_color', lang),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: settings.accentColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(_labelOf(_accentColorKeys, settings.accentColorName, lang),
+                      style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+                ],
+              ),
+              onTap: () => _showAccentColorPicker(context, settings, lang),
             ),
           ]),
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../theme/app_palette.dart';
 import '../utils/haptics.dart' as haptics;
 import '../utils/translations.dart' show tr;
 
@@ -18,6 +19,7 @@ class SettingsProvider extends ChangeNotifier {
   String _titleLanguage = 'English';
   bool _episodeAlerts = false;
   String _accentColorName = 'Blue';
+  String _themeName = classicTheme;
   // Index into MainNavigation's tabs: Anime, Manga, Discover, Feed, Profile.
   // Anime, where the app has always opened.
   int _defaultTab = 0;
@@ -32,13 +34,22 @@ class SettingsProvider extends ChangeNotifier {
   String get accentColorName => _accentColorName;
   int get defaultTab => _defaultTab;
   bool get hapticsEnabled => _hapticsEnabled;
-  Color get accentColor => accentColorOptions[_accentColorName] ?? const Color(0xFF02A9FF);
 
-  ThemeMode get themeMode => switch (_appearance) {
-    'Light' => ThemeMode.light,
-    'System' => ThemeMode.system,
-    _ => ThemeMode.dark,
-  };
+  /// One of [appThemes].
+  String get themeName => _themeName;
+  AppPalette get palette => appThemes[_themeName] ?? appThemes[classicTheme]!;
+
+  /// The theme's own accent, or the one picked in Settings.
+  Color get accentColor => palette.accent ?? accentColorOptions[_accentColorName] ?? const Color(0xFF02A9FF);
+
+  /// Appearance, for a theme that comes in light; dark otherwise.
+  ThemeMode get themeMode => !palette.hasLight
+      ? ThemeMode.dark
+      : switch (_appearance) {
+          'Light' => ThemeMode.light,
+          'System' => ThemeMode.system,
+          _ => ThemeMode.dark,
+        };
 
   /// Returns the AniList title field key based on preference.
   String resolveTitle(Map<String, dynamic>? titleMap) {
@@ -63,6 +74,7 @@ class SettingsProvider extends ChangeNotifier {
     _episodeAlerts = prefs.getBool(_episodeAlertsKey) ??
         ((prefs.getBool(_oldPushKey) ?? false) && (prefs.getBool(_oldEpisodesKey) ?? false));
     _accentColorName = prefs.getString('accentColorName') ?? 'Blue';
+    _themeName = appThemes.containsKey(prefs.getString('theme')) ? prefs.getString('theme')! : classicTheme;
     _defaultTab = prefs.getInt('defaultTab') ?? 0;
     _hapticsEnabled = prefs.getBool('hapticsEnabled') ?? true;
     haptics.hapticsEnabled = _hapticsEnabled;
@@ -100,6 +112,14 @@ class SettingsProvider extends ChangeNotifier {
     await prefs.setBool(_episodeAlertsKey, value);
     await prefs.remove(_oldPushKey);
     await prefs.remove(_oldEpisodesKey);
+    notifyListeners();
+  }
+
+  Future<void> setTheme(String name) async {
+    if (!appThemes.containsKey(name)) return;
+    _themeName = name;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('theme', name);
     notifyListeners();
   }
 

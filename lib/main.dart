@@ -140,7 +140,7 @@ class MyAnimeApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       themeMode: settings.themeMode,
       theme: buildAppTheme(Brightness.light, settings.accentColor),
-      darkTheme: buildAppTheme(Brightness.dark, settings.accentColor),
+      darkTheme: buildAppTheme(Brightness.dark, settings.accentColor, palette: settings.palette),
       builder: (context, child) {
         return ScrollConfiguration(
           behavior: const _SmoothScrollBehavior(),

@@ -2,24 +2,31 @@ import 'package:flutter/material.dart';
 
 import 'app_colors.dart';
 import 'app_layout.dart';
+import 'app_palette.dart';
 
-/// The app's light or dark theme, coloured with the user's [accent].
+/// The app's light or dark theme, coloured with the user's [accent]. The
+/// dark one wears [palette], one of [appThemes] (classic by default).
 ///
 /// Both share the same structure; only the palette differs. Ink ripples
 /// stay transparent: tappable cards give feedback by shrinking instead
 /// (see `Pressable`), and rows (`ListTile`, `InkWell`) by darkening under
 /// the finger, with no ripple.
-ThemeData buildAppTheme(Brightness brightness, Color accent) {
+ThemeData buildAppTheme(Brightness brightness, Color accent, {AppPalette? palette}) {
   final isLight = brightness == Brightness.light;
-  final background = isLight ? const Color(0xFFD8D8DC) : const Color(0xFF111113);
-  final surface = isLight ? const Color(0xFFE2E2E6) : const Color(0xFF1C1C1E);
+  final dark = palette ?? appThemes[classicTheme]!;
+  final background = isLight ? const Color(0xFFD8D8DC) : dark.background;
+  final surface = isLight ? const Color(0xFFE2E2E6) : dark.surface;
 
   OutlineInputBorder inputBorder([BorderSide side = BorderSide.none]) =>
       OutlineInputBorder(borderRadius: AppRadius.mdAll, borderSide: side);
 
   return ThemeData(
     brightness: brightness,
-    extensions: [isLight ? const AppColors.light() : const AppColors.dark()],
+    extensions: [
+      isLight
+          ? const AppColors.light()
+          : const AppColors.dark().copyWith(textSecondary: dark.textSecondary, textTertiary: dark.textTertiary),
+    ],
     visualDensity: VisualDensity.compact,
     splashColor: Colors.transparent,
     highlightColor: isLight ? const Color(0x12000000) : const Color(0x16FFFFFF),
@@ -40,11 +47,11 @@ ThemeData buildAppTheme(Brightness brightness, Color accent) {
             onPrimary: Colors.white,
             surface: surface,
             surfaceContainerLow: surface,
-            surfaceContainerHighest: const Color(0xFF2C2C2E),
-            outlineVariant: const Color(0xFF38383A),
-            outline: const Color(0xFF48484A),
-            onSurface: const Color(0xFFEAEAEA),
-            onSurfaceVariant: const Color(0xFFAAAAAA),
+            surfaceContainerHighest: dark.raised,
+            outlineVariant: dark.line,
+            outline: dark.strongLine,
+            onSurface: dark.text,
+            onSurfaceVariant: dark.textSecondary,
           ),
     appBarTheme: AppBarTheme(
       backgroundColor: background,
@@ -71,7 +78,7 @@ ThemeData buildAppTheme(Brightness brightness, Color accent) {
       indicatorColor: accent,
     ),
     chipTheme: ChipThemeData(
-      backgroundColor: isLight ? const Color(0xFFE5E7F2) : const Color(0xFF2C2C2E),
+      backgroundColor: isLight ? const Color(0xFFE5E7F2) : dark.raised,
       labelStyle: TextStyle(fontSize: 11, color: isLight ? const Color(0xFF1A1A2E) : null),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
       shape: const RoundedRectangleBorder(borderRadius: AppRadius.pillAll),
@@ -85,7 +92,7 @@ ThemeData buildAppTheme(Brightness brightness, Color accent) {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: isLight ? const Color(0xFFE8EAF4) : const Color(0xFF2C2C2E),
+      fillColor: isLight ? const Color(0xFFE8EAF4) : dark.raised,
       border: inputBorder(),
       enabledBorder: inputBorder(),
       focusedBorder: inputBorder(BorderSide(color: accent, width: 1)),
@@ -97,7 +104,7 @@ ThemeData buildAppTheme(Brightness brightness, Color accent) {
       shape: const RoundedRectangleBorder(borderRadius: AppRadius.smAll),
     ),
     dividerTheme: DividerThemeData(
-      color: isLight ? const Color(0xFFD0D2E4) : const Color(0xFF2C2C2E),
+      color: isLight ? const Color(0xFFD0D2E4) : dark.raised,
       thickness: 1,
       space: 0,
     ),

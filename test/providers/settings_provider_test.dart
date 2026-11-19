@@ -1,4 +1,5 @@
 import 'package:anispark/providers/settings_provider.dart';
+import 'package:anispark/theme/app_palette.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -289,6 +290,60 @@ void main() {
       await provider.setAppearance('Sepia');
 
       expect(provider.themeMode, ThemeMode.dark);
+    });
+  });
+
+  group('themes', () {
+    test('the app starts on the classic theme, with the accent picked in Settings', () async {
+      final provider = SettingsProvider();
+      await provider.load();
+
+      expect(provider.themeName, classicTheme);
+      expect(provider.palette, appThemes[classicTheme]);
+      expect(provider.accentColor, accentColorOptions['Blue']);
+    });
+
+    test('a theme is kept, and comes back after a restart', () async {
+      final provider = SettingsProvider();
+      var notified = 0;
+      provider.addListener(() => notified++);
+
+      await provider.setTheme('Lilac');
+
+      expect(provider.themeName, 'Lilac');
+      expect(notified, 1);
+      final restarted = SettingsProvider();
+      await restarted.load();
+      expect(restarted.themeName, 'Lilac');
+    });
+
+    test('a theme that is not one of the app\'s is ignored', () async {
+      final provider = SettingsProvider();
+
+      await provider.setTheme('Neon');
+
+      expect(provider.themeName, classicTheme);
+    });
+
+    test('a theme with its own accent and no light version sets both', () async {
+      final provider = SettingsProvider();
+      await provider.setAppearance('Light');
+      await provider.setAccentColor('Green');
+
+      await provider.setTheme('Lilac');
+
+      expect(provider.accentColor, appThemes['Lilac']!.accent);
+      expect(provider.themeMode, ThemeMode.dark);
+    });
+
+    test('pure black keeps the accent picked in Settings', () async {
+      final provider = SettingsProvider();
+      await provider.setAccentColor('Pink');
+
+      await provider.setTheme('Black');
+
+      expect(appThemes['Black']!.accent, isNull);
+      expect(provider.accentColor, accentColorOptions['Pink']);
     });
   });
 }

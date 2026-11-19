@@ -1,3 +1,5 @@
+import 'package:anispark/theme/app_colors.dart';
+import 'package:anispark/theme/app_palette.dart';
 import 'package:anispark/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,6 +38,30 @@ void main() {
       expect(theme.chipTheme.side, isNull);
       expect(theme.inputDecorationTheme.fillColor, const Color(0xFF2C2C2E));
       expect(theme.dialogTheme.backgroundColor, isNull);
+    });
+
+    test('a theme colours the dark palette: page, surfaces, lines and text', () {
+      final lilac = appThemes['Lilac']!;
+      final theme = buildAppTheme(Brightness.dark, accent, palette: lilac);
+
+      expect(theme.scaffoldBackgroundColor, lilac.background);
+      expect(theme.appBarTheme.backgroundColor, lilac.background);
+      expect(theme.colorScheme.surface, lilac.surface);
+      expect(theme.colorScheme.surfaceContainerHighest, lilac.raised);
+      expect(theme.colorScheme.outlineVariant, lilac.line);
+      expect(theme.colorScheme.outline, lilac.strongLine);
+      expect(theme.colorScheme.onSurface, lilac.text);
+      expect(theme.navigationBarTheme.backgroundColor, lilac.surface);
+      expect(theme.inputDecorationTheme.fillColor, lilac.raised);
+      expect(theme.extension<AppColors>()!.textSecondary, lilac.textSecondary);
+      expect(theme.extension<AppColors>()!.textTertiary, lilac.textTertiary);
+    });
+
+    test('every theme is its own, and only classic comes in light too', () {
+      final backgrounds = {for (final palette in appThemes.values) palette.background};
+      expect(backgrounds, hasLength(appThemes.length));
+      expect(appThemes.entries.where((theme) => theme.value.hasLight).map((theme) => theme.key), [classicTheme]);
+      expect(appThemes['Lilac']!.accent, const Color(0xFF8B7CFF), reason: 'the lilac of the mockups');
     });
 
     testWidgets('a row darkens under the finger, without a ripple', (tester) async {
