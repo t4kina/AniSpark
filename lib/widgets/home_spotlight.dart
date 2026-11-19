@@ -7,27 +7,24 @@ import '../theme/app_layout.dart';
 import '../theme/app_text.dart';
 import 'app_image.dart';
 import 'blurred_backdrop.dart';
+import '../utils/translations.dart' show tr;
 import 'genre_filter_sheet.dart' show genreLabel;
 import 'media_preview.dart';
-import 'motion/cover_hero.dart';
 import 'motion/pressable.dart';
-import 'motion/rounded_hero.dart';
 
-/// The one title Discover leads with: what is trending most right now, on
-/// its own banner, with its cover, score and genres. A tap opens it; holding
-/// it previews it.
+/// The one title Discover leads with: what is trending most right now, its
+/// banner filling the whole box, with its title large over it, its score and
+/// genres, and a button to open it. A tap anywhere opens it; holding it
+/// previews it.
 ///
-/// Without a banner the cover stands in, blurred, so the card is never an
-/// empty box.
+/// Without a banner the cover stands in, blurred, so the box is never empty.
 class HomeSpotlight extends StatelessWidget {
   const HomeSpotlight({super.key, required this.media});
 
   /// An AniList `Media` map, as the trending row has it.
   final Map<String, dynamic> media;
 
-  static const height = 176.0;
-  static const coverSize = Size(68, 96);
-  static const _heroScope = 'home-spotlight';
+  static const height = 252.0;
   static const _genresShown = 2;
 
   @override
@@ -40,7 +37,6 @@ class HomeSpotlight extends StatelessWidget {
     final cover = (media['coverImage'] as Map?)?['large'] as String?;
     final banner = media['bannerImage'] as String?;
     final score = media['averageScore'];
-    final heroTag = id == null ? null : coverHeroTag(_heroScope, id);
     final facts = [
       if (score is num) '★ ${(score / 10).toStringAsFixed(1)}',
       for (final genre in (media['genres'] as List? ?? const []).take(_genresShown))
@@ -49,7 +45,7 @@ class HomeSpotlight extends StatelessWidget {
 
     final Widget backdrop;
     if (banner != null && banner.isNotEmpty) {
-      backdrop = AppImage(url: banner, cacheWidth: 800, fill: false);
+      backdrop = AppImage(url: banner, cacheWidth: 1080, fill: false);
     } else if (cover != null && cover.isNotEmpty) {
       backdrop = BlurredBackdrop(url: cover, decodeWidth: 240);
     } else {
@@ -64,9 +60,7 @@ class HomeSpotlight extends StatelessWidget {
             ? null
             : () => Navigator.push(
                   context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => DetailScreen(animeId: id, heroTag: heroTag, initialCoverUrl: cover),
-                  ),
+                  MaterialPageRoute<void>(builder: (_) => DetailScreen(animeId: id, initialCoverUrl: cover)),
                 ),
         onLongPress: id == null ? null : () => showMediaPreview(context, media: media),
         child: ClipRRect(
@@ -77,64 +71,47 @@ class HomeSpotlight extends StatelessWidget {
               fit: StackFit.expand,
               children: [
                 backdrop,
-                // Keeps the white text readable on any banner.
+                // Clear at the top, dark under the title so it always reads.
                 const DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [Color(0x33000000), Color(0xCC000000)],
+                      stops: [0.3, 1],
+                      colors: [Color(0x00000000), Color(0xD9000000)],
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(AppSpace.md),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                Positioned(left: AppSpace.lg, top: AppSpace.md, child: _TrendingPill(lang: lang)),
+                Positioned(
+                  left: AppSpace.lg,
+                  right: AppSpace.lg,
+                  bottom: AppSpace.lg,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      SizedBox.fromSize(
-                        size: coverSize,
-                        child: RoundedHero(tag: heroTag, child: AppImage(url: cover, cacheWidth: 240)),
+                      Text(
+                        title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.title.copyWith(color: Colors.white, fontSize: 24, height: 1.15),
                       ),
-                      const SizedBox(width: AppSpace.md),
-                      Expanded(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(color: cs.primary, borderRadius: AppRadius.pillAll),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.trending_up_rounded, size: 13, color: cs.onPrimary),
-                                  const SizedBox(width: 3),
-                                  Text(
-                                    '#1',
-                                    style: AppText.micro.copyWith(color: cs.onPrimary, fontWeight: FontWeight.w700),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              title,
-                              maxLines: 2,
+                      const SizedBox(height: AppSpace.sm),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              facts,
+                              maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: AppText.headline.copyWith(color: Colors.white, height: 1.2),
+                              style: AppText.footnote.copyWith(color: Colors.white.withValues(alpha: 0.85)),
                             ),
-                            if (facts.isNotEmpty) ...[
-                              const SizedBox(height: 4),
-                              Text(
-                                facts,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppText.caption.copyWith(color: Colors.white.withValues(alpha: 0.8)),
-                              ),
-                            ],
+                          ),
+                          if (id != null) ...[
+                            const SizedBox(width: AppSpace.sm),
+                            _OpenPill(lang: lang),
                           ],
-                        ),
+                        ],
                       ),
                     ],
                   ),
@@ -146,4 +123,50 @@ class HomeSpotlight extends StatelessWidget {
       ),
     );
   }
+}
+
+/// "#1 trending", in the accent colour, at the top of the box.
+class _TrendingPill extends StatelessWidget {
+  const _TrendingPill({required this.lang});
+
+  final String lang;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final style = AppText.micro.copyWith(color: cs.onPrimary, fontWeight: FontWeight.w800);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: cs.primary, borderRadius: AppRadius.pillAll),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.trending_up_rounded, size: 14, color: cs.onPrimary),
+          const SizedBox(width: 4),
+          Text('#1', style: style),
+          const SizedBox(width: 4),
+          Text(tr('spotlight_trending', lang), style: style),
+        ],
+      ),
+    );
+  }
+}
+
+/// Says the box opens the title; the whole box is what is tapped.
+class _OpenPill extends StatelessWidget {
+  const _OpenPill({required this.lang});
+
+  final String lang;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.92), borderRadius: AppRadius.pillAll),
+          child: Text(
+            tr('preview_open', lang),
+            style: AppText.footnote.copyWith(color: Colors.black, fontWeight: FontWeight.w700),
+          ),
+        ),
+      );
 }
