@@ -131,6 +131,22 @@ void main() {
     expect(tester.widget<Text>(find.text('Logout')).style?.color, Colors.red);
   });
 
+  testWidgets("every section's rows share one rounded block, inset from the edges", (tester) async {
+    await openSettings(tester);
+
+    Rect blockOf(String label) => tester.getRect(
+          find.ancestor(of: find.text(label), matching: find.byType(Material)).first,
+        );
+    final general = blockOf('Language');
+    expect(blockOf('Appearance'), general, reason: 'the same block');
+    expect(blockOf('Haptic Feedback'), general);
+    expect(blockOf('Clear Recent Searches'), isNot(general), reason: 'another section, another block');
+    expect(general.left, 16);
+    expect(general.right, 400 - 16);
+    final row = tester.getSize(find.ancestor(of: find.text('Language'), matching: find.byType(ListTile)));
+    expect(row.height, lessThan(56), reason: 'short rows');
+  });
+
   testWidgets('seven taps in a row on the version switch the frame graphs on, seven more off', (tester) async {
     addTearDown(() => performanceGraphsNotifier.value = false);
     await openSettings(tester);

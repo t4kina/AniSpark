@@ -154,7 +154,7 @@ class _SignedInAsRow extends StatelessWidget {
     final avatar = user?['avatar'];
     final avatarUrl = avatar is Map ? avatar['large'] as String? : null;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      padding: const EdgeInsets.all(_Group.inset),
       child: Row(
         children: [
           CircleAvatar(
@@ -243,6 +243,39 @@ class _CacheSizeLabelState extends State<_CacheSizeLabel> {
       );
 }
 
+/// A section's rows on one rounded block, inset from the screen's edges and
+/// split by hairlines, as iOS groups its settings: short, quiet rows
+/// instead of one full-width card each.
+class _Group extends StatelessWidget {
+  const _Group({required this.children});
+
+  final List<Widget> children;
+
+  /// The room inside the block at the left and right of its rows.
+  static const inset = 14.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
+      child: Material(
+        color: cs.surface,
+        borderRadius: AppRadius.mdAll,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            for (var i = 0; i < children.length; i++) ...[
+              if (i > 0) const Divider(height: 1, indent: inset),
+              children[i],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
@@ -263,217 +296,204 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.fromLTRB(0, AppSpace.sm, 0, AppSpace.sm),
         children: [
+          // Who is signed in, on its own above the settings.
+          if (username != null) _Group(children: [_SignedInAsRow(auth: auth, lang: lang)]),
+
           // ── General ──
           _sectionHeader(tr('general', lang)),
-          _tile(
-            label: tr('language', lang),
-            trailing: Text(_languageNames[lang] ?? lang,
-                style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
-            onTap: () => showOptionSheet<String>(
-              context: context,
-              title: tr('language', lang),
-              options: _languageNames.keys.toList(),
-              labelOf: (v) => _languageNames[v] ?? v,
-              current: lang,
-              onSelected: (v) => context.read<SettingsProvider>().setLanguage(v),
+          _Group(children: [
+            _tile(
+              label: tr('language', lang),
+              trailing: Text(_languageNames[lang] ?? lang,
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+              onTap: () => showOptionSheet<String>(
+                context: context,
+                title: tr('language', lang),
+                options: _languageNames.keys.toList(),
+                labelOf: (v) => _languageNames[v] ?? v,
+                current: lang,
+                onSelected: (v) => context.read<SettingsProvider>().setLanguage(v),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            label: tr('appearance', lang),
-            trailing: Text(_labelOf(_appearanceKeys, settings.appearance, lang),
-                style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
-            onTap: () => showOptionSheet<String>(
-              context: context,
-              title: tr('appearance', lang),
-              options: _appearanceKeys.keys.toList(),
-              labelOf: (v) => _labelOf(_appearanceKeys, v, lang),
-              current: settings.appearance,
-              onSelected: (v) => context.read<SettingsProvider>().setAppearance(v),
+            _tile(
+              label: tr('appearance', lang),
+              trailing: Text(_labelOf(_appearanceKeys, settings.appearance, lang),
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+              onTap: () => showOptionSheet<String>(
+                context: context,
+                title: tr('appearance', lang),
+                options: _appearanceKeys.keys.toList(),
+                labelOf: (v) => _labelOf(_appearanceKeys, v, lang),
+                current: settings.appearance,
+                onSelected: (v) => context.read<SettingsProvider>().setAppearance(v),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            label: tr('accent_color', lang),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: settings.accentColor,
-                    shape: BoxShape.circle,
+            _tile(
+              label: tr('accent_color', lang),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: settings.accentColor,
+                      shape: BoxShape.circle,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 6),
-                Text(_labelOf(_accentColorKeys, settings.accentColorName, lang),
-                    style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
-              ],
+                  const SizedBox(width: 6),
+                  Text(_labelOf(_accentColorKeys, settings.accentColorName, lang),
+                      style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+                ],
+              ),
+              onTap: () => _showAccentColorPicker(context, settings, lang),
             ),
-            onTap: () => _showAccentColorPicker(context, settings, lang),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            label: tr('title_language', lang),
-            trailing: Text(_labelOf(_titleLanguageKeys, settings.titleLanguage, lang),
-                style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
-            onTap: () => showOptionSheet<String>(
-              context: context,
-              title: tr('title_language', lang),
-              options: _titleLanguageKeys.keys.toList(),
-              labelOf: (v) => _labelOf(_titleLanguageKeys, v, lang),
-              current: settings.titleLanguage,
-              onSelected: (v) => context.read<SettingsProvider>().setTitleLanguage(v),
+            _tile(
+              label: tr('title_language', lang),
+              trailing: Text(_labelOf(_titleLanguageKeys, settings.titleLanguage, lang),
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+              onTap: () => showOptionSheet<String>(
+                context: context,
+                title: tr('title_language', lang),
+                options: _titleLanguageKeys.keys.toList(),
+                labelOf: (v) => _labelOf(_titleLanguageKeys, v, lang),
+                current: settings.titleLanguage,
+                onSelected: (v) => context.read<SettingsProvider>().setTitleLanguage(v),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            label: tr('default_tab', lang),
-            trailing: Text(tr(_tabLabelKeys[settings.defaultTab] ?? 'nav_anime', lang),
-                style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
-            onTap: () => showOptionSheet<int>(
-              context: context,
-              title: tr('default_tab', lang),
-              options: _tabLabelKeys.keys.toList(),
-              labelOf: (tab) => tr(_tabLabelKeys[tab]!, lang),
-              iconOf: (tab) => _tabIcons[tab]!,
-              current: settings.defaultTab,
-              onSelected: (tab) => context.read<SettingsProvider>().setDefaultTab(tab),
+            _tile(
+              label: tr('default_tab', lang),
+              trailing: Text(tr(_tabLabelKeys[settings.defaultTab] ?? 'nav_anime', lang),
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+              onTap: () => showOptionSheet<int>(
+                context: context,
+                title: tr('default_tab', lang),
+                options: _tabLabelKeys.keys.toList(),
+                labelOf: (tab) => tr(_tabLabelKeys[tab]!, lang),
+                iconOf: (tab) => _tabIcons[tab]!,
+                current: settings.defaultTab,
+                onSelected: (tab) => context.read<SettingsProvider>().setDefaultTab(tab),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          _switchTile(
-            label: tr('haptic_feedback', lang),
-            value: settings.hapticsEnabled,
-            onChanged: (v) => context.read<SettingsProvider>().setHapticsEnabled(v),
-          ),
-
-          const SizedBox(height: 16),
-          const Divider(height: 1),
+            _switchTile(
+              label: tr('haptic_feedback', lang),
+              value: settings.hapticsEnabled,
+              onChanged: (v) => context.read<SettingsProvider>().setHapticsEnabled(v),
+            ),
+          ]),
 
           // ── Notifications ──
           _sectionHeader(tr('notifications', lang)),
-          _switchTile(
-            label: tr('push_notifications', lang),
-            value: settings.pushNotifications,
-            onChanged: (v) async {
-              final sp = context.read<SettingsProvider>();
-              final messenger = ScaffoldMessenger.of(context);
-              await sp.setPushNotifications(v);
-              if (v) {
-                final granted = await NotificationService().requestPermission();
-                if (!granted && context.mounted) {
-                  await sp.setPushNotifications(false);
-                  messenger.showSnackBar(SnackBar(
-                    content: Text(tr('settings_enable_notifications', lang)),
-                  ));
+          _Group(children: [
+            _switchTile(
+              label: tr('push_notifications', lang),
+              value: settings.pushNotifications,
+              onChanged: (v) async {
+                final sp = context.read<SettingsProvider>();
+                final messenger = ScaffoldMessenger.of(context);
+                await sp.setPushNotifications(v);
+                if (v) {
+                  final granted = await NotificationService().requestPermission();
+                  if (!granted && context.mounted) {
+                    await sp.setPushNotifications(false);
+                    messenger.showSnackBar(SnackBar(
+                      content: Text(tr('settings_enable_notifications', lang)),
+                    ));
+                  }
+                } else {
+                  await NotificationService().cancelAll();
                 }
-              } else {
-                await NotificationService().cancelAll();
-              }
-            },
-          ),
-          const SizedBox(height: 4),
-          _switchTile(
-            label: tr('new_episode_alerts', lang),
-            value: settings.newEpisodeAlerts,
-            onChanged: (v) async {
-              final sp = context.read<SettingsProvider>();
-              final messenger = ScaffoldMessenger.of(context);
-              await sp.setNewEpisodeAlerts(v);
-              if (v) {
-                final granted = await NotificationService().requestPermission();
-                if (!granted && context.mounted) {
-                  await sp.setNewEpisodeAlerts(false);
-                  messenger.showSnackBar(SnackBar(
-                    content: Text(tr('settings_enable_notifications', lang)),
-                  ));
-                } else if (context.mounted) {
-                  listRefreshNotifier.value++;
+              },
+            ),
+            _switchTile(
+              label: tr('new_episode_alerts', lang),
+              value: settings.newEpisodeAlerts,
+              onChanged: (v) async {
+                final sp = context.read<SettingsProvider>();
+                final messenger = ScaffoldMessenger.of(context);
+                await sp.setNewEpisodeAlerts(v);
+                if (v) {
+                  final granted = await NotificationService().requestPermission();
+                  if (!granted && context.mounted) {
+                    await sp.setNewEpisodeAlerts(false);
+                    messenger.showSnackBar(SnackBar(
+                      content: Text(tr('settings_enable_notifications', lang)),
+                    ));
+                  } else if (context.mounted) {
+                    listRefreshNotifier.value++;
+                  }
+                } else {
+                  await NotificationService().cancelAll();
                 }
-              } else {
-                await NotificationService().cancelAll();
-              }
-            },
-          ),
-          const SizedBox(height: 4),
-          _switchTile(
-            label: tr('friend_activity_alerts', lang),
-            value: settings.friendActivityAlerts,
-            onChanged: (v) async {
-              await context.read<SettingsProvider>().setFriendActivityAlerts(v);
-            },
-          ),
-
-          const SizedBox(height: 16),
-          const Divider(height: 1),
+              },
+            ),
+            _switchTile(
+              label: tr('friend_activity_alerts', lang),
+              value: settings.friendActivityAlerts,
+              onChanged: (v) async {
+                await context.read<SettingsProvider>().setFriendActivityAlerts(v);
+              },
+            ),
+          ]),
 
           // ── Data ──
           _sectionHeader(tr('data_storage', lang)),
-          _tile(
-            label: tr('clear_cache', lang),
-            trailing: _CacheSizeLabel(lang: lang),
-            onTap: () => _clearImageCache(context, lang),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            label: tr('sync_anilist', lang),
-            onTap: () => _syncWithAniList(context, auth, lang),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            label: tr('clear_recent_searches', lang),
-            onTap: () => _clearRecentSearches(context, lang),
-          ),
-
-          const SizedBox(height: 16),
-          const Divider(height: 1),
+          _Group(children: [
+            _tile(
+              label: tr('clear_cache', lang),
+              trailing: _CacheSizeLabel(lang: lang),
+              onTap: () => _clearImageCache(context, lang),
+            ),
+            _tile(
+              label: tr('sync_anilist', lang),
+              onTap: () => _syncWithAniList(context, auth, lang),
+            ),
+            _tile(
+              label: tr('clear_recent_searches', lang),
+              onTap: () => _clearRecentSearches(context, lang),
+            ),
+          ]),
 
           // ── Account ──
           _sectionHeader(tr('account', lang)),
-          if (username != null) _SignedInAsRow(auth: auth, lang: lang),
-          _tile(
-            label: tr('view_on_anilist', lang),
-            onTap: () {
-              if (username != null) {
-                _openUrl('https://anilist.co/user/${Uri.encodeComponent(username)}');
-              }
-            },
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            label: tr('logout', lang),
-            color: Colors.red,
-            onTap: () => _confirmLogout(context, auth, lang),
-          ),
-
-          const SizedBox(height: 16),
-          const Divider(height: 1),
+          _Group(children: [
+            _tile(
+              label: tr('view_on_anilist', lang),
+              onTap: () {
+                if (username != null) {
+                  _openUrl('https://anilist.co/user/${Uri.encodeComponent(username)}');
+                }
+              },
+            ),
+            _tile(
+              label: tr('logout', lang),
+              color: Colors.red,
+              onTap: () => _confirmLogout(context, auth, lang),
+            ),
+          ]),
 
           // ── About ──
           _sectionHeader(tr('about', lang)),
-          _tile(
-            label: tr('about_anispark', lang),
-            onTap: () => _showAbout(context, lang),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            label: tr('terms', lang),
-            onTap: () => _openUrl('https://anilist.co/terms'),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            label: tr('privacy', lang),
-            onTap: () => _showPrivacy(context, lang),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            label: tr('send_feedback', lang),
-            onTap: () => _openUrl('https://github.com/t4kina/AniSpark/issues/new'),
-          ),
+          _Group(children: [
+            _tile(
+              label: tr('about_anispark', lang),
+              onTap: () => _showAbout(context, lang),
+            ),
+            _tile(
+              label: tr('terms', lang),
+              onTap: () => _openUrl('https://anilist.co/terms'),
+            ),
+            _tile(
+              label: tr('privacy', lang),
+              onTap: () => _showPrivacy(context, lang),
+            ),
+            _tile(
+              label: tr('send_feedback', lang),
+              onTap: () => _openUrl('https://github.com/t4kina/AniSpark/issues/new'),
+            ),
+          ]),
 
           const SizedBox(height: 24),
           Center(
@@ -490,7 +510,13 @@ class SettingsScreen extends StatelessWidget {
   }
 
   static Widget _sectionHeader(String title) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+        // Lined up with the text inside the groups below.
+        padding: const EdgeInsets.fromLTRB(
+          AppSpace.page + _Group.inset,
+          AppSpace.xl,
+          AppSpace.page + _Group.inset,
+          AppSpace.sm,
+        ),
         child: Builder(
           builder: (context) => Text(
             title.toUpperCase(),
@@ -513,7 +539,11 @@ class SettingsScreen extends StatelessWidget {
     }
 
     return ListTile(
-      title: Text(label, style: const TextStyle(fontSize: 14)),
+      tileColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(),
+      visualDensity: VisualDensity.compact,
+      contentPadding: const EdgeInsets.symmetric(horizontal: _Group.inset),
+      title: Text(label, style: const TextStyle(fontSize: 15)),
       trailing: Builder(builder: (ctx) => Transform.scale(
         scale: 0.75,
         child: CupertinoSwitch(
@@ -536,7 +566,11 @@ class SettingsScreen extends StatelessWidget {
     required VoidCallback onTap,
   }) =>
       ListTile(
-        title: Text(label, style: TextStyle(color: color, fontSize: 14)),
+        tileColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(),
+        visualDensity: VisualDensity.compact,
+        contentPadding: const EdgeInsets.symmetric(horizontal: _Group.inset),
+        title: Text(label, style: TextStyle(color: color, fontSize: 15)),
         trailing: trailing ??
             Builder(
               builder: (context) => Icon(Icons.chevron_right, color: context.colors.textTertiary, size: 18),
