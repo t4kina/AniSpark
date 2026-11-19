@@ -61,6 +61,17 @@ void main() {
     expect(find.byType(BlurredBackdrop), findsNothing);
   });
 
+  testWidgets('the banner runs edge to edge from the top, not as a card', (tester) async {
+    await pumpCard(tester, banner: _banner);
+
+    final banner = tester.getRect(find.byType(CachedNetworkImage));
+    expect(banner.left, 0);
+    expect(banner.right, 800);
+    expect(banner.top, 0);
+    expect(find.ancestor(of: find.byType(CachedNetworkImage), matching: find.byType(ClipRRect)), findsNothing,
+        reason: 'no rounded card corners');
+  });
+
   testWidgets('without a banner, sits on their avatar blurred into colour', (tester) async {
     await pumpCard(tester);
 

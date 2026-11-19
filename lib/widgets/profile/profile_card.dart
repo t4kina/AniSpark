@@ -15,10 +15,11 @@ import 'avatar_viewer.dart';
 import 'count_up_text.dart';
 import '../app_image.dart';
 
-/// The top of a profile, own or a friend's: one card on the person's banner
-/// (their blurred avatar without one) holding who they are and a glass
-/// strip of their anime or manga stats, with the profile's main actions at
-/// the bottom.
+/// The top of a profile, own or a friend's: the person's banner (their
+/// blurred avatar without one) from the very top of the screen, edge to
+/// edge, holding who they are and a glass strip of their anime or manga
+/// stats, with the profile's main actions at the bottom. It melts into the
+/// page below it rather than sitting on it as a card.
 class ProfileCard extends StatefulWidget {
   const ProfileCard({
     super.key,
@@ -60,7 +61,7 @@ class ProfileCard extends StatefulWidget {
   /// [ProfileCard.roundButton].
   final Widget? cornerButton;
 
-  /// Space between the status bar and the card, e.g. room for a back
+  /// Space between the status bar and the content, e.g. room for a back
   /// button above it.
   final double topGap;
 
@@ -74,11 +75,11 @@ class ProfileCard extends StatefulWidget {
   /// The avatar's diameter.
   static const avatarSize = 78.0;
 
-  /// Where the avatar is on a page whose card starts [top] below the top
+  /// Where the avatar is on a page whose content starts [top] below the top
   /// of the page (the status bar plus [topGap]), for a placeholder that
-  /// shows the avatar before the card is there.
+  /// shows the avatar before the header is there.
   static Rect avatarRect({required double top}) => Rect.fromLTWH(
-        _margin + _padding + _avatarRing,
+        _padding + _avatarRing,
         top + _paddingTop + _avatarRing,
         avatarSize,
         avatarSize,
@@ -111,8 +112,10 @@ class ProfileCard extends StatefulWidget {
   State<ProfileCard> createState() => _ProfileCardState();
 }
 
-const _margin = 16.0;
 const _padding = 20.0;
+
+/// The banner's last stretch, under the buttons, fades into the page.
+const _fade = 28.0;
 const _paddingTop = 22.0;
 const _avatarRing = 3.0;
 
@@ -145,10 +148,8 @@ class _ProfileCardState extends State<ProfileCard> {
   Widget build(BuildContext context) {
     final lang = widget.lang;
     final genre = _topGenre;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(_margin, MediaQuery.paddingOf(context).top + widget.topGap, _margin, 0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(32),
+    final page = Theme.of(context).scaffoldBackgroundColor;
+    return ClipRect(
         child: Stack(
           children: [
             Positioned.fill(child: _background(context)),
@@ -165,10 +166,31 @@ class _ProfileCardState extends State<ProfileCard> {
                 ),
               ),
             ),
+            // No edge where the header ends: it fades into the page.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: _fade,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [page.withValues(alpha: 0), page],
+                  ),
+                ),
+              ),
+            ),
             // The glass pieces blur the banner once, together.
             BackdropGroup(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(_padding, _paddingTop, _padding, 20),
+                padding: EdgeInsets.fromLTRB(
+                  _padding,
+                  MediaQuery.paddingOf(context).top + widget.topGap + _paddingTop,
+                  _padding,
+                  20 + _fade,
+                ),
                 child: DefaultTextStyle.merge(
                   style: const TextStyle(color: Colors.white),
                   child: Column(
@@ -217,7 +239,6 @@ class _ProfileCardState extends State<ProfileCard> {
             ),
           ],
         ),
-      ),
     );
   }
 
