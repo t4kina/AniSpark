@@ -72,5 +72,7 @@ void main() {
     await tester.pump();
 
     expect(find.byType(DevBadge), findsOneWidget);
+    expect(tester.getSize(find.byType(DevBadge)).height, lessThan(devBadgeSizeFor(24)),
+        reason: 'a touch smaller on the profile, so the name leads');
   });
 }

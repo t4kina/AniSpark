@@ -10,15 +10,15 @@ import '../utils/translations.dart';
 
 /// The seal beside an AniSpark developer's name, like a verified tick: an
 /// eight-lobed violet seal with a white check that holds still while a
-/// glint of light crosses it every few seconds and two sparkles twinkle by
-/// it. With animations reduced it is just the seal.
+/// glint of light crosses it every few seconds. With animations reduced it
+/// is just the seal.
 class DevBadge extends StatefulWidget {
   const DevBadge({super.key, this.size = 18});
 
-  /// Its width and height; the sparkles reach a little past them.
+  /// Its width and height.
   final double size;
 
-  /// One glint and both sparkles.
+  /// One glint and the rest between glints.
   static const cycle = Duration(milliseconds: 3200);
 
   @override
@@ -70,8 +70,6 @@ class _SealPainter extends CustomPainter {
 
   static const _top = Color(0xFFA99BFF);
   static const _bottom = Color(0xFF5B6CFF);
-  static const _sparkA = Color(0xFFFFF6B0);
-  static const _sparkB = Color(0xFFB9F3FF);
 
   /// The glint crosses during this part of each cycle.
   static const _glintFrom = 0.55;
@@ -87,24 +85,6 @@ class _SealPainter extends CustomPainter {
     }
     return seal;
   }
-
-  /// A four-pointed sparkle of [radius] at [center].
-  static Path _sparkle(Offset center, double radius) {
-    final waist = radius * 0.28;
-    return Path()
-      ..moveTo(center.dx, center.dy - radius)
-      ..lineTo(center.dx + waist, center.dy - waist)
-      ..lineTo(center.dx + radius, center.dy)
-      ..lineTo(center.dx + waist, center.dy + waist)
-      ..lineTo(center.dx, center.dy + radius)
-      ..lineTo(center.dx - waist, center.dy + waist)
-      ..lineTo(center.dx - radius, center.dy)
-      ..lineTo(center.dx - waist, center.dy - waist)
-      ..close();
-  }
-
-  /// 0 → 1 → 0 over [phase] 0 → 1, eased.
-  static double _twinkle(double phase) => math.pow(math.sin(math.pi * phase), 2).toDouble();
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -144,16 +124,6 @@ class _SealPainter extends CustomPainter {
         ..strokeCap = StrokeCap.round
         ..strokeJoin = StrokeJoin.round,
     );
-
-    if (still) return;
-    for (final (phase, center, radius, color) in [
-      (t, Offset(23 * unit, 1 * unit), 3.2 * unit, _sparkA),
-      ((t + 0.5) % 1, Offset(1 * unit, 22 * unit), 2.4 * unit, _sparkB),
-    ]) {
-      final shine = _twinkle(phase);
-      if (shine < 0.02) continue;
-      canvas.drawPath(_sparkle(center, radius * shine), Paint()..color = color.withValues(alpha: shine));
-    }
   }
 
   @override
@@ -163,11 +133,14 @@ class _SealPainter extends CustomPainter {
 /// [name] in [style], followed by the developer seal when it is the name of
 /// one of AniSpark's developers (see [isAniSparkDeveloper]).
 class BadgedName extends StatelessWidget {
-  const BadgedName(this.name, {super.key, this.style, this.maxLines = 1});
+  const BadgedName(this.name, {super.key, this.style, this.maxLines = 1, this.badgeSize});
 
   final String name;
   final TextStyle? style;
   final int maxLines;
+
+  /// The seal's size, when not [devBadgeSizeFor] the text's.
+  final double? badgeSize;
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +152,7 @@ class BadgedName extends StatelessWidget {
       children: [
         Flexible(child: text),
         SizedBox(width: fontSize * 0.3),
-        DevBadge(size: devBadgeSizeFor(fontSize)),
+        DevBadge(size: badgeSize ?? devBadgeSizeFor(fontSize)),
       ],
     );
   }

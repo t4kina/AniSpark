@@ -336,7 +336,12 @@ class _ProfileCardState extends State<ProfileCard> {
           spacing: 8,
           runSpacing: 4,
           children: [
-            BadgedName(widget.name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            BadgedName(
+              widget.name,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              // A touch under the text's height, so the name leads.
+              badgeSize: 23,
+            ),
             if (widget.nameTag != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
