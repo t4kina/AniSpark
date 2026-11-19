@@ -116,7 +116,11 @@ class ProfileCard extends StatefulWidget {
 const _padding = 20.0;
 
 /// The banner's last stretch, under the buttons, fades into the page.
-const _fade = 28.0;
+const _fade = 20.0;
+
+/// Where the fade's steps sit, eased so it has no soft start or end that
+/// reads as a blurred band.
+const _fadeStops = [0.0, 0.2, 0.4, 0.6, 0.8, 1.0];
 const _paddingTop = 22.0;
 const _avatarRing = 3.0;
 
@@ -178,7 +182,8 @@ class _ProfileCardState extends State<ProfileCard> {
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [page.withValues(alpha: 0), page],
+                    stops: _fadeStops,
+                    colors: [for (final t in _fadeStops) page.withValues(alpha: Curves.easeInOut.transform(t))],
                   ),
                 ),
               ),

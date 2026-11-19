@@ -1,5 +1,6 @@
 import 'package:anispark/screens/profile_screen.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/widgets/profile/profile_card.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -57,6 +58,17 @@ Future<void> _expand(WidgetTester tester, String title) async {
 }
 
 void main() {
+  testWidgets('the header melts into the page, with no line drawn under it', (tester) async {
+    await _pumpProfile(tester, _StatsAuth(scoreFormat: 'POINT_10', animeScores: const []));
+
+    final headerEnd = tester.getRect(find.byType(ProfileCard)).bottom;
+    final linesBelow = [
+      for (final line in find.byType(Divider).evaluate())
+        tester.getRect(find.byElementPredicate((element) => element == line)).top,
+    ].where((top) => top >= headerEnd - 1 && top <= headerEnd + 48);
+    expect(linesBelow, isEmpty);
+  });
+
   testWidgets('score bars are labelled once each, in the user\'s score format', (tester) async {
     await _pumpProfile(
       tester,

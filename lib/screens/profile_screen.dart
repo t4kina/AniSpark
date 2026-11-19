@@ -266,11 +266,6 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               ),
             ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-            SliverToBoxAdapter(
-              child: Builder(builder: (ctx) => Divider(height: 1, color: Theme.of(ctx).colorScheme.outline)),
-            ),
-
             // ── Favorite Anime ─────────────────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
