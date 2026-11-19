@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../widgets/dev_badge.dart';
 import '../providers/settings_provider.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
@@ -312,6 +313,9 @@ class _NotificationTile extends StatelessWidget {
       if (match.start > last) spans.add(TextSpan(text: template.substring(last, match.start)));
       final value = args[match[1]];
       spans.add(TextSpan(text: value ?? match[0], style: value == null ? null : bold));
+      if (match[1] == 'name') {
+        if (devBadgeSpan(value, fontSize: bold.fontSize ?? 14) case final seal?) spans.add(seal);
+      }
       last = match.end;
     }
     if (last < template.length) spans.add(TextSpan(text: template.substring(last)));

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../widgets/dev_badge.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart' show AniListRequestException;
 import '../services/api_cache.dart';
@@ -498,7 +499,7 @@ class _UserName extends StatelessWidget {
   @override
   Widget build(BuildContext context) => TappableUserName(
         onTap: () => openUserProfile(context, user, heroScope: heroScope),
-        child: Text(user?['name'] as String? ?? tr('feed_unknown', lang), style: style),
+        child: BadgedName(user?['name'] as String? ?? tr('feed_unknown', lang), style: style),
       );
 }
 

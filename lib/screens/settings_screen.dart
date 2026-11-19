@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/external_url.dart';
 import '../utils/haptics.dart';
 import '../utils/performance_graphs.dart';
+import '../widgets/dev_badge.dart';
 import '../providers/settings_provider.dart' show SettingsProvider, accentColorOptions;
 import '../services/auth_service.dart';
 import '../utils/translations.dart';
@@ -170,10 +171,7 @@ class _SignedInAsRow extends StatelessWidget {
               children: [
                 Text(tr('signed_in_as', lang),
                     style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                Text(name ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                BadgedName(name ?? '', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
               ],
             ),
           ),

@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/dev_badge.dart';
 import '../providers/settings_provider.dart';
 import '../services/auth_service.dart';
 import '../services/anilist_service.dart';
@@ -1108,7 +1109,7 @@ class _UserTile extends StatelessWidget {
         backgroundImage: avatar != null ? CachedNetworkImageProvider(avatar) : null,
         child: avatar == null ? const Icon(Icons.person, size: 22) : null,
       ),
-      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w500)),
+      title: BadgedName(name, style: const TextStyle(fontWeight: FontWeight.w500)),
       onTap: id != null
           ? () => Navigator.push(context, MaterialPageRoute(
                 builder: (_) => UserProfileScreen(

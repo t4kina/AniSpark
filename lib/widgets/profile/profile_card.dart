@@ -7,6 +7,7 @@ import '../../theme/app_motion.dart';
 import '../../utils/score_utils.dart';
 import '../../utils/translations.dart' show tr, trf;
 import '../blurred_backdrop.dart';
+import '../dev_badge.dart';
 import '../genre_filter_sheet.dart' show genreLabel;
 import '../motion/fade_switcher.dart';
 import '../motion/pressable.dart';
@@ -335,7 +336,7 @@ class _ProfileCardState extends State<ProfileCard> {
           spacing: 8,
           runSpacing: 4,
           children: [
-            Text(widget.name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            BadgedName(widget.name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
             if (widget.nameTag != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

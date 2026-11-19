@@ -10,6 +10,7 @@ import '../../utils/activity_status.dart';
 import '../../utils/activity_text.dart';
 import '../../utils/translations.dart' show tr;
 import '../app_image.dart';
+import '../dev_badge.dart';
 import '../media_preview.dart';
 import '../motion/pressable.dart';
 import 'social_widgets.dart';
@@ -129,6 +130,7 @@ class FeedTimelineItem extends StatelessWidget {
                   style: AppText.footnote,
                   children: [
                     TextSpan(text: username, style: TextStyle(fontWeight: FontWeight.w700, color: cs.primary)),
+                    ?devBadgeSpan(user?['name'] as String?, fontSize: AppText.footnote.fontSize!),
                     if (action != null) TextSpan(text: ' $action', style: TextStyle(color: secondary)),
                   ],
                 ),
