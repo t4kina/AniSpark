@@ -13,7 +13,6 @@ import 'services/auth_service.dart';
 import 'services/hive_cache_store.dart';
 import 'services/home_widgets.dart';
 import 'services/notification_service.dart';
-import 'services/friend_alerts.dart';
 import 'services/secure_store.dart';
 import 'services/session_expiry.dart';
 import 'screens/home_screen.dart';
@@ -32,7 +31,6 @@ import 'utils/tab_reselect.dart';
 import 'widgets/motion/liquid_navigation_bar.dart';
 import 'widgets/motion/pop_in.dart';
 import 'widgets/motion/tab_fade_through.dart';
-import 'widgets/friend_alerts_watcher.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,16 +38,14 @@ void main() async {
   await Hive.initFlutter();
   unawaited(_deleteLegacyListBox());
   final settingsProvider = SettingsProvider();
-  final friendAlerts = FriendAlertsStore();
   // AES key for the local boxes, kept in the platform keystore. Null when the
   // keystore can't be used (and on web): storage then stays unencrypted
   // exactly as before instead of failing. Loaded alongside the work that
   // doesn't need it, to keep startup fast.
-  final (storageCipher, _, _, _) = await (
+  final (storageCipher, _, _) = await (
     kIsWeb ? Future<HiveAesCipher?>.value() : loadStorageCipher(const DeviceSecureStore()),
     NotificationService().init(),
     settingsProvider.load(),
-    friendAlerts.load(),
   ).wait;
   final apiCache = ApiCache(await HiveCacheStore.openOrFallback(cipher: storageCipher));
   unawaited(apiCache.prune(maxAge: const Duration(days: 14), maxEntries: 300));
@@ -71,7 +67,7 @@ void main() async {
   var wasLoggedIn = authService.isLoggedIn;
   authService.addListener(() {
     final loggedIn = authService.isLoggedIn;
-    if (wasLoggedIn && !loggedIn) unawaited(_clearAccountData(apiCache, mediaListStore, friendAlerts));
+    if (wasLoggedIn && !loggedIn) unawaited(_clearAccountData(apiCache, mediaListStore));
     wasLoggedIn = loggedIn;
   });
   // Leftovers of a logout that was interrupted, e.g. by the app being killed.
@@ -86,7 +82,6 @@ void main() async {
         ChangeNotifierProvider.value(value: authService),
         ChangeNotifierProvider.value(value: mediaListStore),
         ChangeNotifierProvider.value(value: settingsProvider),
-        ChangeNotifierProvider.value(value: friendAlerts),
       ],
       child: MyAnimeApp(scaffoldMessengerKey: messengerKey),
     ),
@@ -95,12 +90,11 @@ void main() async {
 
 /// Removes everything tied to the account that just logged out. Each step is
 /// best effort and independent, so one failure doesn't skip the others.
-Future<void> _clearAccountData(ApiCache cache, MediaListStore store, FriendAlertsStore friendAlerts) async {
+Future<void> _clearAccountData(ApiCache cache, MediaListStore store) async {
   store.reset();
   await _bestEffort('clearing the affinity memo', () async => AffinityApi.clearViewerMemo());
   await _bestEffort('clearing the API cache', cache.clear);
   await _bestEffort('resetting notifications', NotificationService().resetForLogout);
-  await _bestEffort('forgetting the friend bells', friendAlerts.clear);
   await _bestEffort('clearing recent searches', () async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(recentSearchesPrefsKey);
@@ -323,8 +317,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
-    return FriendAlertsWatcher(
-      child: Scaffold(
+    return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
         children: List.generate(
@@ -365,7 +358,6 @@ class _MainNavigationState extends State<MainNavigation> {
                 label: tr('nav_profile', settings.language)),
           ],
         ),
-      ),
       ),
     );
   }

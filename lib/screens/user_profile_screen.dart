@@ -8,9 +8,7 @@ import '../services/auth_service.dart';
 import '../utils/haptics.dart';
 import '../utils/score_utils.dart';
 import '../utils/translations.dart' show tr, trf;
-import '../services/friend_alerts.dart';
 import '../widgets/app_sheet.dart';
-import '../widgets/friend_alert_sheet.dart';
 import '../widgets/detail/detail_labels.dart' show GenreChips;
 import '../widgets/motion/arrival_builder.dart';
 import '../widgets/motion/collapsing_title_bar.dart';
@@ -358,7 +356,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     // once AniList has confirmed the follow state (see [_profileIsFresh]).
     final canFollow = auth.isLoggedIn && auth.user?['id'] != widget.userId;
     final canAct = _profileIsFresh && !_togglingFollow;
-    final bells = context.watch<FriendAlertsStore?>();
 
     return CustomScrollView(
       key: const ValueKey('uprof-content'),
@@ -389,19 +386,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     onPressed: () {
                       if (_profileIsFresh) _showProfileActions(context, lang);
                     },
-                  )
-                : null,
-            // The bell: their activity, told as a notification.
-            trailingAction: canFollow && bells != null
-                ? ProfileCard.bellButton(
-                    on: bells.watchOf(widget.userId) != null,
-                    tooltip: tr('bell_tooltip', lang),
-                    onPressed: () => showFriendAlertSheet(
-                      context,
-                      userId: widget.userId,
-                      name: name,
-                      avatarUrl: avatar,
-                    ),
                   )
                 : null,
             actions: [

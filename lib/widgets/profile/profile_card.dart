@@ -36,7 +36,6 @@ class ProfileCard extends StatefulWidget {
     this.cornerButton,
     this.topGap = 8,
     this.actions = const [],
-    this.trailingAction,
     this.onCountTap,
   });
 
@@ -70,9 +69,6 @@ class ProfileCard extends StatefulWidget {
   /// Full-width buttons at the bottom, side by side: see
   /// [ProfileCard.primaryButton] and [ProfileCard.secondaryButton].
   final List<Widget> actions;
-
-  /// A square button after [actions], e.g. [ProfileCard.bellButton].
-  final Widget? trailingAction;
 
   /// Tapping "N anime" / "N manga" under the name, with `ANIME` or `MANGA`.
   final ValueChanged<String>? onCountTap;
@@ -108,29 +104,6 @@ class ProfileCard extends StatefulWidget {
   /// The solid white action, for what the profile is mostly for.
   static Widget primaryButton({required String label, IconData? icon, Widget? trailing, VoidCallback? onPressed}) =>
       _ActionButton(label: label, icon: icon, trailing: trailing, onPressed: onPressed, primary: true);
-
-  /// The bell of a friend's profile: solid white with the bell ringing when
-  /// [on], glass with an outline bell when not. As tall as the actions.
-  static Widget bellButton({required bool on, required String tooltip, VoidCallback? onPressed}) => Semantics(
-        button: true,
-        toggled: on,
-        label: tooltip,
-        child: Pressable(
-          onTap: onPressed,
-          child: SizedBox.square(
-            dimension: 52,
-            child: on
-                ? const DecoratedBox(
-                    decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                    child: Icon(Icons.notifications_active_rounded, size: 22, color: Color(0xFF17131C)),
-                  )
-                : const _Glass(
-                    shape: CircleBorder(),
-                    child: Center(child: Icon(Icons.notifications_none_rounded, size: 22, color: Colors.white)),
-                  ),
-          ),
-        ),
-      );
 
   /// A glass action beside [primaryButton].
   static Widget secondaryButton({required String label, IconData? icon, Widget? trailing, VoidCallback? onPressed}) =>
@@ -249,17 +222,13 @@ class _ProfileCardState extends State<ProfileCard> {
                           child: _manga ? _mangaStrip(lang) : _animeStrip(lang),
                         ),
                       ),
-                      if (widget.actions.isNotEmpty || widget.trailingAction != null) ...[
+                      if (widget.actions.isNotEmpty) ...[
                         const SizedBox(height: 16),
                         Row(
                           children: [
                             for (final (i, action) in widget.actions.indexed) ...[
                               if (i > 0) const SizedBox(width: 10),
                               Expanded(child: action),
-                            ],
-                            if (widget.trailingAction case final trailing?) ...[
-                              if (widget.actions.isNotEmpty) const SizedBox(width: 10),
-                              trailing,
                             ],
                           ],
                         ),
