@@ -19,6 +19,7 @@ import '../widgets/overlay_button.dart';
 import '../widgets/profile/affinity_card.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
+import '../widgets/profile/profile_tint.dart';
 import '../widgets/sheet_list_surface.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/state_message.dart';
@@ -361,89 +362,96 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       key: const ValueKey('uprof-content'),
       controller: _scroll,
       slivers: [
-        // ── Who they are and their stats, on their banner ───────────
-        SliverToBoxAdapter(
-          child: ProfileCard(
-            name: name,
-            lang: lang,
-            avatarUrl: avatar,
-            avatarHeroTag: widget.heroTag,
-            bannerUrl: banner,
-            animeStats: animeStats,
-            mangaStats: mangaStats,
-            scoreFormat: scoreFormatOf(auth.user),
-            nameTag: _isFollower ? tr('uprof_follows_you', lang) : null,
-            topGap: _cardTopGap,
-            onCountTap: (type) {
-              final count = type == 'MANGA' ? totalManga : totalAnime;
-              if (count > 0) _showListSheet(context, type);
-            },
-            // Following them, the Following button opens these same actions.
-            cornerButton: canFollow && !_isFollowing
-                ? ProfileCard.roundButton(
-                    icon: Icons.more_horiz_rounded,
-                    tooltip: tr('tooltip_more', lang),
-                    onPressed: () {
-                      if (_profileIsFresh) _showProfileActions(context, lang);
-                    },
-                  )
-                : null,
-            actions: [
-              if (canFollow)
-                _isFollowing
-                    ? ProfileCard.secondaryButton(
-                        label: '${tr('uprof_following_button', lang)}${_togglingFollow ? '…' : ''}',
-                        icon: Icons.check_rounded,
-                        trailing: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.white),
-                        onPressed: canAct ? () => _showProfileActions(context, lang) : null,
+        // Their banner, its colour behind what tells about them, then the page.
+        ProfileTintZone(
+          bannerUrl: banner,
+          avatarUrl: avatar,
+          slivers: [
+            // ── Who they are and their stats, on their banner ───────────
+            SliverToBoxAdapter(
+              child: ProfileCard(
+                name: name,
+                lang: lang,
+                avatarUrl: avatar,
+                avatarHeroTag: widget.heroTag,
+                bannerUrl: banner,
+                animeStats: animeStats,
+                mangaStats: mangaStats,
+                scoreFormat: scoreFormatOf(auth.user),
+                nameTag: _isFollower ? tr('uprof_follows_you', lang) : null,
+                topGap: _cardTopGap,
+                onCountTap: (type) {
+                  final count = type == 'MANGA' ? totalManga : totalAnime;
+                  if (count > 0) _showListSheet(context, type);
+                },
+                // Following them, the Following button opens these same actions.
+                cornerButton: canFollow && !_isFollowing
+                    ? ProfileCard.roundButton(
+                        icon: Icons.more_horiz_rounded,
+                        tooltip: tr('tooltip_more', lang),
+                        onPressed: () {
+                          if (_profileIsFresh) _showProfileActions(context, lang);
+                        },
                       )
-                    : ProfileCard.primaryButton(
-                        label: _togglingFollow ? '…' : tr('uprof_follow', lang),
-                        icon: Icons.person_add_alt_1_rounded,
-                        onPressed: canAct ? _toggleFollow : null,
-                      ),
-            ],
-          ),
-        ),
-
-        // ── Bio ────────────────────────────────────────────────────────
-        if (about.isNotEmpty)
-          SliverToBoxAdapter(child: _buildBio(about, lang, top: ProfileCard.followingGap)),
-
-        // ── Most watched genres ──────────────────────────────────────────
-        if (topGenres.isNotEmpty)
-          SliverToBoxAdapter(child: _buildGenreChips(topGenres, lang, top: about.isEmpty ? ProfileCard.followingGap : 24)),
-
-        // ── Favourite Anime ────────────────────────────────────────────
-        if (favAnime.isNotEmpty) ...[
-          SliverToBoxAdapter(
-            child: Padding(
-              // Right under the header when nothing comes between.
-              padding: EdgeInsets.fromLTRB(
-                  16, about.isEmpty && topGenres.isEmpty ? ProfileCard.followingGap : 24, 16, 10),
-              child: Text(tr('favorite_anime', lang),
-                  style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.grey,
-                      letterSpacing: 0.5)),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 170,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                itemCount: favAnime.length,
-                itemBuilder: (_, i) => FavouriteMediaCard(
-                  media: favAnime[i] as Map<String, dynamic>,
-                  heroScope: 'uprof-favs-anime',
-                ),
+                    : null,
+                actions: [
+                  if (canFollow)
+                    _isFollowing
+                        ? ProfileCard.secondaryButton(
+                            label: '${tr('uprof_following_button', lang)}${_togglingFollow ? '…' : ''}',
+                            icon: Icons.check_rounded,
+                            trailing: const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.white),
+                            onPressed: canAct ? () => _showProfileActions(context, lang) : null,
+                          )
+                        : ProfileCard.primaryButton(
+                            label: _togglingFollow ? '…' : tr('uprof_follow', lang),
+                            icon: Icons.person_add_alt_1_rounded,
+                            onPressed: canAct ? _toggleFollow : null,
+                          ),
+                ],
               ),
             ),
-          ),
-        ],
+
+            // ── Bio ────────────────────────────────────────────────────────
+            if (about.isNotEmpty)
+              SliverToBoxAdapter(child: _buildBio(about, lang, top: ProfileCard.followingGap)),
+
+            // ── Most watched genres ──────────────────────────────────────────
+            if (topGenres.isNotEmpty)
+              SliverToBoxAdapter(child: _buildGenreChips(topGenres, lang, top: about.isEmpty ? ProfileCard.followingGap : 24)),
+
+            // ── Favourite Anime ────────────────────────────────────────────
+            if (favAnime.isNotEmpty) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  // Right under the header when nothing comes between.
+                  padding: EdgeInsets.fromLTRB(
+                      16, about.isEmpty && topGenres.isEmpty ? ProfileCard.followingGap : 24, 16, 10),
+                  child: Text(tr('favorite_anime', lang),
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.grey,
+                          letterSpacing: 0.5)),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 170,
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: favAnime.length,
+                    itemBuilder: (_, i) => FavouriteMediaCard(
+                      media: favAnime[i] as Map<String, dynamic>,
+                      heroScope: 'uprof-favs-anime',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
 
         // ── Favourite Manga ────────────────────────────────────────────
         if (favManga.isNotEmpty) ...[

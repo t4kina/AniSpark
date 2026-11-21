@@ -110,7 +110,7 @@ class ProfileCard extends StatefulWidget {
       _ActionButton(label: label, icon: icon, trailing: trailing, onPressed: onPressed, primary: false);
 
   /// The room above whatever the page shows right after the card: little,
-  /// since the card's fade ends in the page's own colour.
+  /// since the card's own bottom already leaves some.
   static const followingGap = 4.0;
 
   @override
@@ -119,15 +119,14 @@ class ProfileCard extends StatefulWidget {
 
 const _padding = 20.0;
 
-/// How long the banner takes to dissolve into the page. It starts below
-/// everything on the card, after the banner runs on whole for a while, so
-/// it ends close to what the page shows next and white text keeps its dark
-/// backing even in light mode.
-const _fade = 112.0;
-const _belowContent = 16.0 + _fade;
+/// How long the banner takes to dissolve, under the stats and buttons, into
+/// whatever is behind the card: on a profile, the banner's own colour (see
+/// `ProfileTintZone`), dark like the veil, so white text stays readable.
+const _fade = 120.0;
+const _belowContent = 24.0;
 
 /// The fade's steps. Each one is [_dissolve]d, which starts and ends flat,
-/// so there is no line where the banner begins to go or the page takes over.
+/// so there is no line where the banner begins to go or ends.
 final _fadeStops = [for (var i = 0; i <= 11; i++) i / 11];
 
 /// Smootherstep: 0 to 1 with no slope or bend at either end.
@@ -164,38 +163,31 @@ class _ProfileCardState extends State<ProfileCard> {
   Widget build(BuildContext context) {
     final lang = widget.lang;
     final genre = _topGenre;
-    final page = Theme.of(context).scaffoldBackgroundColor;
     return ClipRect(
         child: Stack(
           children: [
-            Positioned.fill(child: _background(context)),
-            // Keeps white text readable on any banner, darker toward the
-            // stats and buttons.
+            // No edge where the header ends: the banner and its veil fade
+            // out over the last stretch, showing what is behind the card.
             Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.black.withValues(alpha: 0.25), Colors.black.withValues(alpha: 0.62)],
-                  ),
-                ),
-              ),
-            ),
-            // No edge where the header ends: it fades into the page.
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: _fade,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    stops: _fadeStops,
-                    colors: [for (final t in _fadeStops) page.withValues(alpha: _dissolve(t))],
-                  ),
+              child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: _dissolveShader,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _background(context),
+                    // Keeps white text readable on any banner, darker
+                    // toward the stats and buttons.
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.black.withValues(alpha: 0.25), Colors.black.withValues(alpha: 0.62)],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -257,6 +249,17 @@ class _ProfileCardState extends State<ProfileCard> {
           ],
         ),
     );
+  }
+
+  /// Whole down to the last [_fade], then gone by the bottom edge.
+  static Shader _dissolveShader(Rect bounds) {
+    final start = bounds.height <= _fade ? 0.0 : (bounds.height - _fade) / bounds.height;
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      stops: [for (final t in _fadeStops) start + (1 - start) * t],
+      colors: [for (final t in _fadeStops) Colors.white.withValues(alpha: 1 - _dissolve(t))],
+    ).createShader(bounds);
   }
 
   Widget _background(BuildContext context) {
