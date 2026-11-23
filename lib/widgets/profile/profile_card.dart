@@ -7,21 +7,27 @@ import '../../theme/app_motion.dart';
 import '../../utils/score_utils.dart';
 import '../../utils/translations.dart' show tr, trf;
 import '../blurred_backdrop.dart';
+import '../dev_badge.dart';
 import '../genre_filter_sheet.dart' show genreLabel;
 import '../motion/fade_switcher.dart';
 import '../motion/pressable.dart';
+import '../motion/rounded_hero.dart';
+import 'avatar_viewer.dart';
 import 'count_up_text.dart';
+import '../app_image.dart';
 
-/// The top of a profile, own or a friend's: one card on the person's banner
-/// (their blurred avatar without one) holding who they are and a glass
-/// strip of their anime or manga stats, with the profile's main actions at
-/// the bottom.
+/// The top of a profile, own or a friend's: the person's banner (their
+/// blurred avatar without one) from the very top of the screen, edge to
+/// edge, holding who they are and a glass strip of their anime or manga
+/// stats, with the profile's main actions at the bottom. It melts into the
+/// page below it rather than sitting on it as a card.
 class ProfileCard extends StatefulWidget {
   const ProfileCard({
     super.key,
     required this.name,
     required this.lang,
     this.avatarUrl,
+    this.avatarHeroTag,
     this.bannerUrl,
     this.animeStats,
     this.mangaStats,
@@ -36,6 +42,10 @@ class ProfileCard extends StatefulWidget {
   final String name;
   final String lang;
   final String? avatarUrl;
+
+  /// Tag of the avatar that was tapped to open this profile (see
+  /// `personHeroTag`), so it flies to the one here.
+  final String? avatarHeroTag;
   final String? bannerUrl;
 
   /// AniList `statistics.anime` / `statistics.manga` (scores on 0–100).
@@ -52,7 +62,7 @@ class ProfileCard extends StatefulWidget {
   /// [ProfileCard.roundButton].
   final Widget? cornerButton;
 
-  /// Space between the status bar and the card, e.g. room for a back
+  /// Space between the status bar and the content, e.g. room for a back
   /// button above it.
   final double topGap;
 
@@ -63,19 +73,30 @@ class ProfileCard extends StatefulWidget {
   /// Tapping "N anime" / "N manga" under the name, with `ANIME` or `MANGA`.
   final ValueChanged<String>? onCountTap;
 
-  /// A round glass button for [cornerButton].
+  /// The avatar's diameter.
+  static const avatarSize = 78.0;
+
+  /// Where the avatar is on a page whose content starts [top] below the top
+  /// of the page (the status bar plus [topGap]), for a placeholder that
+  /// shows the avatar before the header is there.
+  static Rect avatarRect({required double top}) => Rect.fromLTWH(
+        _padding + _avatarRing,
+        top + _paddingTop + _avatarRing,
+        avatarSize,
+        avatarSize,
+      );
+
+  /// A round glass button for [cornerButton]. [tooltip] names it for screen
+  /// readers; holding the button shows no label.
   static Widget roundButton({required IconData icon, required String tooltip, required VoidCallback onPressed}) =>
-      Tooltip(
-        message: tooltip,
-        child: Semantics(
-          button: true,
-          label: tooltip,
-          child: Pressable(
-            onTap: onPressed,
-            child: _Glass(
-              shape: const CircleBorder(),
-              child: SizedBox.square(dimension: 46, child: Icon(icon, size: 20, color: Colors.white)),
-            ),
+      Semantics(
+        button: true,
+        label: tooltip,
+        child: Pressable(
+          onTap: onPressed,
+          child: _Glass(
+            shape: const CircleBorder(),
+            child: SizedBox.square(dimension: 46, child: Icon(icon, size: 20, color: Colors.white)),
           ),
         ),
       );
@@ -88,12 +109,36 @@ class ProfileCard extends StatefulWidget {
   static Widget secondaryButton({required String label, IconData? icon, Widget? trailing, VoidCallback? onPressed}) =>
       _ActionButton(label: label, icon: icon, trailing: trailing, onPressed: onPressed, primary: false);
 
+  /// The room above whatever the page shows right after the card: little,
+  /// since the card's own bottom already leaves some.
+  static const followingGap = 4.0;
+
   @override
   State<ProfileCard> createState() => _ProfileCardState();
 }
 
+const _padding = 20.0;
+
+/// How long the banner takes to dissolve, under the stats and buttons, into
+/// whatever is behind the card: on a profile, the banner's own colour (see
+/// `ProfileTintZone`), dark like the veil, so white text stays readable.
+const _fade = 120.0;
+const _belowContent = 24.0;
+
+/// The fade's steps. Each one is [_dissolve]d, which starts and ends flat,
+/// so there is no line where the banner begins to go or ends.
+final _fadeStops = [for (var i = 0; i <= 11; i++) i / 11];
+
+/// Smootherstep: 0 to 1 with no slope or bend at either end.
+double _dissolve(double t) => t * t * t * (t * (t * 6 - 15) + 10);
+const _paddingTop = 22.0;
+const _avatarRing = 3.0;
+
 class _ProfileCardState extends State<ProfileCard> {
   bool _manga = false;
+
+  /// Flies the avatar into the viewer when the page was not opened from one.
+  final _viewerTag = Object();
 
   /// The genre the person has the most anime (else manga) in.
   String? get _topGenre {
@@ -118,30 +163,43 @@ class _ProfileCardState extends State<ProfileCard> {
   Widget build(BuildContext context) {
     final lang = widget.lang;
     final genre = _topGenre;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + widget.topGap, 16, 0),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(32),
+    return ClipRect(
         child: Stack(
           children: [
-            Positioned.fill(child: _background(context)),
-            // Keeps white text readable on any banner, darker toward the
-            // stats and buttons.
+            // No edge where the header ends: the banner and its veil fade
+            // out over the last stretch, showing what is behind the card.
             Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.black.withValues(alpha: 0.25), Colors.black.withValues(alpha: 0.62)],
-                  ),
+              child: ShaderMask(
+                blendMode: BlendMode.dstIn,
+                shaderCallback: _dissolveShader,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    _background(context),
+                    // Keeps white text readable on any banner, darker
+                    // toward the stats and buttons.
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [Colors.black.withValues(alpha: 0.25), Colors.black.withValues(alpha: 0.62)],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
             // The glass pieces blur the banner once, together.
             BackdropGroup(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+                padding: EdgeInsets.fromLTRB(
+                  _padding,
+                  MediaQuery.paddingOf(context).top + widget.topGap + _paddingTop,
+                  _padding,
+                  _belowContent,
+                ),
                 child: DefaultTextStyle.merge(
                   style: const TextStyle(color: Colors.white),
                   child: Column(
@@ -190,24 +248,24 @@ class _ProfileCardState extends State<ProfileCard> {
             ),
           ],
         ),
-      ),
     );
   }
 
+  /// Whole down to the last [_fade], then gone by the bottom edge.
+  static Shader _dissolveShader(Rect bounds) {
+    final start = bounds.height <= _fade ? 0.0 : (bounds.height - _fade) / bounds.height;
+    return LinearGradient(
+      begin: Alignment.topCenter,
+      end: Alignment.bottomCenter,
+      stops: [for (final t in _fadeStops) start + (1 - start) * t],
+      colors: [for (final t in _fadeStops) Colors.white.withValues(alpha: 1 - _dissolve(t))],
+    ).createShader(bounds);
+  }
+
   Widget _background(BuildContext context) {
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
     final banner = widget.bannerUrl;
-    if (banner != null && banner.isNotEmpty) {
-      return CachedNetworkImage(
-        imageUrl: banner,
-        fit: BoxFit.cover,
-        memCacheWidth: 900,
-        fadeInDuration: AppMotion.of(context, AppMotion.short),
-        placeholder: (_, _) => placeholder,
-        errorWidget: (_, _, _) => _noBanner(context),
-      );
-    }
-    return _noBanner(context);
+    if (banner == null || banner.isEmpty) return _noBanner(context);
+    return AppImage(url: banner, cacheWidth: 900, error: _noBanner(context));
   }
 
   /// Without a banner: the avatar, blurred into colour (as the app's other
@@ -227,16 +285,31 @@ class _ProfileCardState extends State<ProfileCard> {
     );
   }
 
+  /// Tapped, the picture opens large (see [showAvatarViewer]).
   Widget _avatar() {
     final avatar = widget.avatarUrl;
-    return Container(
-      padding: const EdgeInsets.all(3),
+    final heroTag = widget.avatarHeroTag ?? _viewerTag;
+    final ringed = Container(
+      padding: const EdgeInsets.all(_avatarRing),
       decoration: BoxDecoration(shape: BoxShape.circle, color: Colors.white.withValues(alpha: 0.35)),
-      child: CircleAvatar(
-        radius: 39,
-        backgroundColor: Colors.black26,
-        backgroundImage: avatar == null ? null : CachedNetworkImageProvider(avatar),
-        child: avatar == null ? const Icon(Icons.person, size: 38, color: Colors.white70) : null,
+      child: RoundedHero(
+        tag: heroTag,
+        borderRadius: BorderRadius.circular(ProfileCard.avatarSize / 2),
+        child: CircleAvatar(
+          radius: ProfileCard.avatarSize / 2,
+          backgroundColor: Colors.black26,
+          backgroundImage: avatar == null ? null : CachedNetworkImageProvider(avatar),
+          child: avatar == null ? const Icon(Icons.person, size: 38, color: Colors.white70) : null,
+        ),
+      ),
+    );
+    if (avatar == null || avatar.isEmpty) return ringed;
+    return Semantics(
+      button: true,
+      label: tr('profile_picture', widget.lang),
+      child: Pressable(
+        onTap: () => showAvatarViewer(context, url: avatar, heroTag: heroTag),
+        child: ringed,
       ),
     );
   }
@@ -269,9 +342,8 @@ class _ProfileCardState extends State<ProfileCard> {
         ? Text(text, style: countStyle)
         : Semantics(
             button: true,
-            child: GestureDetector(
+            child: Pressable.dim(
               onTap: () => widget.onCountTap!(type),
-              behavior: HitTestBehavior.opaque,
               child: Text(text, style: countStyle),
             ),
           );
@@ -283,7 +355,12 @@ class _ProfileCardState extends State<ProfileCard> {
           spacing: 8,
           runSpacing: 4,
           children: [
-            Text(widget.name, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            BadgedName(
+              widget.name,
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+              // A touch under the text's height, so the name leads.
+              badgeSize: 23,
+            ),
             if (widget.nameTag != null)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

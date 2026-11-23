@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -13,12 +12,18 @@ import '../../theme/app_motion.dart';
 import '../../utils/haptics.dart';
 import '../../utils/score_utils.dart';
 import '../../utils/translations.dart';
+import '../app_button.dart';
 import '../motion/pop_on_change.dart';
+import '../app_dialog.dart';
+import '../app_sheet.dart';
 import '../sheet_list_surface.dart';
+import '../skeletons.dart';
 import 'entry_draft.dart';
 import 'entry_editor_api.dart';
 import 'entry_editor_fields.dart';
 import 'score_scale.dart';
+import '../load_error_view.dart';
+import '../app_image.dart';
 
 export 'entry_editor_api.dart' show EditorMedia;
 
@@ -48,13 +53,9 @@ Future<void> showEntryEditor(
   ValueChanged<EntryEditorResult>? onChanged,
   AniListService? service,
 }) =>
-    showModalBottomSheet<void>(
+    showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.92),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      maxHeightFraction: 0.92,
       builder: (_) => EntryEditorSheet(
         media: media,
         entry: entry,
@@ -65,26 +66,14 @@ Future<void> showEntryEditor(
     );
 
 /// Asks before deleting a list entry.
-Future<bool> confirmEntryRemoval(BuildContext context, String lang) async {
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text(tr('remove_from_list', lang)),
-      content: Text(tr('remove_from_list_confirm', lang)),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext, false),
-          child: Text(tr('cancel', lang)),
-        ),
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext, true),
-          child: Text(tr('remove', lang), style: const TextStyle(color: Colors.red)),
-        ),
-      ],
-    ),
-  );
-  return confirmed ?? false;
-}
+Future<bool> confirmEntryRemoval(BuildContext context, String lang) => showAppConfirm(
+      context: context,
+      title: tr('remove_from_list', lang),
+      message: tr('remove_from_list_confirm', lang),
+      confirmLabel: tr('remove', lang),
+      cancelLabel: tr('cancel', lang),
+      destructive: true,
+    );
 
 /// The editor's content; open it with [showEntryEditor].
 class EntryEditorSheet extends StatefulWidget {
@@ -319,13 +308,9 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
     final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
     final Widget body;
     if (_lookingUp) {
-      body = const Padding(
-        key: ValueKey('entry-editor-loading'),
-        padding: EdgeInsets.all(40),
-        child: Center(child: CircularProgressIndicator()),
-      );
+      body = const _FormSkeleton(key: ValueKey('entry-editor-loading'));
     } else if (_lookupFailed || draft == null) {
-      body = _LookupError(lang: lang, onRetry: _retryLookUp);
+      body = LoadErrorView(key: const ValueKey('entry-editor-lookup-error'), onRetry: _retryLookUp);
     } else {
       body = _form(draft, lang, scale);
     }
@@ -337,14 +322,6 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(top: 10, bottom: 10),
-                decoration: BoxDecoration(color: Colors.grey[600], borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
             _Header(
               title: title,
               coverUrl: _media.coverUrl,
@@ -380,31 +357,13 @@ class _EntryEditorSheetState extends State<EntryEditorSheet> {
         Row(
           children: [
             Expanded(
-              child: FilledButton(
+              child: AppButton(
                 key: const ValueKey('entry-editor-save'),
-                onPressed: _busy ? null : _save,
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                // The label cross-fades to a spinner while saving.
-                child: AnimatedSwitcher(
-                  duration: AppMotion.of(context, AppMotion.short),
-                  switchInCurve: AppMotion.enter,
-                  switchOutCurve: AppMotion.exit,
-                  child: _busy
-                      ? const SizedBox(
-                          key: ValueKey('entry-editor-saving'),
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : Text(
-                          tr('save', lang),
-                          key: const ValueKey('entry-editor-save-label'),
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                ),
+                label: tr('save', lang),
+                large: true,
+                expand: true,
+                busy: _busy,
+                onPressed: _save,
               ),
             ),
             if (!_isNew) ...[
@@ -670,28 +629,14 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cover = coverUrl;
-    final placeholder = Container(
-      width: 44,
-      height: 62,
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-    );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
       child: Row(
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(6),
-            child: cover == null
-                ? placeholder
-                : CachedNetworkImage(
-                    imageUrl: cover,
-                    width: 44,
-                    height: 62,
-                    fit: BoxFit.cover,
-                    memCacheWidth: 88,
-                    placeholder: (_, _) => placeholder,
-                    errorWidget: (_, _, _) => placeholder,
-                  ),
+            child: AppImage(url: cover, cacheWidth: 88, width: 44, height: 62),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -715,29 +660,39 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _LookupError extends StatelessWidget {
-  const _LookupError({required this.lang, required this.onRetry});
+/// Placeholder shaped like the top of the form: the status chips, then a
+/// few labelled fields.
+class _FormSkeleton extends StatelessWidget {
+  const _FormSkeleton({super.key});
 
-  final String lang;
-  final VoidCallback onRetry;
+  static const _chipWidths = [84.0, 72.0, 96.0, 64.0, 80.0];
+  static const _fields = 3;
 
   @override
-  Widget build(BuildContext context) => Padding(
-        key: const ValueKey('entry-editor-lookup-error'),
-        padding: const EdgeInsets.all(32),
+  Widget build(BuildContext context) {
+    return Skeleton(
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Icon(Icons.wifi_off_rounded, size: 40, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('load_error', lang), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
+            const SkeletonBox(width: 60, height: 12),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [for (final width in _chipWidths) SkeletonBox(width: width, height: 32, radius: 16)],
             ),
+            for (var i = 0; i < _fields; i++) ...const [
+              SizedBox(height: 22),
+              SkeletonBox(width: 60, height: 12),
+              SizedBox(height: 10),
+              SkeletonBox(height: 44, radius: 10),
+            ],
           ],
         ),
-      );
+      ),
+    );
+  }
 }

@@ -9,11 +9,21 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/external_url.dart';
 import '../utils/haptics.dart';
+import '../utils/performance_graphs.dart';
+import '../widgets/dev_badge.dart';
 import '../providers/settings_provider.dart' show SettingsProvider, accentColorOptions;
 import '../services/auth_service.dart';
 import '../utils/translations.dart';
 import '../utils/refresh_notifier.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_layout.dart';
+import '../theme/app_text.dart';
+import '../widgets/app_button.dart';
+import '../widgets/app_dialog.dart';
+import '../widgets/app_sheet.dart';
+import '../widgets/motion/pressable.dart';
 import '../widgets/option_sheet.dart';
+import '../widgets/theme_picker.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../services/notification_service.dart';
 import 'search_screen.dart' show recentSearchesPrefsKey;
@@ -77,6 +87,45 @@ String _labelOf(Map<String, String> keys, String value, String lang) {
   return key == null ? value : tr(key, lang);
 }
 
+/// The version line, which switches the frame timing graphs on or off
+/// after [taps] taps in a row (see `performanceGraphsNotifier`): a tool to
+/// find what stutters on a real phone, out of everyone's way.
+class _VersionTapper extends StatefulWidget {
+  const _VersionTapper({required this.child});
+
+  final Widget child;
+
+  static const taps = 7;
+
+  /// Taps further apart than this start the count again.
+  static const _window = Duration(seconds: 2);
+
+  @override
+  State<_VersionTapper> createState() => _VersionTapperState();
+}
+
+class _VersionTapperState extends State<_VersionTapper> {
+  int _count = 0;
+  DateTime _last = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _tap() {
+    final now = DateTime.now();
+    _count = now.difference(_last) > _VersionTapper._window ? 1 : _count + 1;
+    _last = now;
+    if (_count < _VersionTapper.taps) return;
+    _count = 0;
+    performanceGraphsNotifier.value = !performanceGraphsNotifier.value;
+    mediumHaptic();
+  }
+
+  @override
+  Widget build(BuildContext context) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: _tap,
+        child: Padding(padding: const EdgeInsets.all(AppSpace.sm), child: widget.child),
+      );
+}
+
 /// Shows the installed app's version (from the build, e.g. pubspec's 1.0.0).
 class _AppVersion extends StatelessWidget {
   const _AppVersion({required this.builder});
@@ -107,7 +156,7 @@ class _SignedInAsRow extends StatelessWidget {
     final avatar = user?['avatar'];
     final avatarUrl = avatar is Map ? avatar['large'] as String? : null;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      padding: const EdgeInsets.all(_Group.inset),
       child: Row(
         children: [
           CircleAvatar(
@@ -123,10 +172,7 @@ class _SignedInAsRow extends StatelessWidget {
               children: [
                 Text(tr('signed_in_as', lang),
                     style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                Text(name ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                BadgedName(name ?? '', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -190,10 +236,43 @@ class _CacheSizeLabelState extends State<_CacheSizeLabel> {
           final bytes = snapshot.data;
           return Text(
             kIsWeb || bytes == null ? '' : trf('cache_size', widget.lang, {'size': _format(bytes)}),
-            style: const TextStyle(color: Colors.grey, fontSize: 13),
+            style: TextStyle(color: context.colors.textSecondary, fontSize: 13),
           );
         },
       );
+}
+
+/// A section's rows on one rounded block, inset from the screen's edges and
+/// split by hairlines, as iOS groups its settings: short, quiet rows
+/// instead of one full-width card each.
+class _Group extends StatelessWidget {
+  const _Group({required this.children});
+
+  final List<Widget> children;
+
+  /// The room inside the block at the left and right of its rows.
+  static const inset = 14.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.page),
+      child: Material(
+        color: cs.surface,
+        borderRadius: AppRadius.mdAll,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          children: [
+            for (var i = 0; i < children.length; i++) ...[
+              if (i > 0) const Divider(height: 1, indent: inset),
+              children[i],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class SettingsScreen extends StatelessWidget {
@@ -216,240 +295,194 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.fromLTRB(0, AppSpace.sm, 0, AppSpace.sm),
         children: [
+          // Who is signed in, on its own above the settings.
+          if (username != null) _Group(children: [_SignedInAsRow(auth: auth, lang: lang)]),
+
           // ── General ──
           _sectionHeader(tr('general', lang)),
-          _tile(
-            icon: Icons.language,
-            label: tr('language', lang),
-            trailing: Text(_languageNames[lang] ?? lang,
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            onTap: () => showOptionSheet<String>(
-              context: context,
-              title: tr('language', lang),
-              options: _languageNames.keys.toList(),
-              labelOf: (v) => _languageNames[v] ?? v,
-              current: lang,
-              onSelected: (v) => context.read<SettingsProvider>().setLanguage(v),
+          _Group(children: [
+            _tile(
+              label: tr('language', lang),
+              trailing: Text(_languageNames[lang] ?? lang,
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+              onTap: () => showOptionSheet<String>(
+                context: context,
+                title: tr('language', lang),
+                options: _languageNames.keys.toList(),
+                labelOf: (v) => _languageNames[v] ?? v,
+                current: lang,
+                onSelected: (v) => context.read<SettingsProvider>().setLanguage(v),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            icon: Icons.palette_outlined,
-            label: tr('appearance', lang),
-            trailing: Text(_labelOf(_appearanceKeys, settings.appearance, lang),
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            onTap: () => showOptionSheet<String>(
-              context: context,
-              title: tr('appearance', lang),
-              options: _appearanceKeys.keys.toList(),
-              labelOf: (v) => _labelOf(_appearanceKeys, v, lang),
-              current: settings.appearance,
-              onSelected: (v) => context.read<SettingsProvider>().setAppearance(v),
+            _tile(
+              label: tr('title_language', lang),
+              trailing: Text(_labelOf(_titleLanguageKeys, settings.titleLanguage, lang),
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+              onTap: () => showOptionSheet<String>(
+                context: context,
+                title: tr('title_language', lang),
+                options: _titleLanguageKeys.keys.toList(),
+                labelOf: (v) => _labelOf(_titleLanguageKeys, v, lang),
+                current: settings.titleLanguage,
+                onSelected: (v) => context.read<SettingsProvider>().setTitleLanguage(v),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            icon: Icons.color_lens_outlined,
-            label: tr('accent_color', lang),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: settings.accentColor,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(_labelOf(_accentColorKeys, settings.accentColorName, lang),
-                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
-              ],
+            _tile(
+              label: tr('default_tab', lang),
+              trailing: Text(tr(_tabLabelKeys[settings.defaultTab] ?? 'nav_anime', lang),
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+              onTap: () => showOptionSheet<int>(
+                context: context,
+                title: tr('default_tab', lang),
+                options: _tabLabelKeys.keys.toList(),
+                labelOf: (tab) => tr(_tabLabelKeys[tab]!, lang),
+                iconOf: (tab) => _tabIcons[tab]!,
+                current: settings.defaultTab,
+                onSelected: (tab) => context.read<SettingsProvider>().setDefaultTab(tab),
+              ),
             ),
-            onTap: () => _showAccentColorPicker(context, settings, lang),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            icon: Icons.title,
-            label: tr('title_language', lang),
-            trailing: Text(_labelOf(_titleLanguageKeys, settings.titleLanguage, lang),
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            onTap: () => showOptionSheet<String>(
-              context: context,
-              title: tr('title_language', lang),
-              options: _titleLanguageKeys.keys.toList(),
-              labelOf: (v) => _labelOf(_titleLanguageKeys, v, lang),
-              current: settings.titleLanguage,
-              onSelected: (v) => context.read<SettingsProvider>().setTitleLanguage(v),
+            _switchTile(
+              label: tr('haptic_feedback', lang),
+              value: settings.hapticsEnabled,
+              onChanged: (v) => context.read<SettingsProvider>().setHapticsEnabled(v),
             ),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            icon: Icons.tab_outlined,
-            label: tr('default_tab', lang),
-            trailing: Text(tr(_tabLabelKeys[settings.defaultTab] ?? 'nav_anime', lang),
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            onTap: () => showOptionSheet<int>(
-              context: context,
-              title: tr('default_tab', lang),
-              options: _tabLabelKeys.keys.toList(),
-              labelOf: (tab) => tr(_tabLabelKeys[tab]!, lang),
-              iconOf: (tab) => _tabIcons[tab]!,
-              current: settings.defaultTab,
-              onSelected: (tab) => context.read<SettingsProvider>().setDefaultTab(tab),
-            ),
-          ),
-          const SizedBox(height: 4),
-          _switchTile(
-            icon: Icons.vibration,
-            label: tr('haptic_feedback', lang),
-            value: settings.hapticsEnabled,
-            onChanged: (v) => context.read<SettingsProvider>().setHapticsEnabled(v),
-          ),
+          ]),
 
-          const SizedBox(height: 16),
-          const Divider(height: 1),
+          // ── Theme: the colours, and how they show ──
+          _sectionHeader(tr('settings_theme', lang)),
+          _Group(children: [
+            ThemePicker(lang: lang, inset: _Group.inset),
+            // Only a theme that comes in light follows Appearance, and only
+            // one without an accent of its own takes the one picked here.
+            if (settings.palette.hasLight)
+              _tile(
+              label: tr('appearance', lang),
+              trailing: Text(_labelOf(_appearanceKeys, settings.appearance, lang),
+                  style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+              onTap: () => showOptionSheet<String>(
+                context: context,
+                title: tr('appearance', lang),
+                options: _appearanceKeys.keys.toList(),
+                labelOf: (v) => _labelOf(_appearanceKeys, v, lang),
+                current: settings.appearance,
+                onSelected: (v) => context.read<SettingsProvider>().setAppearance(v),
+              ),
+            ),
+            if (settings.palette.accent == null)
+              _tile(
+              label: tr('accent_color', lang),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: settings.accentColor,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(_labelOf(_accentColorKeys, settings.accentColorName, lang),
+                      style: TextStyle(color: context.colors.textSecondary, fontSize: 13)),
+                ],
+              ),
+              onTap: () => _showAccentColorPicker(context, settings, lang),
+            ),
+          ]),
 
           // ── Notifications ──
           _sectionHeader(tr('notifications', lang)),
-          _switchTile(
-            icon: Icons.notifications_outlined,
-            label: tr('push_notifications', lang),
-            value: settings.pushNotifications,
-            onChanged: (v) async {
-              final sp = context.read<SettingsProvider>();
-              final messenger = ScaffoldMessenger.of(context);
-              await sp.setPushNotifications(v);
-              if (v) {
-                final granted = await NotificationService().requestPermission();
-                if (!granted && context.mounted) {
-                  await sp.setPushNotifications(false);
-                  messenger.showSnackBar(SnackBar(
-                    content: Text(tr('settings_enable_notifications', lang)),
-                  ));
+          _Group(children: [
+            _switchTile(
+              label: tr('new_episode_alerts', lang),
+              value: settings.episodeAlerts,
+              onChanged: (v) async {
+                final sp = context.read<SettingsProvider>();
+                final messenger = ScaffoldMessenger.of(context);
+                await sp.setEpisodeAlerts(v);
+                if (v) {
+                  final granted = await NotificationService().requestPermission();
+                  if (!granted && context.mounted) {
+                    await sp.setEpisodeAlerts(false);
+                    messenger.showSnackBar(SnackBar(
+                      content: Text(tr('settings_enable_notifications', lang)),
+                    ));
+                  } else if (context.mounted) {
+                    listRefreshNotifier.value++;
+                  }
+                } else {
+                  await NotificationService().cancelAll();
                 }
-              } else {
-                await NotificationService().cancelAll();
-              }
-            },
-          ),
-          const SizedBox(height: 4),
-          _switchTile(
-            icon: Icons.new_releases_outlined,
-            label: tr('new_episode_alerts', lang),
-            value: settings.newEpisodeAlerts,
-            onChanged: (v) async {
-              final sp = context.read<SettingsProvider>();
-              final messenger = ScaffoldMessenger.of(context);
-              await sp.setNewEpisodeAlerts(v);
-              if (v) {
-                final granted = await NotificationService().requestPermission();
-                if (!granted && context.mounted) {
-                  await sp.setNewEpisodeAlerts(false);
-                  messenger.showSnackBar(SnackBar(
-                    content: Text(tr('settings_enable_notifications', lang)),
-                  ));
-                } else if (context.mounted) {
-                  listRefreshNotifier.value++;
-                }
-              } else {
-                await NotificationService().cancelAll();
-              }
-            },
-          ),
-          const SizedBox(height: 4),
-          _switchTile(
-            icon: Icons.group_outlined,
-            label: tr('friend_activity_alerts', lang),
-            value: settings.friendActivityAlerts,
-            onChanged: (v) async {
-              await context.read<SettingsProvider>().setFriendActivityAlerts(v);
-            },
-          ),
-
-          const SizedBox(height: 16),
-          const Divider(height: 1),
+              },
+            ),
+          ]),
 
           // ── Data ──
           _sectionHeader(tr('data_storage', lang)),
-          _tile(
-            icon: Icons.cached,
-            label: tr('clear_cache', lang),
-            trailing: _CacheSizeLabel(lang: lang),
-            onTap: () => _clearImageCache(context, lang),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            icon: Icons.sync,
-            label: tr('sync_anilist', lang),
-            onTap: () => _syncWithAniList(context, auth, lang),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            icon: Icons.history_toggle_off,
-            label: tr('clear_recent_searches', lang),
-            onTap: () => _clearRecentSearches(context, lang),
-          ),
-
-          const SizedBox(height: 16),
-          const Divider(height: 1),
+          _Group(children: [
+            _tile(
+              label: tr('clear_cache', lang),
+              trailing: _CacheSizeLabel(lang: lang),
+              onTap: () => _clearImageCache(context, lang),
+            ),
+            _tile(
+              label: tr('sync_anilist', lang),
+              onTap: () => _syncWithAniList(context, auth, lang),
+            ),
+            _tile(
+              label: tr('clear_recent_searches', lang),
+              onTap: () => _clearRecentSearches(context, lang),
+            ),
+          ]),
 
           // ── Account ──
           _sectionHeader(tr('account', lang)),
-          if (username != null) _SignedInAsRow(auth: auth, lang: lang),
-          _tile(
-            icon: Icons.open_in_new,
-            label: tr('view_on_anilist', lang),
-            onTap: () {
-              if (username != null) {
-                _openUrl('https://anilist.co/user/${Uri.encodeComponent(username)}');
-              }
-            },
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            icon: Icons.logout,
-            label: tr('logout', lang),
-            color: Colors.red,
-            onTap: () => _confirmLogout(context, auth, lang),
-          ),
-
-          const SizedBox(height: 16),
-          const Divider(height: 1),
+          _Group(children: [
+            _tile(
+              label: tr('view_on_anilist', lang),
+              onTap: () {
+                if (username != null) {
+                  _openUrl('https://anilist.co/user/${Uri.encodeComponent(username)}');
+                }
+              },
+            ),
+            _tile(
+              label: tr('logout', lang),
+              color: Colors.red,
+              onTap: () => _confirmLogout(context, auth, lang),
+            ),
+          ]),
 
           // ── About ──
           _sectionHeader(tr('about', lang)),
-          _tile(
-            icon: Icons.info_outline,
-            label: tr('about_anispark', lang),
-            onTap: () => _showAbout(context, lang),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            icon: Icons.description_outlined,
-            label: tr('terms', lang),
-            onTap: () => _openUrl('https://anilist.co/terms'),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            icon: Icons.privacy_tip_outlined,
-            label: tr('privacy', lang),
-            onTap: () => _showPrivacy(context, lang),
-          ),
-          const SizedBox(height: 4),
-          _tile(
-            icon: Icons.feedback_outlined,
-            label: tr('send_feedback', lang),
-            onTap: () => _openUrl('https://github.com/t4kina/AniSpark/issues/new'),
-          ),
+          _Group(children: [
+            _tile(
+              label: tr('about_anispark', lang),
+              onTap: () => _showAbout(context, lang),
+            ),
+            _tile(
+              label: tr('terms', lang),
+              onTap: () => _openUrl('https://anilist.co/terms'),
+            ),
+            _tile(
+              label: tr('privacy', lang),
+              onTap: () => _showPrivacy(context, lang),
+            ),
+            _tile(
+              label: tr('send_feedback', lang),
+              onTap: () => _openUrl('https://github.com/t4kina/AniSpark/issues/new'),
+            ),
+          ]),
 
           const SizedBox(height: 24),
           Center(
-            child: _AppVersion(
-              builder: (v) => Text('AniSpark v$v', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            child: _VersionTapper(
+              child: _AppVersion(
+                builder: (v) => Text('AniSpark v$v', style: TextStyle(color: context.colors.textSecondary, fontSize: 12)),
+              ),
             ),
           ),
           const SizedBox(height: 32),
@@ -459,16 +492,24 @@ class SettingsScreen extends StatelessWidget {
   }
 
   static Widget _sectionHeader(String title) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-        child: Text(title,
-            style: const TextStyle(
-                fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey, letterSpacing: 0.5)),
+        // Lined up with the text inside the groups below.
+        padding: const EdgeInsets.fromLTRB(
+          AppSpace.page + _Group.inset,
+          AppSpace.xl,
+          AppSpace.page + _Group.inset,
+          AppSpace.sm,
+        ),
+        child: Builder(
+          builder: (context) => Text(
+            title.toUpperCase(),
+            style: AppText.overline.copyWith(color: context.colors.textSecondary),
+          ),
+        ),
       );
 
   /// A setting switched on or off, by the switch or the whole row, with a
   /// selection tick.
   static Widget _switchTile({
-    required IconData icon,
     required String label,
     required bool value,
     required ValueChanged<bool> onChanged,
@@ -480,8 +521,11 @@ class SettingsScreen extends StatelessWidget {
     }
 
     return ListTile(
-      leading: Icon(icon, color: Colors.grey, size: 22),
-      title: Text(label, style: const TextStyle(fontSize: 14)),
+      tileColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(),
+      visualDensity: VisualDensity.compact,
+      contentPadding: const EdgeInsets.symmetric(horizontal: _Group.inset),
+      title: Text(label, style: const TextStyle(fontSize: 15)),
       trailing: Builder(builder: (ctx) => Transform.scale(
         scale: 0.75,
         child: CupertinoSwitch(
@@ -494,51 +538,48 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  /// A setting's row: its name, what it is set to (or a chevron) at the
+  /// right. No icon: the names say enough, and a column of icons only
+  /// crowds the page.
   static Widget _tile({
-    required IconData icon,
     required String label,
     Color? color,
     Widget? trailing,
     required VoidCallback onTap,
   }) =>
       ListTile(
-        leading: Icon(icon, color: color ?? Colors.grey, size: 22),
-        title: Text(label, style: TextStyle(color: color, fontSize: 14)),
-        trailing: trailing ?? const Icon(Icons.chevron_right, color: Colors.grey, size: 18),
+        tileColor: Colors.transparent,
+        shape: const RoundedRectangleBorder(),
+        visualDensity: VisualDensity.compact,
+        contentPadding: const EdgeInsets.symmetric(horizontal: _Group.inset),
+        title: Text(label, style: TextStyle(color: color, fontSize: 15)),
+        trailing: trailing ??
+            Builder(
+              builder: (context) => Icon(Icons.chevron_right, color: context.colors.textTertiary, size: 18),
+            ),
         onTap: onTap,
       );
 
   static void _showAccentColorPicker(
       BuildContext context, SettingsProvider settings, String lang) {
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => SafeArea(
+        top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Container(
-                width: 40, height: 4,
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                    color: Colors.grey[400],
-                    borderRadius: BorderRadius.circular(2)),
-              ),
-              Text(tr('accent_color', lang),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 20),
+              SheetTitle(tr('accent_color', lang)),
+              const SizedBox(height: 8),
               Wrap(
                 spacing: 16,
                 runSpacing: 16,
                 alignment: WrapAlignment.center,
                 children: accentColorOptions.entries.map((e) {
                   final isSelected = settings.accentColorName == e.key;
-                  return GestureDetector(
+                  return Pressable(
                     onTap: () {
                       selectionHaptic();
                       context.read<SettingsProvider>().setAccentColor(e.key);
@@ -586,64 +627,46 @@ class SettingsScreen extends StatelessWidget {
   static Future<void> _openUrl(String url) => openExternalUrl(url);
 
   static void _showAbout(BuildContext context, String lang) {
-    showDialog(
+    showAppDialog<void>(
       context: context,
-      builder: (_) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset('assets/logo.jpg', width: 40, height: 40),
-            ),
-            const SizedBox(width: 12),
-            const Text('AniSpark', style: TextStyle(fontSize: 18)),
-          ],
+      builder: (dialogContext) => AppDialog(
+        leading: ClipRRect(
+          borderRadius: AppRadius.smAll,
+          child: Image.asset('assets/logo.jpg', width: 40, height: 40),
         ),
+        title: 'AniSpark',
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _AppVersion(
-              builder: (v) => Text(trf('settings_version', lang, {'v': v}),
-                  style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            ),
-            const SizedBox(height: 12),
-            Text(tr('about_description', lang),
-                style: const TextStyle(color: Colors.grey, height: 1.5, fontSize: 13)),
-            const SizedBox(height: 12),
-            Text(tr('made_with', lang), style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            _AppVersion(builder: (v) => Text(trf('settings_version', lang, {'v': v}))),
+            const SizedBox(height: AppSpace.md),
+            Text(tr('about_description', lang)),
+            const SizedBox(height: AppSpace.md),
+            Text(tr('made_with', lang), style: AppText.caption),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Builder(builder: (ctx) => Text(tr('close', lang), style: TextStyle(color: Theme.of(ctx).colorScheme.primary))),
-          ),
-        ],
+        actions: [_closeButton(dialogContext, lang)],
       ),
     );
   }
 
+  static Widget _closeButton(BuildContext dialogContext, String lang) => AppButton(
+        label: tr('close', lang),
+        kind: AppButtonKind.tonal,
+        expand: true,
+        onPressed: () => Navigator.pop(dialogContext),
+      );
+
   /// What AniSpark does with the user's data. It has no servers of its own,
   /// so this is its whole privacy policy; AniList's terms cover the account.
   static void _showPrivacy(BuildContext context, String lang) {
-    showDialog(
+    showAppDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(tr('privacy', lang), style: const TextStyle(fontSize: 18)),
-        content: SingleChildScrollView(
-          child: Text(tr('privacy_summary', lang),
-              style: const TextStyle(color: Colors.grey, height: 1.5, fontSize: 13)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(tr('close', lang),
-                style: TextStyle(color: Theme.of(dialogContext).colorScheme.primary)),
-          ),
-        ],
+      builder: (dialogContext) => AppDialog(
+        title: tr('privacy', lang),
+        content: Text(tr('privacy_summary', lang)),
+        actions: [_closeButton(dialogContext, lang)],
       ),
     );
   }
@@ -709,28 +732,19 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
-  static void _confirmLogout(BuildContext context, AuthService auth, String lang) {
-    showDialog(
+  static Future<void> _confirmLogout(BuildContext context, AuthService auth, String lang) async {
+    final confirmed = await showAppConfirm(
       context: context,
-      builder: (_) => AlertDialog(
-        title: Text(tr('logout', lang)),
-        content: Text(tr('logout_confirm', lang)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(tr('cancel', lang))),
-          TextButton(
-            onPressed: () {
-              // Back to the tabs first (closing this dialog and Settings);
-              // AuthGate swaps them for the login screen once the session
-              // has ended, whenever logout() reports it.
-              Navigator.of(context).popUntil((route) => route.isFirst);
-              auth.logout();
-            },
-            child: Text(tr('logout', lang), style: const TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
+      title: tr('logout', lang),
+      message: tr('logout_confirm', lang),
+      confirmLabel: tr('logout', lang),
+      cancelLabel: tr('cancel', lang),
+      destructive: true,
     );
+    if (!confirmed || !context.mounted) return;
+    // Back to the tabs first (closing Settings); AuthGate swaps them for the
+    // login screen once the session has ended, whenever logout() reports it.
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    auth.logout();
   }
 }

@@ -7,6 +7,9 @@ import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/browse_api.dart';
 import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/app_button.dart';
+import 'package:anispark/widgets/skeletons.dart';
+import 'package:anispark/widgets/state_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -267,6 +270,8 @@ void main() {
     await tester.tap(find.text(_en('apply')));
     await settle(tester);
 
+    expect(find.widgetWithText(StateMessage, _en('browse_empty')), findsOneWidget);
+    expect(find.widgetWithText(AppButton, _en('browse_clear_filters')), findsOneWidget);
     expect(find.byKey(const ValueKey('browse-empty-clear')), findsOneWidget);
     expect(find.text('Show 1'), findsNothing);
 
@@ -486,5 +491,19 @@ void main() {
     for (final pill in ['browse-sort', 'browse-rating', 'browse-genres', 'browse-format']) {
       expect(tester.getSize(find.byKey(ValueKey(pill))).height, greaterThanOrEqualTo(44), reason: pill);
     }
+  });
+
+  testWidgets('shows the shape of the grid while the first page loads', (tester) async {
+    final held = _HeldAniList();
+    await pumpBrowse(tester, BrowseApi(service: AniListService(client: held.client)));
+
+    expect(find.byType(GridSkeleton), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    held.answer(0, _page([1, 2]));
+    await settle(tester);
+
+    expect(find.byType(GridSkeleton), findsNothing);
+    expect(find.text('Show 1'), findsOneWidget);
   });
 }

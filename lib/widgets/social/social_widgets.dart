@@ -9,11 +9,24 @@ import '../../utils/activity_text.dart';
 import '../../utils/haptics.dart';
 import '../../utils/translations.dart' show tr;
 import '../motion/animated_count.dart';
+import '../motion/cover_hero.dart';
+import '../motion/like_burst.dart';
 import '../motion/pop_on_change.dart';
+import '../motion/pressable.dart';
+import '../motion/rounded_hero.dart';
 import '../user_avatar.dart';
 
+/// The hero tag of [user]'s avatar shown by [heroScope] (see
+/// `personHeroTag`), or null without a scope or a user id.
+String? userHeroTag(String? heroScope, Map<String, dynamic>? user) {
+  final id = user?['id'] as int?;
+  return heroScope == null || id == null ? null : personHeroTag(heroScope, id);
+}
+
 /// Opens the profile of an AniList `user` object (`{id, name, avatar}`).
-void openUserProfile(BuildContext context, Map<String, dynamic>? user) {
+/// With the [heroScope] of a [ProfileAvatar] of theirs on this page, that
+/// avatar flies to the profile.
+void openUserProfile(BuildContext context, Map<String, dynamic>? user, {String? heroScope}) {
   final id = user?['id'] as int?;
   if (id == null) return;
   final lang = context.read<SettingsProvider>().language;
@@ -24,6 +37,7 @@ void openUserProfile(BuildContext context, Map<String, dynamic>? user) {
         userId: id,
         name: user?['name'] as String? ?? tr('feed_unknown', lang),
         avatarUrl: asJsonMap(user?['avatar'])?['large'] as String?,
+        heroTag: userHeroTag(heroScope, user),
       ),
     ),
   );
@@ -49,8 +63,8 @@ ButtonStyle _countButtonStyle(Color color) => TextButton.styleFrom(
     );
 
 /// Heart toggle with the like count, for activities and replies. Liking
-/// pops the heart with a light haptic tap and the count rolls to its new
-/// value; unliking only rolls the count.
+/// pops the heart inside a small burst, with a light haptic tap, and the
+/// count rolls to its new value; unliking only rolls the count.
 class LikeButton extends StatelessWidget {
   const LikeButton({
     super.key,
@@ -77,10 +91,14 @@ class LikeButton extends StatelessWidget {
       child: TextButton.icon(
         onPressed: onPressed == null ? null : () => _press(onPressed),
         style: _countButtonStyle(isLiked ? Colors.redAccent : Colors.grey),
-        icon: PopOnChange(
-          value: isLiked,
-          when: (liked) => liked == true,
-          child: Icon(isLiked ? Icons.favorite : Icons.favorite_border, size: 16),
+        icon: LikeBurst(
+          active: isLiked,
+          color: Colors.redAccent,
+          child: PopOnChange(
+            value: isLiked,
+            when: (liked) => liked == true,
+            child: Icon(isLiked ? Icons.favorite : Icons.favorite_border, size: 16),
+          ),
         ),
         label: AnimatedCount(value: count),
       ),
@@ -116,27 +134,35 @@ const _minTapSize = 44.0;
 /// A user's round avatar that opens their profile. The hit area is at least
 /// 44x44 even when the avatar is drawn smaller.
 class ProfileAvatar extends StatelessWidget {
-  const ProfileAvatar({super.key, required this.user, this.radius = 18});
+  const ProfileAvatar({super.key, required this.user, this.radius = 18, this.heroScope});
 
   final Map<String, dynamic>? user;
   final double radius;
+
+  /// What tells this avatar apart from others of the same user on the page
+  /// (e.g. the post it is on), so it can fly to their profile; see
+  /// `personHeroTag`.
+  final String? heroScope;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
       label: user?['name'] as String?,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => openUserProfile(context, user),
+      child: Pressable(
+        onTap: () => openUserProfile(context, user, heroScope: heroScope),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minWidth: _minTapSize, minHeight: _minTapSize),
           child: Center(
             widthFactor: 1,
             heightFactor: 1,
-            child: UserAvatar(
-              url: asJsonMap(user?['avatar'])?['large'] as String?,
-              size: radius * 2,
+            child: RoundedHero(
+              tag: userHeroTag(heroScope, user),
+              borderRadius: BorderRadius.circular(radius),
+              child: UserAvatar(
+                url: asJsonMap(user?['avatar'])?['large'] as String?,
+                size: radius * 2,
+              ),
             ),
           ),
         ),
@@ -157,8 +183,7 @@ class TappableUserName extends StatelessWidget {
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: Pressable.dim(
         onTap: onTap,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: _minTapSize),

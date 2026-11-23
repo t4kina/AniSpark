@@ -1,19 +1,23 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../widgets/dev_badge.dart';
 import '../providers/settings_provider.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../services/social_api.dart';
 import '../utils/activity_text.dart' show relativeTime;
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import '../widgets/social/social_widgets.dart';
 import 'activity_thread_screen.dart';
+import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// The viewer's AniList notifications, newest first. Opening it marks them
 /// all read on AniList.
@@ -199,31 +203,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   /// Each state is keyed so switching between them cross-fades.
   Widget _body(String lang, bool loggedIn) {
     if (!loggedIn) {
-      return _CenteredMessage(
+      return StateMessage(
         key: const ValueKey('inbox-logged-out'),
         icon: Icons.notifications_off_outlined,
-        text: tr('feed_connect_from_profile', lang),
+        message: tr('feed_connect_from_profile', lang),
       );
     }
     if (_loading) return const FeedSkeleton(key: ValueKey('inbox-skeleton'), cards: 8);
     if (_items.isEmpty && _hasError) {
-      return Center(
-        key: const ValueKey('inbox-error'),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
-            ),
-          ],
-        ),
-      );
+      return LoadErrorView(key: const ValueKey('inbox-error'), onRetry: _load);
     }
     // The first page cascades in once; refreshes and later pages don't.
     return EntranceGate(
@@ -231,15 +219,27 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       trigger: null,
       child: NotificationListener<ScrollNotification>(
         onNotification: _onScrollNotification,
-        child: RefreshIndicator(
+        child: AppRefreshIndicator(
           onRefresh: () => _load(force: true),
           child: _items.isEmpty
-              ? ListView(
+              // Fills the page, so it is centred and can still be pulled.
+              ? CustomScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  children: [
-                    const SizedBox(height: 120),
-                    _CenteredMessage(icon: Icons.notifications_none, text: tr('inbox_empty', lang)),
-                    if (_hasMore) _footer(lang),
+                  slivers: [
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          StateMessage(
+                            key: const ValueKey('inbox-empty'),
+                            icon: Icons.notifications_none,
+                            message: tr('inbox_empty', lang),
+                          ),
+                          if (_hasMore) _footer(lang),
+                        ],
+                      ),
+                    ),
                   ],
                 )
               : ListView.separated(
@@ -271,6 +271,9 @@ class _NotificationTile extends StatelessWidget {
   const _NotificationTile({required this.notification, required this.lang});
 
   final InboxNotification notification;
+
+  /// Tells this notification's avatar apart from the person's other ones.
+  String get _heroScope => 'inbox-${notification.id}';
   final String lang;
 
   static final _placeholder = RegExp(r'\{(\w+)\}');
@@ -310,6 +313,9 @@ class _NotificationTile extends StatelessWidget {
       if (match.start > last) spans.add(TextSpan(text: template.substring(last, match.start)));
       final value = args[match[1]];
       spans.add(TextSpan(text: value ?? match[0], style: value == null ? null : bold));
+      if (match[1] == 'name') {
+        if (devBadgeSpan(value, fontSize: bold.fontSize ?? 14) case final seal?) spans.add(seal);
+      }
       last = match.end;
     }
     if (last < template.length) spans.add(TextSpan(text: template.substring(last)));
@@ -327,7 +333,9 @@ class _NotificationTile extends StatelessWidget {
             MaterialPageRoute(builder: (_) => ActivityThreadScreen(activityId: activityId)),
           );
     }
-    if (kind == InboxKind.following) return () => openUserProfile(context, notification.user);
+    if (kind == InboxKind.following) {
+      return () => openUserProfile(context, notification.user, heroScope: _heroScope);
+    }
     return null;
   }
 
@@ -377,51 +385,19 @@ class _NotificationTile extends StatelessWidget {
   Widget _leading(BuildContext context) {
     final kind = notification.kind;
     if (kind.isAboutActivity || kind == InboxKind.following) {
-      return ProfileAvatar(user: notification.user, radius: 20);
+      return ProfileAvatar(user: notification.user, radius: 20, heroScope: _heroScope);
     }
     final cover = asJsonMap(notification.media?['coverImage'])?['large'] as String?;
-    final placeholder = Container(
-      height: 56,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Icon(kind == InboxKind.mediaDeletion ? Icons.delete_outline : Icons.movie_outlined,
-          size: 20, color: Colors.grey),
-    );
-    if (cover == null) return placeholder;
     return ClipRRect(
       borderRadius: BorderRadius.circular(6),
-      child: CachedNetworkImage(
-        imageUrl: cover,
+      child: AppImage(
+        url: cover,
+        cacheWidth: 80,
         width: 40,
         height: 56,
-        fit: BoxFit.cover,
-        memCacheWidth: 80,
-        errorWidget: (_, _, _) => placeholder,
+        placeholder: Icon(kind == InboxKind.mediaDeletion ? Icons.delete_outline : Icons.movie_outlined,
+            size: 20, color: Colors.grey),
       ),
     );
   }
-}
-
-class _CenteredMessage extends StatelessWidget {
-  const _CenteredMessage({super.key, required this.icon, required this.text});
-
-  final IconData icon;
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 48, color: Colors.grey),
-              const SizedBox(height: 12),
-              Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-            ],
-          ),
-        ),
-      );
 }

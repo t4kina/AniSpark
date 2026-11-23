@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
-import 'package:shimmer/shimmer.dart';
+
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
@@ -12,16 +11,25 @@ import '../theme/app_motion.dart';
 import '../utils/anime_season.dart';
 import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_refresh_indicator.dart';
+import '../theme/app_layout.dart';
+import '../theme/app_text.dart';
 import '../widgets/anime_card.dart';
+import '../widgets/app_button.dart';
+import '../widgets/home_spotlight.dart';
+import '../widgets/media_preview.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
+import '../widgets/skeletons.dart';
 import 'browse_screen.dart';
 import 'calendar_screen.dart';
 import 'detail_screen.dart';
 import 'search_screen.dart';
 import 'season_screen.dart';
+import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// The bottom-navigation tab that shows Discover.
 const _discoverTab = 2;
@@ -240,8 +248,9 @@ class _HomeScreenState extends State<HomeScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: GestureDetector(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, AppSpace.md),
+            child: Pressable(
+              pressedScale: 0.98,
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const SearchScreen()),
@@ -260,9 +269,9 @@ class _HomeScreenState extends State<HomeScreen> {
           Expanded(
             child: FadeSwitcher(
               child: _loading
-                  ? _buildShimmer()
+                  ? const _HomeSkeleton()
                   : _hasError
-                      ? _buildError()
+                      ? LoadErrorView(onRetry: _load)
                       : _buildSections(lang),
             ),
           ),
@@ -273,7 +282,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Each row has its own hero scope: one media can be in several rows, and
   // two covers with one tag on a page break the flight to the detail page.
-  Widget _buildSections(String lang) => RefreshIndicator(
+  Widget _buildSections(String lang) => AppRefreshIndicator(
         onRefresh: _refresh,
         child: SingleChildScrollView(
           controller: _scroll,
@@ -281,6 +290,9 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // What is trending most leads the page, on its own banner.
+              if (_trending.isNotEmpty && _trending.first is Map<String, dynamic>)
+                HomeSpotlight(media: _trending.first as Map<String, dynamic>),
               _buildShortcuts(lang),
               const SizedBox(height: 12),
               if (_weeklySchedule.isNotEmpty) ...[
@@ -342,22 +354,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// "Calendar" and "Seasons" shortcuts at the top of Discover.
   Widget _buildShortcuts(String lang) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        // Room to breathe under the spotlight above.
+        padding: const EdgeInsets.fromLTRB(16, AppSpace.md, 16, 0),
         child: Row(
           children: [
             Expanded(
-              child: FilledButton.tonalIcon(
+              child: AppButton(
+                label: tr('cal_shortcut', lang),
+                icon: Icons.calendar_month_outlined,
+                kind: AppButtonKind.tonal,
+                expand: true,
                 onPressed: _openCalendar,
-                icon: const Icon(Icons.calendar_month_outlined, size: 18),
-                label: Text(tr('cal_shortcut', lang), overflow: TextOverflow.ellipsis),
               ),
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: FilledButton.tonalIcon(
+              child: AppButton(
+                label: tr('season_shortcut', lang),
+                icon: Icons.grid_view_outlined,
+                kind: AppButtonKind.tonal,
+                expand: true,
                 onPressed: () => _openSeason(_currentSeason),
-                icon: const Icon(Icons.grid_view_outlined, size: 18),
-                label: Text(tr('season_shortcut', lang), overflow: TextOverflow.ellipsis),
               ),
             ),
           ],
@@ -383,27 +400,31 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Row(
           children: [
             Expanded(
+              // The page's own text colour, not grey: these name what the
+              // eye is looking for.
               child: Text(
                 title,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey,
-                  letterSpacing: 0.5,
-                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.footnote.copyWith(fontWeight: FontWeight.w700, letterSpacing: 0.6),
               ),
             ),
             if (seeAll != null)
-              GestureDetector(
+              Pressable.dim(
                 onTap: seeAll,
-                child: Builder(builder: (ctx) => Text(
-                  tr('home_see_all', lang),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(ctx).colorScheme.primary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                )),
+                child: Builder(builder: (ctx) {
+                  final accent = Theme.of(ctx).colorScheme.primary;
+                  return Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        tr('home_see_all', lang),
+                        style: AppText.caption.copyWith(color: accent, fontWeight: FontWeight.w600),
+                      ),
+                      Icon(Icons.chevron_right_rounded, size: 16, color: accent),
+                    ],
+                  );
+                }),
               ),
           ],
         ),
@@ -467,9 +488,9 @@ class _HomeScreenState extends State<HomeScreen> {
           final timeLabel = '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
           // A show can air more than once this week, so the scope is per card.
           final heroTag = id == null ? null : coverHeroTag('home-week-$i', id);
-          final placeholder = ColoredBox(color: Theme.of(ctx).colorScheme.surfaceContainerHighest);
 
           return Pressable(
+            onLongPress: id == null ? null : () => showMediaPreview(ctx, media: media),
             onTap: id != null
                 ? () => Navigator.push(
                       ctx,
@@ -493,17 +514,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: RoundedHero(
                       tag: heroTag,
                       borderRadius: const BorderRadius.horizontal(left: Radius.circular(10)),
-                      child: cover != null
-                          ? CachedNetworkImage(
-                              imageUrl: cover,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 140,
-                              fadeInDuration: AppMotion.of(ctx, AppMotion.short),
-                              fadeOutDuration: Duration.zero,
-                              placeholder: (_, _) => placeholder,
-                              errorWidget: (_, _, _) => placeholder,
-                            )
-                          : placeholder,
+                      child: AppImage(url: cover, cacheWidth: 140),
                     ),
                   ),
                   Expanded(
@@ -542,111 +553,79 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
 
-  Widget _buildError() {
-    final lang = context.watch<SettingsProvider>().language;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text(tr('load_error', lang),
-              style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: _load,
-            icon: const Icon(Icons.refresh),
-            label: Text(tr('retry', lang)),
-          ),
-        ],
+/// Placeholder shaped like the home page: the two shortcuts, then rows of
+/// covers under their titles.
+class _HomeSkeleton extends StatelessWidget {
+  const _HomeSkeleton();
+
+  static const _sections = 7;
+  static const _coversPerRow = 6;
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeleton(
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // The Calendar and Seasons shortcuts, so the rows don't shift
+            // down when the content replaces this.
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Row(
+                children: [
+                  Expanded(child: SkeletonBox(height: 40, radius: 20)),
+                  SizedBox(width: 10),
+                  Expanded(child: SkeletonBox(height: 40, radius: 20)),
+                ],
+              ),
+            ),
+            for (var i = 0; i < _sections; i++) const _SectionSkeleton(covers: _coversPerRow),
+          ],
+        ),
       ),
     );
   }
+}
 
-  Widget _buildShimmer() {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    return Shimmer.fromColors(
-        baseColor: isDark ? Colors.grey[800]! : Colors.grey[300]!,
-        highlightColor: isDark ? Colors.grey[600]! : Colors.grey[100]!,
-        child: SingleChildScrollView(
-          physics: const NeverScrollableScrollPhysics(),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // The Calendar and Seasons shortcuts, so the rows don't shift
-              // down when the content replaces this.
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: Row(
-                  children: [
-                    for (var i = 0; i < 2; i++) ...[
-                      if (i > 0) const SizedBox(width: 10),
-                      Expanded(
-                        child: Container(
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
+class _SectionSkeleton extends StatelessWidget {
+  const _SectionSkeleton({required this.covers});
+
+  final int covers;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 20, 16, 10),
+          child: SkeletonBox(width: 120, height: 16, radius: 4),
+        ),
+        SizedBox(
+          height: 210,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: covers,
+            itemBuilder: (_, _) => const Padding(
+              padding: EdgeInsets.only(right: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SkeletonBox(width: 120, height: 170, radius: 8),
+                  SizedBox(height: 4),
+                  SkeletonBox(width: 100, height: 12),
+                ],
               ),
-              ...List.generate(7, (_) => _shimmerSection()),
-            ],
+            ),
           ),
         ),
-      );
+      ],
+    );
   }
-
-  Widget _shimmerSection() => Column(
-
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 10),
-            child: Container(
-              width: 120,
-              height: 16,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-          ),
-          SizedBox(
-            height: 210,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: 6,
-              itemBuilder: (_, _) => Padding(
-                padding: const EdgeInsets.only(right: 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 120,
-                      height: 170,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      width: 100,
-                      height: 12,
-                      color: Colors.white,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
 }

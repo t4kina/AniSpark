@@ -4,9 +4,10 @@ import 'package:flutter/material.dart';
 
 /// Round frosted-glass icon button drawn over banners and covers.
 ///
-/// The visible circle is 36px, inside a 44px touch target, and [tooltip]
-/// doubles as the label read by screen readers. Buttons placed side by side
-/// should share a [BackdropGroup], so their blurs read the banner once.
+/// The visible circle is 36px, inside a 44px touch target. [tooltip] is the
+/// name screen readers read; nothing is shown for it (holding the button
+/// pops no label up). Buttons placed side by side should share a
+/// [BackdropGroup], so their blurs read the banner once.
 ///
 /// No press animation of its own: callers such as the favourite hearts wrap
 /// it in their own pop, which a second scale would fight.
@@ -16,7 +17,7 @@ Widget overlayBtn({
   required VoidCallback? onPressed,
   String? tooltip,
 }) {
-  final button = Semantics(
+  return Semantics(
     button: true,
     enabled: onPressed != null,
     label: tooltip,
@@ -46,5 +47,4 @@ Widget overlayBtn({
       ),
     ),
   );
-  return tooltip == null ? button : Tooltip(message: tooltip, child: button);
 }

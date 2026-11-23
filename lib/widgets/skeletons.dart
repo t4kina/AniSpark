@@ -1,19 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:shimmer/shimmer.dart';
 
+import '../theme/app_motion.dart';
+
 /// Shimmering placeholder shown in place of content that is still loading,
 /// shaped like that content so the layout doesn't jump when it arrives.
+///
+/// Its blocks are the colour images load over, so a cover arriving in a
+/// block changes nothing around it, and they hold still when motion is
+/// reduced.
 class Skeleton extends StatelessWidget {
   const Skeleton({super.key, required this.child});
 
   final Widget child;
 
+  /// How far the passing band is lifted toward white.
+  static const _darkLift = 0.1;
+  static const _lightLift = 0.5;
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final base = theme.colorScheme.surfaceContainerHighest;
+    final lift = theme.brightness == Brightness.dark ? _darkLift : _lightLift;
     return Shimmer.fromColors(
-      baseColor: isDark ? Colors.grey[800]! : Colors.grey[300]!,
-      highlightColor: isDark ? Colors.grey[600]! : Colors.grey[100]!,
+      baseColor: base,
+      highlightColor: Color.lerp(base, Colors.white, lift)!,
+      enabled: !AppMotion.reduced(context),
       child: child,
     );
   }
@@ -38,11 +51,13 @@ class SkeletonBox extends StatelessWidget {
       );
 }
 
-/// Placeholder for the anime/manga list rows (cover + title + progress).
+/// Placeholder for rows of a cover beside a title and two details: the
+/// anime/manga lists, with [coverSize] for lists of smaller covers.
 class ListSkeleton extends StatelessWidget {
-  const ListSkeleton({super.key, this.rows = 8});
+  const ListSkeleton({super.key, this.rows = 8, this.coverSize = const Size(80, 115)});
 
   final int rows;
+  final Size coverSize;
 
   @override
   Widget build(BuildContext context) => Skeleton(
@@ -50,14 +65,14 @@ class ListSkeleton extends StatelessWidget {
           physics: const NeverScrollableScrollPhysics(),
           padding: const EdgeInsets.only(top: 8),
           itemCount: rows,
-          itemBuilder: (_, _) => const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+          itemBuilder: (_, _) => Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SkeletonBox(width: 80, height: 115),
-                SizedBox(width: 12),
-                Expanded(
+                SkeletonBox(width: coverSize.width, height: coverSize.height),
+                const SizedBox(width: 12),
+                const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -87,15 +102,17 @@ class FeedSkeleton extends StatelessWidget {
   Widget build(BuildContext context) => Skeleton(
         child: ListView.builder(
           physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(12),
+          // Rows of a small avatar, two lines and a cover, as in the feed's
+          // timeline, the inbox and a thread.
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 0),
           itemCount: cards,
           itemBuilder: (_, _) => const Padding(
-            padding: EdgeInsets.only(bottom: 12),
+            padding: EdgeInsets.only(bottom: 22),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SkeletonBox(width: 36, height: 36, radius: 18),
-                SizedBox(width: 10),
+                SkeletonBox(width: 28, height: 28, radius: 14),
+                SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -108,8 +125,8 @@ class FeedSkeleton extends StatelessWidget {
                     ],
                   ),
                 ),
-                SizedBox(width: 10),
-                SkeletonBox(width: 45, height: 64),
+                SizedBox(width: 12),
+                SkeletonBox(width: 40, height: 58, radius: 8),
               ],
             ),
           ),
@@ -188,6 +205,130 @@ class DetailBodySkeleton extends StatelessWidget {
                 ),
               ),
           ],
+        ),
+      );
+}
+
+/// Placeholder for a grid of covers with a title and a detail under each.
+/// [shrinkWrap] makes it as tall as its rows, for a grid inside a page
+/// that scrolls.
+class GridSkeleton extends StatelessWidget {
+  const GridSkeleton({
+    super.key,
+    required this.gridDelegate,
+    this.padding = const EdgeInsets.all(12),
+    this.count = 12,
+    this.shrinkWrap = false,
+  });
+
+  final SliverGridDelegate gridDelegate;
+  final EdgeInsets padding;
+  final int count;
+  final bool shrinkWrap;
+
+  @override
+  Widget build(BuildContext context) => Skeleton(
+        child: GridView.builder(
+          shrinkWrap: shrinkWrap,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: padding,
+          gridDelegate: gridDelegate,
+          itemCount: count,
+          itemBuilder: (_, _) => const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: SkeletonBox(height: double.infinity, radius: 8)),
+              SizedBox(height: 5),
+              SkeletonBox(height: 12),
+              SizedBox(height: 4),
+              SkeletonBox(width: 60, height: 10),
+            ],
+          ),
+        ),
+      );
+}
+
+/// Placeholder for a few people: an avatar beside a name and, with two
+/// [lines], what they wrote. Only as tall as its rows, for sheets and
+/// sections that grow with their content.
+class PeopleSkeleton extends StatelessWidget {
+  const PeopleSkeleton({
+    super.key,
+    this.rows = 3,
+    required this.avatarSize,
+    this.lines = 1,
+    this.padding = const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+  }) : assert(lines == 1 || lines == 2);
+
+  final int rows;
+  final double avatarSize;
+  final int lines;
+
+  /// Around each row.
+  final EdgeInsets padding;
+
+  @override
+  Widget build(BuildContext context) => Skeleton(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var i = 0; i < rows; i++)
+              Padding(
+                padding: padding,
+                child: Row(
+                  children: [
+                    SkeletonBox(width: avatarSize, height: avatarSize, radius: avatarSize / 2),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SkeletonBox(width: 130, height: 12),
+                          if (lines > 1) ...[
+                            const SizedBox(height: 6),
+                            const SkeletonBox(height: 12),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      );
+}
+
+/// Placeholder for a profile page: its card, then the start of what is
+/// under it. [topGap] is the room the page leaves above the card.
+class ProfileSkeleton extends StatelessWidget {
+  const ProfileSkeleton({super.key, this.topGap = 8});
+
+  final double topGap;
+
+  @override
+  Widget build(BuildContext context) => Skeleton(
+        child: SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(16, MediaQuery.paddingOf(context).top + topGap, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SkeletonBox(height: 320, radius: 32),
+              const SizedBox(height: 28),
+              const SkeletonBox(width: 120, height: 16),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  for (var i = 0; i < 3; i++) ...[
+                    if (i > 0) const SizedBox(width: 10),
+                    const Expanded(child: SkeletonBox(height: 150, radius: 8)),
+                  ],
+                ],
+              ),
+            ],
+          ),
         ),
       );
 }

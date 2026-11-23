@@ -96,6 +96,9 @@ void main() {
     await tester.pumpAndSettle();
 
     final tags = tester.widgetList<Hero>(find.byType(Hero)).map((hero) => hero.tag).toList();
-    expect(tags, ['cover:profile-favs:1', 'cover:profile-favs:2', 'cover:profile-favs:3']);
+    // Besides the covers, only the avatar, which flies into its viewer
+    // under a tag of its own.
+    expect(tags.whereType<String>(), ['cover:profile-favs:1', 'cover:profile-favs:2', 'cover:profile-favs:3']);
+    expect(tags.where((tag) => tag is! String), hasLength(1));
   });
 }

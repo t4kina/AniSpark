@@ -17,11 +17,13 @@ import 'services/secure_store.dart';
 import 'services/session_expiry.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_gate_screen.dart';
+import 'widgets/app_logo.dart';
 import 'screens/search_screen.dart' show recentSearchesPrefsKey;
 import 'screens/my_list_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/feed_screen.dart';
 import 'theme/app_theme.dart';
+import 'utils/performance_graphs.dart';
 import 'utils/haptics.dart';
 import 'utils/translations.dart' show tr;
 import 'widgets/rate_limit_notice.dart';
@@ -128,13 +130,17 @@ class MyAnimeApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
-    return MaterialApp(
+    return ValueListenableBuilder<bool>(
+      valueListenable: performanceGraphsNotifier,
+      builder: (context, showGraphs, _) => MaterialApp(
+      // Frame timing graphs, switched on from Settings to find what stutters.
+      showPerformanceOverlay: showGraphs,
       scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'AniSpark',
       debugShowCheckedModeBanner: false,
       themeMode: settings.themeMode,
       theme: buildAppTheme(Brightness.light, settings.accentColor),
-      darkTheme: buildAppTheme(Brightness.dark, settings.accentColor),
+      darkTheme: buildAppTheme(Brightness.dark, settings.accentColor, palette: settings.palette),
       builder: (context, child) {
         return ScrollConfiguration(
           behavior: const _SmoothScrollBehavior(),
@@ -142,6 +148,7 @@ class MyAnimeApp extends StatelessWidget {
         );
       },
       home: const SplashScreen(),
+      ),
     );
   }
 }
@@ -202,15 +209,9 @@ class _SplashScreenState extends State<SplashScreen>
       body: Center(
         child: FadeTransition(
           opacity: _fadeIn,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: Image.asset(
-              'assets/logo.jpg',
-              width: 140,
-              height: 140,
-              fit: BoxFit.cover,
-            ),
-          ),
+          // The same logo travels to the login screen when there is no
+          // session (see AppLogo).
+          child: const AppLogo(size: 140),
         ),
       ),
     );

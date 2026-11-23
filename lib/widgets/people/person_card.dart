@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../motion/pressable.dart';
+import '../motion/rounded_hero.dart';
 import '../user_avatar.dart';
 
 /// A round photo with a name and a grey line under it (a role, a dub
@@ -13,6 +14,7 @@ class PersonCard extends StatelessWidget {
     this.subtitle,
     this.onTap,
     this.avatarSize = defaultAvatarSize,
+    this.heroTag,
   });
 
   static const defaultAvatarSize = 72.0;
@@ -26,6 +28,9 @@ class PersonCard extends StatelessWidget {
   final VoidCallback? onTap;
   final double avatarSize;
 
+  /// Tag of the photo's hero (see `personHeroTag`), when [onTap] opens
+  /// the person's page with it.
+  final String? heroTag;
   @override
   Widget build(BuildContext context) {
     final subtitle = this.subtitle;
@@ -40,7 +45,11 @@ class PersonCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Column(
                 children: [
-                  UserAvatar(url: imageUrl, size: avatarSize),
+                  RoundedHero(
+                    tag: heroTag,
+                    borderRadius: BorderRadius.circular(avatarSize / 2),
+                    child: UserAvatar(url: imageUrl, size: avatarSize),
+                  ),
                   const SizedBox(height: 8),
                   Text(
                     name,

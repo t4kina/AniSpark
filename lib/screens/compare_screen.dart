@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -12,7 +11,9 @@ import '../widgets/motion/press_scale.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/profile/affinity_ring.dart';
+import '../widgets/state_message.dart';
 import 'detail_screen.dart';
+import '../widgets/app_image.dart';
 
 const _rowHeight = 76.0;
 const _scoreWidth = 48.0;
@@ -115,8 +116,9 @@ class _CompareScreenState extends State<CompareScreen> {
             if (titles.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(
-                  child: Text(tr('affinity_no_titles_in_common', lang), style: const TextStyle(color: Colors.grey)),
+                child: StateMessage(
+                  icon: Icons.people_outline_rounded,
+                  message: tr('affinity_no_titles_in_common', lang),
                 ),
               )
             else
@@ -374,7 +376,6 @@ class _CompareRowState extends State<_CompareRow> {
     final userName = widget.userName;
     final settings = context.watch<SettingsProvider>();
     final lang = settings.language;
-    final cs = Theme.of(context).colorScheme;
     final name = settings.resolveTitle(title.title);
     final cover = title.coverUrl;
     final mine = _score(title.myScore);
@@ -407,17 +408,7 @@ class _CompareRowState extends State<_CompareRow> {
                 child: RoundedHero(
                   tag: heroTag,
                   borderRadius: BorderRadius.circular(6),
-                  child: cover != null
-                      ? CachedNetworkImage(
-                          imageUrl: cover,
-                          width: 46,
-                          height: 64,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 92,
-                          placeholder: (_, _) => Container(color: cs.surfaceContainerHighest),
-                          errorWidget: (_, _, _) => Container(color: cs.surfaceContainerHighest),
-                        )
-                      : Container(width: 46, height: 64, color: cs.surfaceContainerHighest),
+                  child: AppImage(url: cover, cacheWidth: 92, width: 46, height: 64),
                 ),
               ),
               const SizedBox(width: 12),

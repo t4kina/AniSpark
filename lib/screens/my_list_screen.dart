@@ -1,9 +1,6 @@
-import 'dart:math' show pi;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:confetti/confetti.dart';
 import '../providers/media_list_store.dart';
 import '../services/auth_service.dart';
 import '../screens/detail_screen.dart';
@@ -14,20 +11,33 @@ import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../utils/score_utils.dart';
 import '../utils/tab_reselect.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_layout.dart';
 import '../theme/app_motion.dart';
+import '../theme/app_text.dart';
+import '../widgets/app_refresh_indicator.dart';
+import '../widgets/app_sheet.dart';
+import '../widgets/genre_filter_sheet.dart' show FilterOptionChip;
+import '../widgets/app_button.dart';
+import '../widgets/media_preview.dart';
 import '../widgets/motion/animated_count.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/press_scale.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/motion/progress_moment.dart';
 import '../widgets/option_sheet.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import '../widgets/entry_editor/entry_editor_sheet.dart';
 import '../widgets/motion/swipe_action.dart';
 import '../widgets/motion/pressable.dart';
+import 'completion_celebration.dart';
 import 'settings_screen.dart';
 import '../services/notification_service.dart';
+import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 enum _SortMode { lastUpdated, alphabetical, ratingHigh, ratingLow }
 
@@ -95,28 +105,19 @@ class _ListTabScreenState extends State<_ListTabScreen> {
   }
 
   void _showGenreFilter(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final lang = context.read<SettingsProvider>().language;
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      backgroundColor: cs.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => StatefulBuilder(
         builder: (ctx, setSheet) => Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Text(tr('list_filter_by_genre', lang),
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: cs.onSurface)),
+                  Text(tr('list_filter_by_genre', lang), style: AppText.headline),
                   const Spacer(),
                   if (_activeGenres.isNotEmpty)
                     TextButton(
@@ -132,42 +133,21 @@ class _ListTabScreenState extends State<_ListTabScreen> {
               const SizedBox(height: 12),
               Wrap(
                 spacing: 8,
-                runSpacing: 8,
-                children: _genreKeys.entries.map((genre) {
-                  final g = genre.key;
-                  final selected = _activeGenres.contains(g);
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        if (selected) {
-                          _activeGenres.remove(g);
-                        } else {
-                          _activeGenres.add(g);
-                        }
-                      });
-                      setSheet(() {});
-                    },
-                    child: AnimatedContainer(
-                      duration: AppMotion.of(ctx, AppMotion.short),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: selected ? cs.primary : cs.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: selected ? cs.primary : cs.outline.withValues(alpha: 0.4),
-                        ),
-                      ),
-                      child: Text(
-                        tr(genre.value, lang),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
-                          color: selected ? Colors.white : cs.onSurface,
-                        ),
-                      ),
+                children: [
+                  for (final genre in _genreKeys.entries)
+                    FilterOptionChip(
+                      label: tr(genre.value, lang),
+                      selected: _activeGenres.contains(genre.key),
+                      onTap: () {
+                        setState(() {
+                          _activeGenres = _activeGenres.contains(genre.key)
+                              ? _activeGenres.difference({genre.key})
+                              : {..._activeGenres, genre.key};
+                        });
+                        setSheet(() {});
+                      },
                     ),
-                  );
-                }).toList(),
+                ],
               ),
             ],
           ),
@@ -192,10 +172,18 @@ class _ListTabScreenState extends State<_ListTabScreen> {
             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         actions: [
           IconButton(
-            icon: Icon(
-              Icons.tune_rounded,
-              size: 22,
-              color: _activeGenres.isNotEmpty ? Theme.of(context).colorScheme.primary : Colors.grey,
+            icon: Badge(
+              isLabelVisible: _activeGenres.isNotEmpty,
+              label: Text('${_activeGenres.length}'),
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              textColor: Theme.of(context).colorScheme.onPrimary,
+              child: Icon(
+                Icons.tune_rounded,
+                size: 22,
+                color: _activeGenres.isNotEmpty
+                    ? Theme.of(context).colorScheme.primary
+                    : context.colors.textSecondary,
+              ),
             ),
             onPressed: () => _showGenreFilter(context),
             tooltip: tr('filters', lang),
@@ -205,7 +193,7 @@ class _ListTabScreenState extends State<_ListTabScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: IconButton(
-              icon: const Icon(Icons.swap_vert, color: Colors.grey, size: 22),
+              icon: Icon(Icons.swap_vert, color: context.colors.textSecondary, size: 22),
               tooltip: tr('search_sort', lang),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -235,12 +223,14 @@ class _ListTabScreenState extends State<_ListTabScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            // The same room under the field as on Discover, so the list does
+            // not scroll right up against it.
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, AppSpace.md),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
                 hintText: tr('filter_by_name', lang),
-                prefixIcon: const Icon(Icons.search, size: 20, color: Colors.grey),
+                prefixIcon: Icon(Icons.search, size: 20, color: context.colors.textSecondary),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
                         icon: const Icon(Icons.close, size: 18),
@@ -490,40 +480,27 @@ class _MediaListState extends State<_MediaList>
     final initialScore = (entry['score'] as num?)?.toDouble() ?? 0;
 
     if (!mounted) return;
-    await showGeneralDialog(
-      context: context,
-      barrierDismissible: false,
-      barrierColor: Colors.transparent,
-      transitionDuration: AppMotion.of(context, AppMotion.long),
-      transitionBuilder: (ctx, animation, _, child) => FadeTransition(
-        opacity: CurvedAnimation(parent: animation, curve: AppMotion.enter, reverseCurve: AppMotion.exit),
-        child: SlideTransition(
-          position: Tween(begin: const Offset(0, 0.06), end: Offset.zero)
-              .animate(CurvedAnimation(parent: animation, curve: AppMotion.enter, reverseCurve: AppMotion.exit)),
-          child: child,
-        ),
-      ),
-      pageBuilder: (ctx, _, _) => _CompletionDialog(
-        title: title,
-        coverImage: coverImage,
-        averageScore: averageScore,
-        initialScore: initialScore,
-        type: widget.type,
-        onComplete: (score) async {
-          final token = context.read<AuthService>().token;
-          if (token == null || !mounted) return false;
-          return store.saveFields(
-            widget.type,
-            mediaId,
-            status: 'COMPLETED',
-            progress: total,
-            // Only write the score when the user changed it, so AniList keeps
-            // the exact value in the user's own score format otherwise.
-            scoreRaw: score != initialScore ? toRawScore(score) : null,
-            token: token,
-          );
-        },
-      ),
+    await showCompletionCelebration(
+      context,
+      title: title,
+      coverUrl: coverImage,
+      averageScore: averageScore,
+      initialScore: initialScore,
+      isManga: widget.type != 'ANIME',
+      onComplete: (score) async {
+        final token = context.read<AuthService>().token;
+        if (token == null || !mounted) return false;
+        return store.saveFields(
+          widget.type,
+          mediaId,
+          status: 'COMPLETED',
+          progress: total,
+          // Only write the score when the user changed it, so AniList keeps
+          // the exact value in the user's own score format otherwise.
+          scoreRaw: score != initialScore ? toRawScore(score) : null,
+          token: token,
+        );
+      },
     );
   }
 
@@ -576,7 +553,7 @@ class _MediaListState extends State<_MediaList>
         (store) => (store.listsOf(widget.type), store.isLoading(widget.type), store.errorOf(widget.type)));
 
     if (!isLoggedIn) {
-      return _ListMessage(
+      return StateMessage(
         key: const ValueKey('list-logged-out'),
         icon: Icons.list_alt_outlined,
         message: tr('list_connect_prompt', lang),
@@ -586,77 +563,19 @@ class _MediaListState extends State<_MediaList>
       if (loading || error == null) {
         return const ListSkeleton(key: ValueKey('list-skeleton'));
       }
-      return _ListMessage(
-        key: const ValueKey('list-error'),
-        icon: Icons.wifi_off_rounded,
-        message: tr('load_error', lang),
-        action: FilledButton.icon(
-          onPressed: _load,
-          icon: const Icon(Icons.refresh),
-          label: Text(tr('retry', lang)),
-        ),
-      );
+      return LoadErrorView(key: const ValueKey('list-error'), onRetry: _load);
     }
     if (lists.isEmpty) {
       final isAnime = widget.type == 'ANIME';
-      final cs = Theme.of(context).colorScheme;
-      return Center(
+      return StateMessage(
         key: const ValueKey('list-empty'),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                isAnime ? Icons.movie_filter_outlined : Icons.menu_book_outlined,
-                size: 64,
-                color: cs.onSurface.withValues(alpha: 0.2),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                tr(isAnime ? 'list_empty_anime' : 'list_empty_manga', lang),
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: cs.onSurface.withValues(alpha: 0.55)),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                tr(isAnime ? 'list_empty_anime_hint' : 'list_empty_manga_hint', lang),
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontSize: 13,
-                    color: cs.onSurface.withValues(alpha: 0.35),
-                    height: 1.5),
-              ),
-              const SizedBox(height: 24),
-              GestureDetector(
-                onTap: () => MainNavigation.navigateToTab(2),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: cs.primary,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.explore_outlined,
-                          color: Colors.white, size: 18),
-                      const SizedBox(width: 8),
-                      Text(
-                        tr(isAnime ? 'list_discover_anime' : 'list_discover_manga', lang),
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+        icon: isAnime ? Icons.movie_filter_outlined : Icons.menu_book_outlined,
+        title: tr(isAnime ? 'list_empty_anime' : 'list_empty_manga', lang),
+        message: tr(isAnime ? 'list_empty_anime_hint' : 'list_empty_manga_hint', lang),
+        action: AppButton(
+          label: tr(isAnime ? 'list_discover_anime' : 'list_discover_manga', lang),
+          icon: Icons.explore_outlined,
+          onPressed: () => MainNavigation.navigateToTab(2),
         ),
       );
     }
@@ -706,30 +625,19 @@ class _MediaListState extends State<_MediaList>
     // and replaying its cascade on every keystroke.
     final noMatch = items.isNotEmpty
         ? null
-        : Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.search_off_rounded, size: 52,
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2)),
-            const SizedBox(height: 12),
-            Text(
-              widget.searchQuery.isNotEmpty
-                  ? trf('list_no_results_for', lang, {'query': widget.searchQuery})
-                  : tr('list_no_genre_match', lang),
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
-                  fontSize: 13)),
-          ],
-        ),
-      );
+        : StateMessage(
+            icon: Icons.search_off_rounded,
+            message: widget.searchQuery.isNotEmpty
+                ? trf('list_no_results_for', lang, {'query': widget.searchQuery})
+                : tr('list_no_genre_match', lang),
+          );
 
     // The first rows cascade in when the list first appears; rows built
     // later (scrolling, filtering, expanding a section) appear at once.
     return EntranceGate(
       key: const ValueKey('list'),
       trigger: widget.type,
-      child: noMatch ?? RefreshIndicator(
+      child: noMatch ?? AppRefreshIndicator(
         onRefresh: _refresh,
         child: ListView.builder(
           controller: _scrollController,
@@ -782,14 +690,10 @@ class _MediaListState extends State<_MediaList>
         child: Row(
           children: [
             if (isCustom) ...[
-              const Icon(Icons.playlist_add_check, size: 16, color: Colors.grey),
+              Icon(Icons.playlist_add_check, size: 16, color: context.colors.textSecondary),
               const SizedBox(width: 6),
             ],
-            Text(label,
-                style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey)),
+            Text(label, style: AppText.subhead),
             const Spacer(),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -806,39 +710,18 @@ class _MediaListState extends State<_MediaList>
               ),
             ),
             const SizedBox(width: 6),
-            Icon(
-              collapsed ? Icons.chevron_right : Icons.expand_more,
-              color: Colors.grey,
-              size: 20,
+            // Turns to point at the folded section instead of swapping icons.
+            AnimatedRotation(
+              turns: collapsed ? -0.25 : 0,
+              duration: AppMotion.of(context, AppMotion.short),
+              curve: AppMotion.standard,
+              child: Icon(Icons.expand_more, color: context.colors.textSecondary, size: 20),
             ),
           ],
         ),
       ),
     );
   }
-}
-
-class _ListMessage extends StatelessWidget {
-  final IconData icon;
-  final String message;
-  final Widget? action;
-  const _ListMessage({super.key, required this.icon, required this.message, this.action});
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 52, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(message, style: const TextStyle(color: Colors.grey)),
-            if (action != null) ...[
-              const SizedBox(height: 16),
-              action!,
-            ],
-          ],
-        ),
-      );
 }
 
 // ─── Swipeable Row ──────────────────────────────────────────────────────────
@@ -897,24 +780,11 @@ class _SwipeableRowState extends State<_SwipeableRow> {
   /// The cover, which flies to the detail page and dips while the row is
   /// pressed (a transform only, so the row never re-lays out).
   Widget _cover(BuildContext context, String? image, String? heroTag) {
-    final placeholder = Container(
-        width: 80,
-        height: 115,
-        color: Theme.of(context).colorScheme.surfaceContainerHighest);
+
     final cover = RoundedHero(
       tag: heroTag,
       borderRadius: BorderRadius.circular(6),
-      child: image != null
-          ? CachedNetworkImage(
-              imageUrl: image,
-              width: 80,
-              height: 115,
-              fit: BoxFit.cover,
-              memCacheWidth: 160,
-              placeholder: (_, _) => placeholder,
-              errorWidget: (_, _, _) => placeholder,
-            )
-          : placeholder,
+      child: AppImage(url: image, cacheWidth: 160, width: 80, height: 115),
     );
     return PressScale(pressed: _pressed, child: cover);
   }
@@ -949,6 +819,7 @@ class _SwipeableRowState extends State<_SwipeableRow> {
     final unitLabel = widget.type == 'ANIME' ? tr('episode', lang) : tr('chapter', lang);
     final progressSuffix =
         '${total != null ? ' / $total' : ''} ${widget.type == 'ANIME' ? tr('episodes', lang) : tr('chapters', lang)}';
+    final finished = total != null && total > 0 && _progress >= total;
 
     // A quarter of the row is enough: right adds one, left takes one away.
     return SwipeAction(
@@ -985,7 +856,10 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                           )),
                 )
             : null,
-        onLongPress: widget.onEdit,
+        // Holding the row shows what it is; the editor is a tap from there.
+        onLongPress: id == null
+            ? widget.onEdit
+            : () => showMediaPreview(context, media: media, isManga: widget.type != 'ANIME', onEdit: widget.onEdit),
         onHighlightChanged: (pressed) => _pressed.value = pressed,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -1016,14 +890,47 @@ class _SwipeableRowState extends State<_SwipeableRow> {
                         style: const TextStyle(fontSize: 12, color: Colors.grey),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
                           children: [
-                            AnimatedCount(value: _progress),
-                            Flexible(child: Text(progressSuffix)),
+                            // Seen to the end: a check instead of a full
+                            // line under every finished title, centred on
+                            // the text (an icon has no baseline of its own).
+                            if (finished) ...[
+                              Icon(
+                                Icons.task_alt_rounded,
+                                key: const ValueKey('progress-finished'),
+                                size: 13,
+                                color: context.colors.success,
+                              ),
+                              const SizedBox(width: 4),
+                            ],
+                            Flexible(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.baseline,
+                                textBaseline: TextBaseline.alphabetic,
+                                children: [
+                                  AnimatedCount(value: _progress),
+                                  Flexible(child: Text(progressSuffix)),
+                                ],
+                              ),
+                            ),
+                            // Answers a swipe where the eye already is,
+                            // without moving the line it sits on.
+                            ChangeTick(value: _progress),
                           ],
                         ),
                       ),
+                    ),
+                    AnimatedSize(
+                      duration: AppMotion.of(context, AppMotion.medium),
+                      curve: AppMotion.standard,
+                      alignment: Alignment.topCenter,
+                      child: total != null && total > 0 && !finished
+                          ? Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: ProgressLine(value: _progress, total: total),
+                            )
+                          : const SizedBox(width: double.infinity),
                     ),
                     if (score > 0) ...[
                       const SizedBox(height: 4),
@@ -1102,494 +1009,6 @@ class _SwipeableRowState extends State<_SwipeableRow> {
   }
 }
 
-// ─── Completion Dialog ─────────────────────────────────────────────────────
-
-class _CompletionDialog extends StatefulWidget {
-  final String title;
-  final String? coverImage;
-  final double? averageScore;
-  final double initialScore;
-  final String type;
-  /// Saves the completion; returns whether AniList accepted it.
-  final Future<bool> Function(double score) onComplete;
-
-  const _CompletionDialog({
-    required this.title,
-    required this.coverImage,
-    required this.averageScore,
-    required this.initialScore,
-    required this.type,
-    required this.onComplete,
-  });
-
-  @override
-  State<_CompletionDialog> createState() => _CompletionDialogState();
-}
-
-class _CompletionDialogState extends State<_CompletionDialog> {
-  late final ConfettiController _confetti;
-  bool _confettiStarted = false;
-  double _score = 0;
-  bool _completing = false;
-
-  static const _colors = [
-    Color(0xFF02A9FF),
-    Colors.white,
-    Color(0xFFFFC107),
-    Color(0xFFFF6B6B),
-    Color(0xFF66BB6A),
-    Color(0xFFCE93D8),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _score = widget.initialScore;
-    _confetti = ConfettiController(duration: const Duration(milliseconds: 2500));
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // One burst when the dialog opens, skipped when animations are reduced.
-    if (_confettiStarted) return;
-    _confettiStarted = true;
-    if (!AppMotion.reduced(context)) _confetti.play();
-  }
-
-  @override
-  void dispose() {
-    _confetti.dispose();
-    super.dispose();
-  }
-
-  Future<void> _complete() async {
-    setState(() => _completing = true);
-    final ok = await widget.onComplete(_score);
-    if (!mounted) return;
-    if (ok) {
-      Navigator.pop(context);
-      return;
-    }
-    // Keep the dialog open so the user can retry instead of losing the change.
-    setState(() => _completing = false);
-    final lang = context.read<SettingsProvider>().language;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(tr('save_failed', lang))),
-    );
-  }
-
-  void _openScorePicker() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => _ScorePickerSheet(
-        initialScore: _score,
-        onUpdate: (score) {
-          setState(() => _score = score);
-          Navigator.pop(context);
-        },
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final lang = context.watch<SettingsProvider>().language;
-    final isAnime = widget.type == 'ANIME';
-
-    // Back is blocked while saving so the list can't be swiped mid-request.
-    return PopScope(
-      canPop: !_completing,
-      child: Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          // Blurred cover art background
-          if (widget.coverImage != null)
-            Positioned.fill(
-              child: Stack(
-                children: [
-                  CachedNetworkImage(
-                    imageUrl: widget.coverImage!,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: double.infinity,
-                    // A darkened backdrop: a small decode is plenty.
-                    memCacheWidth: 300,
-                  ),
-                  Container(color: Colors.black.withValues(alpha: 0.78)),
-                ],
-              ),
-            ),
-
-          // Confetti — top left
-          Align(
-            alignment: Alignment.topLeft,
-            child: ConfettiWidget(
-              confettiController: _confetti,
-              blastDirection: pi / 3,
-              blastDirectionality: BlastDirectionality.directional,
-              emissionFrequency: 0.06,
-              numberOfParticles: 12,
-              gravity: 0.12,
-              colors: _colors,
-            ),
-          ),
-
-          // Confetti — top right
-          Align(
-            alignment: Alignment.topRight,
-            child: ConfettiWidget(
-              confettiController: _confetti,
-              blastDirection: 2 * pi / 3,
-              blastDirectionality: BlastDirectionality.directional,
-              emissionFrequency: 0.06,
-              numberOfParticles: 12,
-              gravity: 0.12,
-              colors: _colors,
-            ),
-          ),
-
-          // Content
-          SafeArea(
-            child: Column(
-              children: [
-                // Close button
-                Align(
-                  alignment: Alignment.topRight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 4, right: 4),
-                    child: IconButton(
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close_rounded,
-                          color: Colors.white54, size: 22),
-                    ),
-                  ),
-                ),
-
-                const Spacer(),
-
-                // Congrats subtitle
-                Text(
-                  tr('list_congrats_finished', lang),
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: Colors.white.withValues(alpha: 0.6),
-                    fontWeight: FontWeight.w400,
-                  ),
-                ),
-                const SizedBox(height: 10),
-
-                // Title
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 40),
-                  child: Text(
-                    widget.title,
-                    style: const TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                      height: 1.2,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(height: 28),
-
-                // Cover image
-                if (widget.coverImage != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: CachedNetworkImage(
-                      imageUrl: widget.coverImage!,
-                      width: 148,
-                      height: 210,
-                      fit: BoxFit.cover,
-                      memCacheWidth: 296,
-                    ),
-                  ),
-                const SizedBox(height: 28),
-
-                // Rating question
-                Text(
-                  tr(isAnime ? 'list_final_rating_series' : 'list_final_rating_manga', lang),
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white.withValues(alpha: 0.55),
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Score button
-                GestureDetector(
-                  onTap: _openScorePicker,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 13),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
-                    ),
-                    child: Text(
-                      _score > 0 ? _score.toStringAsFixed(1) : tr('list_not_scored', lang),
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-
-                // Average rating
-                if (widget.averageScore != null) ...[
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.star_rounded, size: 13, color: Color(0xFFFFC107)),
-                      const SizedBox(width: 4),
-                      Text(
-                        trf('list_average_rating', lang,
-                            {'score': (widget.averageScore! / 10).toStringAsFixed(1)}),
-                        style: TextStyle(
-                          fontSize: 11,
-                          letterSpacing: 0.5,
-                          color: Colors.white.withValues(alpha: 0.35),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-
-                const Spacer(),
-
-                // Complete button
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
-                  child: GestureDetector(
-                    onTap: _completing ? null : _complete,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      height: 56,
-                      decoration: BoxDecoration(
-                        color: _completing
-                            ? Colors.white.withValues(alpha: 0.08)
-                            : Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-                      ),
-                      child: Center(
-                        child: _completing
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                tr(isAnime ? 'list_complete_series' : 'list_complete_manga', lang),
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white,
-                                ),
-                              ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-      ),
-    );
-  }
-}
-
-// ─── Score Picker Sheet ────────────────────────────────────────────────────
-
-class _ScorePickerSheet extends StatefulWidget {
-  final double initialScore;
-  final void Function(double) onUpdate;
-
-  const _ScorePickerSheet({required this.initialScore, required this.onUpdate});
-
-  @override
-  State<_ScorePickerSheet> createState() => _ScorePickerSheetState();
-}
-
-class _ScorePickerSheetState extends State<_ScorePickerSheet> {
-  late double _score;
-  late final TextEditingController _ctrl;
-  final _focusNode = FocusNode();
-
-  @override
-  void initState() {
-    super.initState();
-    _score = widget.initialScore;
-    _ctrl = TextEditingController(text: _fmt(_score));
-    _focusNode.addListener(_onFocusLost);
-  }
-
-  @override
-  void dispose() {
-    _focusNode.removeListener(_onFocusLost);
-    _focusNode.dispose();
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  String _fmt(double v) => v == 0 ? '0' : v.toStringAsFixed(v % 1 == 0 ? 0 : 1);
-
-  void _onFocusLost() {
-    if (!_focusNode.hasFocus) _applyText();
-  }
-
-  void _applyText() {
-    final parsed = double.tryParse(_ctrl.text.replaceAll(',', '.'));
-    final clamped = (parsed ?? _score).clamp(0.0, 10.0);
-    setState(() => _score = clamped);
-    _ctrl.text = _fmt(clamped);
-  }
-
-  void _adjust(double delta) {
-    _focusNode.unfocus();
-    final next = (_score + delta).clamp(0.0, 10.0);
-    setState(() => _score = next);
-    _ctrl.text = _fmt(next);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final lang = context.watch<SettingsProvider>().language;
-
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-          24, 16, 24, MediaQuery.of(context).viewInsets.bottom + 32),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 36,
-            height: 4,
-            margin: const EdgeInsets.only(bottom: 20),
-            decoration: BoxDecoration(
-              color: cs.onSurface.withValues(alpha: 0.2),
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
-          Text(
-            tr('list_score', lang),
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: cs.onSurface,
-            ),
-          ),
-          const SizedBox(height: 28),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Minus
-              GestureDetector(
-                onTap: () => _adjust(-0.5),
-                child: Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.remove, size: 26, color: cs.onSurface),
-                ),
-              ),
-              const SizedBox(width: 16),
-              // Score — editable field
-              Container(
-                width: 120,
-                decoration: BoxDecoration(
-                  color: cs.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: TextField(
-                  controller: _ctrl,
-                  focusNode: _focusNode,
-                  textAlign: TextAlign.center,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  style: TextStyle(
-                    fontSize: 34,
-                    fontWeight: FontWeight.bold,
-                    color: cs.onSurface,
-                  ),
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.symmetric(vertical: 18),
-                    isDense: true,
-                  ),
-                  onSubmitted: (_) => _applyText(),
-                  onEditingComplete: _applyText,
-                ),
-              ),
-              const SizedBox(width: 16),
-              // Plus
-              GestureDetector(
-                onTap: () => _adjust(0.5),
-                child: Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.add, size: 26, color: cs.onSurface),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 28),
-          SizedBox(
-            width: double.infinity,
-            height: 54,
-            child: FilledButton(
-              onPressed: () {
-                _applyText();
-                widget.onUpdate(_score);
-              },
-              style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.primary,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18)),
-              ),
-              child: Text(
-                tr('list_update', lang),
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// The user's avatar at the top left. A tap opens the profile, which grows
 /// out of this corner; holding it offers the profile and settings.
 class _ProfileAvatarButton extends StatelessWidget {
@@ -1649,12 +1068,11 @@ class _ProfileAvatarButton extends StatelessWidget {
               child: ClipOval(
                 child: SizedBox.square(
                   dimension: 30,
-                  child: picture != null
-                      ? CachedNetworkImage(imageUrl: picture, fit: BoxFit.cover, memCacheWidth: 64)
-                      : ColoredBox(
-                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                          child: const Icon(Icons.person, size: 16, color: Colors.grey),
-                        ),
+                  child: AppImage(
+                    url: picture,
+                    cacheWidth: 64,
+                    placeholder: const Icon(Icons.person, size: 16, color: Colors.grey),
+                  ),
                 ),
               ),
             ),

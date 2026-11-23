@@ -16,35 +16,26 @@ List<SharedTitle> _shared(List<double> mine, List<double> theirs) => sharedTitle
     );
 
 void main() {
-  group('pearson', () {
-    test('is 1 for scores that rise together', () {
-      expect(pearson([10, 20, 30, 40], [55, 65, 75, 85]), closeTo(1, 1e-12));
+  group('scoreCloseness', () {
+    test('is 1 for the same scores', () {
+      expect(scoreCloseness([70, 80, 90], [70, 80, 90]), 1);
     });
 
-    test('is -1 for opposite scores', () {
-      expect(pearson([10, 20, 30, 40], [90, 80, 70, 60]), closeTo(-1, 1e-12));
+    test('falls evenly with the gap, to nothing four points out of ten apart', () {
+      expect(scoreCloseness([80], [70]), 0.75, reason: 'a point apart');
+      expect(scoreCloseness([80], [60]), 0.5);
+      expect(scoreCloseness([80], [50]), 0.25);
+      expect(scoreCloseness([80], [40]), 0);
+      expect(scoreCloseness([100], [10]), 0, reason: 'no lower than nothing');
     });
 
-    test('matches a hand-computed coefficient', () {
-      // x̄ = 3, ȳ = 4; Σdxdy = 9, Σdx² = 10, Σdy² = 10 → r = 0.9
-      expect(pearson([1, 2, 3, 4, 5], [2, 4, 3, 5, 6]), closeTo(0.9, 1e-12));
+    test('is the mean over the titles', () {
+      expect(scoreCloseness([80, 80], [80, 60]), 0.75);
     });
 
-    test('is null when either side has no variance, instead of NaN', () {
-      expect(pearson([70, 70, 70], [10, 50, 90]), isNull);
-      expect(pearson([10, 50, 90], [80, 80, 80]), isNull);
-      expect(pearson([60, 60], [60, 60]), isNull);
-    });
-
-    test('treats float noise around a constant as no variance', () {
-      const tenth = 0.1;
-      expect(pearson([tenth, tenth, tenth], [1, 2, 3]), isNull);
-    });
-
-    test('is null for fewer than two pairs or mismatched lengths', () {
-      expect(pearson([], []), isNull);
-      expect(pearson([50], [60]), isNull);
-      expect(pearson([10, 20, 30], [10, 20]), isNull);
+    test('is null without pairs or for mismatched lengths', () {
+      expect(scoreCloseness([], []), isNull);
+      expect(scoreCloseness([80, 90], [80]), isNull);
     });
   });
 
@@ -133,9 +124,9 @@ void main() {
   });
 
   group('Affinity.of', () {
-    final ten = [for (var i = 1; i <= minScoredInCommon; i++) i * 10.0];
+    final ten = [for (var i = 1; i <= minScoredInCommon; i++) 50 + i * 4.0];
 
-    test('is 100% for perfect agreement', () {
+    test('is 100% for the same scores', () {
       final affinity = Affinity.of(_shared(ten, ten));
 
       expect(affinity.outcome, AffinityOutcome.computed);
@@ -144,17 +135,31 @@ void main() {
       expect(affinity.scoredInCommon, minScoredInCommon);
     });
 
-    test('is -100% for opposite tastes', () {
-      final affinity = Affinity.of(_shared(ten, ten.reversed.toList()));
+    test('two people who mostly give the same 7 to 9 are very similar, not "different"', () {
+      // What a real pair of friends looked like: many identical scores in a
+      // narrow band, a few a point apart. Pearson called this about 0%.
+      final mine = <double>[100.0, 80, 80, 80, 81, 85, 70, 90, 80, 75, 85, 80];
+      final theirs = <double>[100.0, 80, 80, 80, 80, 80, 80, 80, 80, 80, 90, 85];
+      final affinity = Affinity.of(_shared(mine, theirs));
 
-      expect(affinity.percent, -100);
+      expect(affinity.percent, greaterThanOrEqualTo(75));
+      expect(affinity.tier, AffinityTier.strong);
+    });
+
+    test('scores far apart on every title are opposite tastes', () {
+      final affinity = Affinity.of(_shared(
+        List<double>.filled(minScoredInCommon, 90),
+        List<double>.filled(minScoredInCommon, 30),
+      ));
+
+      expect(affinity.percent, 0);
       expect(affinity.tier, AffinityTier.opposite);
     });
 
-    test('ignores the users\' offsets, so harsh and generous scorers can agree', () {
-      final harsh = [for (final s in ten) s / 2];
+    test('the same score on every title is still a match', () {
+      final flat = List<double>.filled(minScoredInCommon, 70);
 
-      expect(Affinity.of(_shared(ten, harsh)).percent, 100);
+      expect(Affinity.of(_shared(flat, flat)).percent, 100);
     });
 
     test('needs enough titles scored by both', () {
@@ -163,7 +168,7 @@ void main() {
 
       expect(affinity.outcome, AffinityOutcome.notEnoughTitles);
       expect(affinity.percent, isNull);
-      expect(affinity.correlation, isNull);
+      expect(affinity.closeness, isNull);
       expect(affinity.tier, isNull);
       expect(affinity.shared, hasLength(minScoredInCommon - 1));
     });
@@ -172,15 +177,6 @@ void main() {
       final affinity = Affinity.of(_shared([10, 20, 30], [10, 20, 30]), minScored: 3);
 
       expect(affinity.percent, 100);
-    });
-
-    test('reports uniform scores instead of NaN', () {
-      final flat = List<double>.filled(minScoredInCommon, 70);
-      final affinity = Affinity.of(_shared(flat, ten));
-
-      expect(affinity.outcome, AffinityOutcome.uniformScores);
-      expect(affinity.percent, isNull);
-      expect(affinity.myMean, 70);
     });
 
     test('leaves out titles either user left unscored', () {
@@ -193,7 +189,7 @@ void main() {
       expect(affinity.percent, 100);
     });
 
-    test('averages each user\'s scores over the titles both scored', () {
+    test("averages each user's scores over the titles both scored", () {
       final affinity = Affinity.of(
         _shared([80, 60, 0], [40, 20, 100]),
         minScored: 2,
@@ -233,23 +229,24 @@ void main() {
     });
 
     test('rounds the percentage', () {
-      // Σdxdy = 3, Σdx² = 2, Σdy² = 42/9 → r = 3 / √(28/3) ≈ 0.982 → 98%
-      final affinity = Affinity.of(_shared([10, 20, 30], [10, 20, 40]), minScored: 3);
+      // Closeness 1, 0.75 and 0.9 → 0.8833… → 88%.
+      final affinity = Affinity.of(_shared([10, 20, 30], [10, 30, 34]), minScored: 3);
 
-      expect(affinity.correlation, closeTo(0.98198, 1e-5));
-      expect(affinity.percent, 98);
+      expect(affinity.closeness, closeTo(0.88333, 1e-5));
+      expect(affinity.percent, 88);
     });
   });
 
   group('tierOf', () {
     test('bands the percentage', () {
       expect(tierOf(100), AffinityTier.strong);
-      expect(tierOf(60), AffinityTier.strong);
-      expect(tierOf(59), AffinityTier.moderate);
-      expect(tierOf(30), AffinityTier.moderate);
-      expect(tierOf(29), AffinityTier.weak);
-      expect(tierOf(0), AffinityTier.weak);
-      expect(tierOf(-1), AffinityTier.opposite);
+      expect(tierOf(75), AffinityTier.strong);
+      expect(tierOf(74), AffinityTier.moderate);
+      expect(tierOf(55), AffinityTier.moderate);
+      expect(tierOf(54), AffinityTier.weak);
+      expect(tierOf(35), AffinityTier.weak);
+      expect(tierOf(34), AffinityTier.opposite);
+      expect(tierOf(0), AffinityTier.opposite);
     });
   });
 

@@ -1,26 +1,30 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
-import '../services/notification_service.dart';
 import '../services/social_api.dart';
 import '../providers/settings_provider.dart';
-import '../utils/activity_status.dart';
-import '../utils/activity_text.dart' show relativeTime;
+import '../utils/activity_text.dart' show feedDayLabel, sameFeedDay;
 import '../utils/refresh_notifier.dart';
+import '../theme/app_layout.dart';
 import '../theme/app_motion.dart';
+import '../widgets/app_refresh_indicator.dart';
+import '../widgets/app_sheet.dart';
+import '../widgets/app_button.dart';
 import '../utils/tab_reselect.dart';
 import '../utils/translations.dart' show tr, trf;
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pop_on_change.dart';
+import '../widgets/motion/pressable.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
-import '../widgets/social/social_widgets.dart';
+import '../widgets/state_message.dart';
+import '../widgets/social/feed_timeline_item.dart';
 import 'activity_thread_screen.dart';
 import 'notifications_screen.dart';
+import '../widgets/load_error_view.dart';
 
 enum _FeedType { following, global, personal }
 
@@ -141,8 +145,6 @@ class _FeedScreenState extends State<FeedScreen>
       _page = 1;
     });
     unawaited(_loadUnreadCount());
-    final feedType = _feedType;
-    final settings = context.read<SettingsProvider>();
     final ActivityPage result;
     try {
       result = await _fetchPage(token, auth, 1);
@@ -159,12 +161,6 @@ class _FeedScreenState extends State<FeedScreen>
       _hasMore = result.hasNextPage;
       _loading = false;
     });
-    if (feedType != _FeedType.following) return;
-    try {
-      await NotificationService().checkFriendActivity(result.activities, settings);
-    } on Exception catch (e) {
-      debugPrint('[FeedScreen] Checking friend activity failed: $e');
-    }
   }
 
   Future<void> _loadMore({bool retry = false}) async {
@@ -282,15 +278,7 @@ class _FeedScreenState extends State<FeedScreen>
   }
 
   void _openComposer() {
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (_) => _ComposeStatusSheet(onPost: _postStatus),
-    );
+    showAppSheet<void>(context: context, builder: (_) => _ComposeStatusSheet(onPost: _postStatus));
   }
 
   /// Posts a status and puts it at the top of the feed. Returns whether
@@ -326,32 +314,15 @@ class _FeedScreenState extends State<FeedScreen>
 
   void _showFeedPicker() {
     final lang = context.read<SettingsProvider>().language;
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (_) {
         return SafeArea(
+          top: false,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Text(tr('choose_feed', lang),
-                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
-              ),
+              SheetTitle(tr('choose_feed', lang)),
               _feedOption(tr('your_feed', lang), Icons.person, _FeedType.personal),
               _feedOption(tr('following_feed', lang), Icons.group, _FeedType.following),
               _feedOption(tr('global_feed', lang), Icons.public, _FeedType.global),
@@ -433,7 +404,7 @@ class _FeedScreenState extends State<FeedScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: GestureDetector(
+        title: Pressable.dim(
           onTap: _showFeedPicker,
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -459,30 +430,18 @@ class _FeedScreenState extends State<FeedScreen>
   Widget _body(String lang) {
     if (_loading) return const FeedSkeleton(key: ValueKey('feed-skeleton'));
     if (_hasError) {
-      return Center(
+      return LoadErrorView(
         key: const ValueKey('feed-error'),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('feed_load_error', lang),
-                style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
-            ),
-          ],
-        ),
+        onRetry: _load,
+        message: tr('feed_load_error', lang),
       );
     }
     if (_activities.isEmpty) {
-      return Center(
-          key: const ValueKey('feed-empty'),
-          child: Text(tr('no_activity', lang),
-              style: const TextStyle(color: Colors.grey)));
+      return StateMessage(
+        key: const ValueKey('feed-empty'),
+        icon: Icons.forum_outlined,
+        message: tr('no_activity', lang),
+      );
     }
     // A fresh list cascades in; afterwards only a newly posted status does.
     return EntranceGate(
@@ -490,11 +449,11 @@ class _FeedScreenState extends State<FeedScreen>
       trigger: _postedCount,
       child: NotificationListener<ScrollNotification>(
         onNotification: _onScrollNotification,
-        child: RefreshIndicator(
+        child: AppRefreshIndicator(
           onRefresh: _load,
           child: ListView.builder(
             controller: _scrollController,
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.only(bottom: AppSpace.xl),
             itemCount: _activities.length + (_hasMore ? 1 : 0),
             // Cards keep their state when a post is inserted above them, so
             // they don't replay their entrance.
@@ -509,11 +468,16 @@ class _FeedScreenState extends State<FeedScreen>
                 );
               }
               final activity = _activities[i];
+              final createdAt = activity['createdAt'] as int? ?? 0;
+              // The first entry of each day carries the day's heading.
+              final startsDay =
+                  i == 0 || !sameFeedDay(_activities[i - 1]['createdAt'] as int? ?? 0, createdAt);
               final card = StaggeredEntrance(
                 index: i,
-                child: _ActivityCard(
+                child: FeedTimelineItem(
                   activity: activity,
                   lang: lang,
+                  dayLabel: startsDay ? feedDayLabel(createdAt, lang) : null,
                   onToggleLike: () => _toggleLike(activity),
                   onOpenThread: () => _openThread(activity),
                 ),
@@ -537,181 +501,6 @@ class _FeedScreenState extends State<FeedScreen>
 /// Identifies a feed card by its activity id.
 class _CardKey extends ValueKey<int> {
   const _CardKey(super.value);
-}
-
-class _ActivityCard extends StatelessWidget {
-  final Map<String, dynamic> activity;
-  final String lang;
-  final VoidCallback onToggleLike;
-  final VoidCallback onOpenThread;
-
-  // Long posts are cut in the feed; the thread shows them in full.
-  static const _maxTextLines = 10;
-
-  const _ActivityCard({
-    required this.activity,
-    required this.lang,
-    required this.onToggleLike,
-    required this.onOpenThread,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final type = activity['type'] as String?;
-    final user = asJsonMap(activity['user']);
-    final username = user?['name'] as String? ?? tr('feed_unknown', lang);
-    final createdAt = activity['createdAt'] as int? ?? 0;
-
-    if (type == 'TEXT') {
-      return _buildTextActivity(context, user, username, createdAt);
-    }
-    return _buildListActivity(context, user, username, createdAt);
-  }
-
-  BoxDecoration _cardDecoration(BuildContext context) => BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
-      );
-
-  /// Time on the left, replies and likes on the right.
-  Widget _footer(int createdAt) => Row(children: [
-        const Icon(Icons.access_time, size: 12, color: Colors.grey),
-        const SizedBox(width: 3),
-        Expanded(
-          child: Text(relativeTime(createdAt, lang),
-              style: const TextStyle(fontSize: 11, color: Colors.grey)),
-        ),
-        ReplyCountButton(
-          count: activity['replyCount'] as int? ?? 0,
-          onPressed: onOpenThread,
-        ),
-        LikeButton(
-          isLiked: activity['isLiked'] == true,
-          count: activity['likeCount'] as int? ?? 0,
-          onPressed: onToggleLike,
-        ),
-      ]);
-
-  Widget _buildListActivity(BuildContext context, Map<String, dynamic>? user, String username, int createdAt) {
-    final media = asJsonMap(activity['media']);
-    final mediaId = media?['id'] as int?;
-    final status = activity['status'] as String?;
-    final progress = activity['progress'];
-    final coverImage = asJsonMap(media?['coverImage'])?['large'] as String?;
-    final titleMap = asJsonMap(media?['title']);
-    final title = titleMap == null
-        ? tr('feed_unknown', lang)
-        : context.read<SettingsProvider>().resolveTitle(titleMap);
-    final actionText = activityStatusText(status, progress, lang);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      decoration: _cardDecoration(context),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ProfileAvatar(user: user),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TappableUserName(
-                  onTap: () => openUserProfile(context, user),
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(fontSize: 13),
-                      children: [
-                        TextSpan(
-                            text: username,
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Theme.of(context).colorScheme.primary)),
-                        TextSpan(
-                            text: ' $actionText',
-                            style: const TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.w600),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis),
-                _footer(createdAt),
-              ],
-            ),
-          ),
-          if (coverImage != null) ...[
-            const SizedBox(width: 10),
-            GestureDetector(
-              onTap: mediaId != null ? () => openMediaDetail(context, mediaId) : null,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: CachedNetworkImage(
-                  imageUrl: coverImage,
-                  width: 45,
-                  height: 64,
-                  fit: BoxFit.cover,
-                  memCacheWidth: 90,
-                ),
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTextActivity(BuildContext context, Map<String, dynamic>? user, String username, int createdAt) {
-    final text = activityPlainText(activity['text'] as String?, lang);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
-      decoration: _cardDecoration(context),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ProfileAvatar(user: user),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TappableUserName(
-                  onTap: () => openUserProfile(context, user),
-                  child: Text(username,
-                      style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.primary,
-                          fontSize: 13)),
-                ),
-                const SizedBox(height: 4),
-                GestureDetector(
-                  onTap: onOpenThread,
-                  child: text.isEmpty
-                      ? Text(tr('social_media_post', lang),
-                          style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 13,
-                              fontStyle: FontStyle.italic))
-                      : Text(text,
-                          maxLines: _maxTextLines,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                ),
-                _footer(createdAt),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Bottom sheet for writing and posting a status update.
@@ -797,15 +586,10 @@ class _ComposeStatusSheetState extends State<_ComposeStatusSheet> {
                 alignment: Alignment.centerRight,
                 child: ValueListenableBuilder<TextEditingValue>(
                   valueListenable: _controller,
-                  builder: (context, value, _) => FilledButton(
-                    onPressed: _posting || value.text.trim().isEmpty ? null : _submit,
-                    child: _posting
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(tr('social_post', lang)),
+                  builder: (context, value, _) => AppButton(
+                    label: tr('social_post', lang),
+                    busy: _posting,
+                    onPressed: value.text.trim().isEmpty ? null : _submit,
                   ),
                 ),
               ),

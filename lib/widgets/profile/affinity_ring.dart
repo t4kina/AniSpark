@@ -34,9 +34,7 @@ String affinityHeadline(Affinity affinity, String lang) => tr(
         AffinityTier.moderate => 'affinity_tier_moderate',
         AffinityTier.weak => 'affinity_tier_weak',
         AffinityTier.opposite => 'affinity_tier_opposite',
-        null => affinity.outcome == AffinityOutcome.uniformScores
-            ? 'affinity_uniform_scores'
-            : 'affinity_not_enough',
+        null => 'affinity_not_enough',
       },
       lang,
     );

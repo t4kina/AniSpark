@@ -6,6 +6,7 @@ import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/services/social_api.dart';
+import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -100,6 +101,8 @@ void main() {
     FutureOr<http.Response> Function(RecordedRequest request) handler, {
     ValueChanged<Map<String, dynamic>>? onActivityChanged,
     AuthService? auth,
+    Map<String, dynamic>? initialActivity,
+    bool settle = true,
   }) async {
     // Like mockAniList, but answers may be held back to observe the
     // optimistic state.
@@ -116,14 +119,19 @@ void main() {
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
       child: MaterialApp(
-        home: ActivityThreadScreen(activityId: 9, api: api, onActivityChanged: onActivityChanged),
+        home: ActivityThreadScreen(
+          activityId: 9,
+          api: api,
+          initialActivity: initialActivity,
+          onActivityChanged: onActivityChanged,
+        ),
       ),
     ));
     // The thread loads from a post-frame callback.
     await tester.pump();
     await tester.pump();
     // The skeleton cross-fades into the thread.
-    await tester.pumpAndSettle();
+    if (settle) await tester.pumpAndSettle();
   }
 
   bool isMutation(RecordedRequest request, String name) => request.query.contains(name);
@@ -404,5 +412,31 @@ void main() {
     await tester.pump();
     await tester.pump();
     expect(page2Attempts, 2);
+  });
+
+  testWidgets('an activity opened from the feed shows the shape of its replies while they load', (tester) async {
+    final response = Completer<http.Response>();
+    await pumpThread(
+      tester,
+      (_) => response.future,
+      initialActivity: {
+        'id': 9,
+        'type': 'TEXT',
+        'text': 'From the feed',
+        'createdAt': _minutesAgo(5),
+        'user': _user(2),
+      },
+      settle: false,
+    );
+
+    expect(find.textContaining('From the feed'), findsOneWidget);
+    expect(tester.widget<PeopleSkeleton>(find.byType(PeopleSkeleton)).lines, 2, reason: 'a name and what they wrote');
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    response.complete(jsonResponse(_threadResponse()));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PeopleSkeleton), findsNothing);
+    expect(find.textContaining('First\nreply'), findsOneWidget);
   });
 }

@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_layout.dart';
+import '../theme/app_text.dart';
 import '../utils/haptics.dart';
+import 'app_sheet.dart';
 import 'sheet_list_surface.dart';
 
-/// A rounded bottom sheet with a drag handle, a title and one row per
-/// option — the same picker style Settings uses (see `_showPicker` there),
-/// in place of a native dropdown menu so every picker in the app looks and
-/// behaves the same way.
+/// The most of the screen a list of options takes; past it they scroll.
+const _maxHeightFraction = 0.7;
+
+/// A bottom sheet with a title and one row per option, in place of a native
+/// dropdown menu so every picker in the app looks and behaves the same way.
 Future<void> showOptionSheet<T>({
   required BuildContext context,
   required String title,
@@ -15,29 +20,17 @@ Future<void> showOptionSheet<T>({
   required ValueChanged<T> onSelected,
   IconData Function(T option)? iconOf,
 }) {
-  return showModalBottomSheet(
+  return showAppSheet<void>(
     context: context,
-    backgroundColor: Theme.of(context).colorScheme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+    maxHeightFraction: _maxHeightFraction,
     builder: (_) => SafeArea(
+      top: false,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(0, 12, 0, 8),
+        padding: const EdgeInsets.only(bottom: AppSpace.sm),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
+            SheetTitle(title),
             Flexible(
               child: SheetListSurface(
                 child: ListView(
@@ -49,13 +42,15 @@ Future<void> showOptionSheet<T>({
                       return ListTile(
                         leading: iconOf == null
                             ? null
-                            : Icon(iconOf(opt), size: 18, color: color ?? Colors.grey),
-                        title: Text(labelOf(opt), style: TextStyle(color: color, fontSize: 14)),
+                            : Icon(iconOf(opt), size: 18, color: color ?? ctx.colors.textSecondary),
+                        title: Text(labelOf(opt), style: AppText.body.copyWith(color: color)),
                         trailing: selected ? Icon(Icons.check, size: 18, color: color) : null,
                         onTap: () {
                           selectionHaptic();
+                          // The sheet goes first: an option may open a page,
+                          // and closing afterwards would close that page.
+                          Navigator.pop(ctx);
                           onSelected(opt);
-                          Navigator.pop(context);
                         },
                       );
                     });

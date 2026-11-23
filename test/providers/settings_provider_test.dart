@@ -1,4 +1,5 @@
 import 'package:anispark/providers/settings_provider.dart';
+import 'package:anispark/theme/app_palette.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,13 +20,8 @@ void main() {
       expect(provider.language, 'English');
       expect(provider.appearance, 'Dark');
       expect(provider.titleLanguage, 'English');
-      // NOTE: the in-class field defaults for these two flags are `true`
-      // (settings_provider.dart:17-18), but load() falls back to `false`
-      // when the key is absent (settings_provider.dart:54-55). This test
-      // pins the *current* post-load() behavior.
-      expect(provider.pushNotifications, isFalse);
-      expect(provider.newEpisodeAlerts, isFalse);
-      expect(provider.friendActivityAlerts, isFalse);
+      // Notifications stay off until asked for, with the permission.
+      expect(provider.episodeAlerts, isFalse);
       expect(provider.accentColorName, 'Blue');
     });
 
@@ -34,9 +30,7 @@ void main() {
         'language': 'Spanish',
         'appearance': 'Light',
         'titleLanguage': 'Native',
-        'pushNotifications': true,
-        'newEpisodeAlerts': true,
-        'friendActivityAlerts': true,
+        'episodeAlerts': true,
         'accentColorName': 'Purple',
       });
       final provider = SettingsProvider();
@@ -46,9 +40,7 @@ void main() {
       expect(provider.language, 'Spanish');
       expect(provider.appearance, 'Light');
       expect(provider.titleLanguage, 'Native');
-      expect(provider.pushNotifications, isTrue);
-      expect(provider.newEpisodeAlerts, isTrue);
-      expect(provider.friendActivityAlerts, isTrue);
+      expect(provider.episodeAlerts, isTrue);
       expect(provider.accentColorName, 'Purple');
     });
 
@@ -106,47 +98,52 @@ void main() {
       expect(prefs.getString('titleLanguage'), 'Romaji');
     });
 
-    test('setPushNotifications updates the getter, persists it, and notifies',
+    test('setEpisodeAlerts updates the getter, persists it, and notifies',
         () async {
       final provider = SettingsProvider();
       var notified = 0;
       provider.addListener(() => notified++);
 
-      await provider.setPushNotifications(false);
+      await provider.setEpisodeAlerts(true);
 
-      expect(provider.pushNotifications, isFalse);
+      expect(provider.episodeAlerts, isTrue);
       expect(notified, 1);
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('pushNotifications'), isFalse);
+      expect(prefs.getBool('episodeAlerts'), isTrue);
     });
 
-    test('setNewEpisodeAlerts updates the getter, persists it, and notifies',
+    test('the two old switches become one: on only when both were on',
         () async {
-      final provider = SettingsProvider();
-      var notified = 0;
-      provider.addListener(() => notified++);
+      for (final (push, episodes, expected) in [
+        (true, true, true),
+        (true, false, false),
+        (false, true, false),
+        (null, null, false),
+      ]) {
+        SharedPreferences.setMockInitialValues({
+          'pushNotifications': ?push,
+          'newEpisodeAlerts': ?episodes,
+        });
+        final provider = SettingsProvider();
 
-      await provider.setNewEpisodeAlerts(false);
+        await provider.load();
 
-      expect(provider.newEpisodeAlerts, isFalse);
-      expect(notified, 1);
-      final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('newEpisodeAlerts'), isFalse);
+        expect(provider.episodeAlerts, expected, reason: 'push $push, episodes $episodes');
+      }
     });
 
-    test(
-        'setFriendActivityAlerts updates the getter, persists it, and '
-        'notifies', () async {
+    test('once the one switch is set, the old ones are forgotten', () async {
+      SharedPreferences.setMockInitialValues({'pushNotifications': true, 'newEpisodeAlerts': true});
       final provider = SettingsProvider();
-      var notified = 0;
-      provider.addListener(() => notified++);
+      await provider.load();
 
-      await provider.setFriendActivityAlerts(true);
+      await provider.setEpisodeAlerts(false);
 
-      expect(provider.friendActivityAlerts, isTrue);
-      expect(notified, 1);
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('friendActivityAlerts'), isTrue);
+      expect(prefs.containsKey('pushNotifications'), isFalse);
+      expect(prefs.containsKey('newEpisodeAlerts'), isFalse);
+      await provider.load();
+      expect(provider.episodeAlerts, isFalse);
     });
 
     test('setAccentColor updates the getter, persists it, and notifies',
@@ -293,6 +290,60 @@ void main() {
       await provider.setAppearance('Sepia');
 
       expect(provider.themeMode, ThemeMode.dark);
+    });
+  });
+
+  group('themes', () {
+    test('the app starts on the classic theme, with the accent picked in Settings', () async {
+      final provider = SettingsProvider();
+      await provider.load();
+
+      expect(provider.themeName, classicTheme);
+      expect(provider.palette, appThemes[classicTheme]);
+      expect(provider.accentColor, accentColorOptions['Blue']);
+    });
+
+    test('a theme is kept, and comes back after a restart', () async {
+      final provider = SettingsProvider();
+      var notified = 0;
+      provider.addListener(() => notified++);
+
+      await provider.setTheme('Lilac');
+
+      expect(provider.themeName, 'Lilac');
+      expect(notified, 1);
+      final restarted = SettingsProvider();
+      await restarted.load();
+      expect(restarted.themeName, 'Lilac');
+    });
+
+    test('a theme that is not one of the app\'s is ignored', () async {
+      final provider = SettingsProvider();
+
+      await provider.setTheme('Neon');
+
+      expect(provider.themeName, classicTheme);
+    });
+
+    test('a theme with its own accent and no light version sets both', () async {
+      final provider = SettingsProvider();
+      await provider.setAppearance('Light');
+      await provider.setAccentColor('Green');
+
+      await provider.setTheme('Lilac');
+
+      expect(provider.accentColor, appThemes['Lilac']!.accent);
+      expect(provider.themeMode, ThemeMode.dark);
+    });
+
+    test('pure black keeps the accent picked in Settings', () async {
+      final provider = SettingsProvider();
+      await provider.setAccentColor('Pink');
+
+      await provider.setTheme('Black');
+
+      expect(appThemes['Black']!.accent, isNull);
+      expect(provider.accentColor, accentColorOptions['Pink']);
     });
   });
 }

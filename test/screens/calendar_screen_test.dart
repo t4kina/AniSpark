@@ -5,6 +5,8 @@ import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/services/device_calendar.dart';
 import 'package:anispark/services/discover_api.dart';
 import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/app_button.dart';
+import 'package:anispark/widgets/state_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -164,6 +166,7 @@ void main() {
     await pumpCalendar(tester, apiAnswering((_) => _page([schedules[1]])), auth: auth);
 
     expect(find.text(_en('cal_empty_my_list')), findsOneWidget);
+    expect(find.widgetWithText(AppButton, _en('cal_show_all')), findsOneWidget);
 
     await tester.tap(find.text(_en('cal_show_all')));
     await tester.pump();
@@ -311,5 +314,41 @@ void main() {
 
       expect(find.text(_en('cal_open_failed')), findsOneWidget);
     });
+  });
+
+  testWidgets('an empty week says so in the middle of the page and can still be pulled', (tester) async {
+    await pumpCalendar(tester, apiAnswering((_) => _page([])));
+
+    final message = find.byType(StateMessage);
+    expect(find.descendant(of: message, matching: find.text(_en('cal_empty_all'))), findsOneWidget);
+    expect(find.byType(AppButton), findsNothing, reason: 'every episode is already asked for');
+    expect(
+      tester.getCenter(message).dy,
+      moreOrLessEquals(tester.getCenter(find.byType(RefreshIndicator)).dy, epsilon: 1),
+    );
+
+    final requests = log.length;
+    await tester.fling(message, const Offset(0, 400), 1000);
+    await tester.pumpAndSettle();
+
+    expect(log.length, greaterThan(requests));
+  });
+
+  testWidgets('today stands out in the accent colour, and each day says how many episodes it has', (tester) async {
+    await pumpCalendar(tester, apiAnswering((_) => _page(schedules)));
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+
+    final todayLabel = tester.widget<Text>(find.text(_en('cal_today')));
+    final tomorrowLabel = tester.widget<Text>(find.text(_en('cal_tomorrow')));
+    final accent = Theme.of(tester.element(find.text(_en('cal_today')))).colorScheme.primary;
+    expect(todayLabel.style?.color, accent);
+    expect(tomorrowLabel.style?.color, isNot(accent));
+
+    // One episode today, two tomorrow, each count level with its heading.
+    final todayY = tester.getCenter(find.text(_en('cal_today'))).dy;
+    final tomorrowY = tester.getCenter(find.text(_en('cal_tomorrow'))).dy;
+    expect(tester.getCenter(find.text('1')).dy, moreOrLessEquals(todayY, epsilon: 4));
+    expect(tester.getCenter(find.text('2')).dy, moreOrLessEquals(tomorrowY, epsilon: 4));
   });
 }

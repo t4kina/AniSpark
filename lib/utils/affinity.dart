@@ -4,14 +4,19 @@ import 'package:flutter/foundation.dart' show immutable;
 
 // Affinity between two users' anime (or manga) lists.
 //
-// Affinity is the Pearson correlation coefficient r of the two users' scores
-// on the titles both of them have scored, shown as r × 100 (−100% … 100%),
-// the way MyAnimeList's affinity and the AniList affinity tools show it:
-// around 0% means unrelated tastes and a negative value opposite ones.
-// Pearson's r ignores each user's offset and spread, so a harsh scorer and a
-// generous one who rank titles the same way still get 100%. Scores are read
-// on AniList's 0–100 scale (`score(format: POINT_100)`) so lists kept in
+// Affinity is how close the two users' scores are on the titles both of them
+// have scored, from 0% to 100%: the same score counts fully, one a point
+// apart (out of 10) three quarters, and so on down to nothing at
+// [scoresApartAt]. It used to be the Pearson correlation of the scores, but
+// that measures whether two people rank titles the same way around their own
+// averages: two friends who give most things a 7 to 9 and many of them the
+// very same score could get 0%, which read as "different tastes". Scores are
+// read on AniList's 0–100 scale (`score(format: POINT_100)`) so lists kept in
 // different score formats (10-point, 5 stars, 3 smileys…) compare.
+
+/// How far apart two scores (on AniList's 0–100 scale) must be to count as
+/// nothing in common: 4 points out of 10.
+const scoresApartAt = 40.0;
 
 /// Titles both users must have scored before an affinity is shown. With
 /// fewer, a single score swings the percentage wildly.
@@ -111,21 +116,17 @@ enum AffinityOutcome {
 
   /// Fewer than the minimum titles were scored by both.
   notEnoughTitles,
-
-  /// One of them gave every shared title the same score, so there is no
-  /// ranking to correlate.
-  uniformScores,
 }
 
 /// How similar two tastes are, banded from the percentage.
 enum AffinityTier { strong, moderate, weak, opposite }
 
-/// The band of an affinity [percent]: 60%+ strong, 30%+ moderate, 0%+ weak,
-/// below 0% opposite.
+/// The band of an affinity [percent]: 75%+ strong (scores about a point
+/// apart or closer), 55%+ moderate, 35%+ weak, below that opposite.
 AffinityTier tierOf(int percent) => switch (percent) {
-      >= 60 => AffinityTier.strong,
-      >= 30 => AffinityTier.moderate,
-      >= 0 => AffinityTier.weak,
+      >= 75 => AffinityTier.strong,
+      >= 55 => AffinityTier.moderate,
+      >= 35 => AffinityTier.weak,
       _ => AffinityTier.opposite,
     };
 
@@ -137,7 +138,7 @@ class Affinity {
     required this.shared,
     required this.scoredInCommon,
     required this.outcome,
-    this.correlation,
+    this.closeness,
     this.myMean,
     this.theirMean,
     required this.completedOnlyByMe,
@@ -150,15 +151,12 @@ class Affinity {
     final pairs = [for (final title in shared) if (title.bothScored) title];
     final mine = [for (final title in pairs) title.myScore];
     final theirs = [for (final title in pairs) title.theirScore];
-    final correlation = pairs.length >= minScored ? pearson(mine, theirs) : null;
-    final outcome = pairs.length < minScored
-        ? AffinityOutcome.notEnoughTitles
-        : (correlation == null ? AffinityOutcome.uniformScores : AffinityOutcome.computed);
+    final enough = pairs.length >= minScored;
     return Affinity._(
       shared: List.unmodifiable(shared),
       scoredInCommon: pairs.length,
-      outcome: outcome,
-      correlation: correlation,
+      outcome: enough ? AffinityOutcome.computed : AffinityOutcome.notEnoughTitles,
+      closeness: enough ? scoreCloseness(mine, theirs) : null,
       myMean: _mean(mine),
       theirMean: _mean(theirs),
       completedOnlyByMe: shared
@@ -177,8 +175,9 @@ class Affinity {
   final int scoredInCommon;
   final AffinityOutcome outcome;
 
-  /// Pearson's r in [-1, 1], or null when [outcome] isn't computed.
-  final double? correlation;
+  /// How close the scores are, in [0, 1] (see [scoreCloseness]), or null
+  /// when [outcome] isn't computed.
+  final double? closeness;
 
   /// Each user's mean score (0–100) over the titles both scored.
   final double? myMean;
@@ -189,9 +188,9 @@ class Affinity {
   final int completedOnlyByMe;
   final int completedOnlyByThem;
 
-  /// The affinity as a rounded percentage (−100 … 100), or null.
-  int? get percent => switch (correlation) {
-        final r? => (r * 100).round(),
+  /// The affinity as a rounded percentage (0 … 100), or null.
+  int? get percent => switch (closeness) {
+        final c? => (c * 100).round(),
         null => null,
       };
 
@@ -234,27 +233,19 @@ Map<int, AffinityEntry> uniqueEntries(Iterable<AffinityEntry> entries) {
   return byId;
 }
 
-/// Pearson's correlation coefficient of the paired samples [xs] and [ys],
-/// or null when it is undefined: fewer than two pairs, lists of different
-/// lengths, or a side whose values are all equal (zero variance).
-double? pearson(List<double> xs, List<double> ys) {
+/// How close the paired scores [xs] and [ys] (0–100) are, in [0, 1]: the
+/// mean over the pairs of 1 for the same score, falling evenly to 0 for
+/// scores [scoresApartAt] or more apart. Null without pairs or for lists of
+/// different lengths.
+double? scoreCloseness(List<double> xs, List<double> ys) {
   final n = xs.length;
-  if (n < 2 || ys.length != n || _isConstant(xs) || _isConstant(ys)) return null;
-  final meanX = _mean(xs)!;
-  final meanY = _mean(ys)!;
-  var sumXY = 0.0;
-  var sumXX = 0.0;
-  var sumYY = 0.0;
+  if (n == 0 || ys.length != n) return null;
+  var sum = 0.0;
   for (var i = 0; i < n; i++) {
-    final dx = xs[i] - meanX;
-    final dy = ys[i] - meanY;
-    sumXY += dx * dy;
-    sumXX += dx * dx;
-    sumYY += dy * dy;
+    final gap = (xs[i] - ys[i]).abs();
+    sum += 1 - math.min(gap, scoresApartAt) / scoresApartAt;
   }
-  if (sumXX <= 0 || sumYY <= 0) return null;
-  final r = sumXY / math.sqrt(sumXX * sumYY);
-  return r.isFinite ? r.clamp(-1.0, 1.0) : null;
+  return sum / n;
 }
 
 /// How the compare screen orders shared titles.
@@ -299,8 +290,6 @@ typedef _Named = ({SharedTitle title, String name});
 bool _isScore(double score) => score > 0 && score.isFinite;
 
 bool _isCompleted(String? status) => status == 'COMPLETED' || status == 'REPEATING';
-
-bool _isConstant(List<double> values) => values.every((value) => value == values.first);
 
 double? _mean(List<double> values) =>
     values.isEmpty ? null : values.reduce((a, b) => a + b) / values.length;

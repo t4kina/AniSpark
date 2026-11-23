@@ -1,23 +1,27 @@
 import 'dart:math' show max;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
 import '../services/api_cache.dart';
 import '../services/discover_api.dart';
-import '../theme/app_motion.dart';
 import '../utils/anime_season.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_refresh_indicator.dart';
+import '../widgets/media_preview.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/app_dialog.dart';
 import '../widgets/option_sheet.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import 'detail_screen.dart';
+import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// Browses the anime of any season, sorted and filtered by format, loading
 /// more as the grid scrolls.
@@ -267,12 +271,11 @@ class _SeasonScreenState extends State<SeasonScreen> {
       );
 
   Future<void> _pickYear(String lang) async {
-    final year = await showDialog<int>(
+    final year = await showAppDialog<int>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(tr('season_pick_year', lang)),
+      builder: (ctx) => AppDialog(
+        title: tr('season_pick_year', lang),
         content: SizedBox(
-          width: 300,
           height: 320,
           child: YearPicker(
             firstDate: DateTime(_firstYear),
@@ -416,15 +419,15 @@ class _SeasonScreenState extends State<SeasonScreen> {
   Widget _buildContent(String lang) => FadeSwitcher(child: _buildState(lang));
 
   Widget _buildState(String lang) {
-    if (_loadingFirst && _pages.isEmpty) return const _GridSkeleton();
-    if (_hasError) return _buildError(lang);
+    if (_loadingFirst && _pages.isEmpty) return const GridSkeleton(gridDelegate: _gridDelegate);
+    if (_hasError) return LoadErrorView(onRetry: () => _loadPage(1));
     final items = _items;
     final selection = _selectionKey;
     // The first page cascades in; later pages are past the staggered items.
     return EntranceGate(
       key: ValueKey(selection),
       trigger: _pages[1],
-      child: RefreshIndicator(
+      child: AppRefreshIndicator(
         onRefresh: _refresh,
         child: CustomScrollView(
           controller: _scroll,
@@ -433,9 +436,7 @@ class _SeasonScreenState extends State<SeasonScreen> {
             if (items.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
-                child: Center(
-                  child: Text(tr('no_results', lang), style: const TextStyle(color: Colors.grey)),
-                ),
+                child: StateMessage(icon: Icons.search_off_rounded, message: tr('no_results', lang)),
               )
             else
               SliverPadding(
@@ -479,23 +480,6 @@ class _SeasonScreenState extends State<SeasonScreen> {
       ),
     );
   }
-
-  Widget _buildError(String lang) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: () => _loadPage(1),
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
-            ),
-          ],
-        ),
-      );
 }
 
 /// Grid cover with score, title, format and episode count.
@@ -522,10 +506,10 @@ class _SeasonTile extends StatelessWidget {
       if (format != null) _formatLabel(format, lang),
       if (episodes != null) trf('search_eps', lang, {'n': episodes}),
     ].join(' · ');
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
     final heroTag = id == null ? null : coverHeroTag(heroScope, id);
 
     return Pressable(
+      onLongPress: id == null ? null : () => showMediaPreview(context, media: media),
       onTap: id == null
           ? null
           : () => Navigator.push(
@@ -544,17 +528,7 @@ class _SeasonTile extends StatelessWidget {
                 // Only the cover flies; the score stays on the tile.
                 RoundedHero(
                   tag: heroTag,
-                  child: cover == null
-                      ? placeholder
-                      : CachedNetworkImage(
-                          imageUrl: cover,
-                          fit: BoxFit.cover,
-                          memCacheWidth: 240,
-                          fadeInDuration: AppMotion.of(context, AppMotion.short),
-                          fadeOutDuration: Duration.zero,
-                          placeholder: (_, _) => placeholder,
-                          errorWidget: (_, _, _) => placeholder,
-                        ),
+                  child: AppImage(url: cover, cacheWidth: 240),
                 ),
                 if (score != null) _ScoreOverlay(score: score),
               ],
@@ -608,31 +582,6 @@ class _ScoreOverlay extends StatelessWidget {
               fontSize: 10,
               fontWeight: FontWeight.w600,
             ),
-          ),
-        ),
-      );
-}
-
-/// Placeholder shaped like the cover grid.
-class _GridSkeleton extends StatelessWidget {
-  const _GridSkeleton();
-
-  @override
-  Widget build(BuildContext context) => Skeleton(
-        child: GridView.builder(
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.all(12),
-          gridDelegate: _gridDelegate,
-          itemCount: 12,
-          itemBuilder: (_, _) => const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: SkeletonBox(height: double.infinity, radius: 8)),
-              SizedBox(height: 5),
-              SkeletonBox(height: 12),
-              SizedBox(height: 4),
-              SkeletonBox(width: 60, height: 10),
-            ],
           ),
         ),
       );

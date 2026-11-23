@@ -63,4 +63,35 @@ void main() {
         reason: 'the corner shows what is behind the sheet, not a row\'s background');
     // iOS, where the list bounces even when its options fit.
   }, variant: TargetPlatformVariant.only(TargetPlatform.iOS));
+
+  testWidgets('an option that opens a page closes the sheet and leaves the page open', (tester) async {
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: TextButton(
+            onPressed: () => showOptionSheet<String>(
+              context: context,
+              title: 'Faye',
+              options: const ['Profile', 'Settings'],
+              labelOf: (option) => option,
+              current: '',
+              onSelected: (option) => Navigator.push(
+                context,
+                MaterialPageRoute<void>(builder: (_) => Scaffold(body: Text('$option page'))),
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Settings'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Settings page'), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
+  });
 }

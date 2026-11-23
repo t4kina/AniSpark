@@ -20,11 +20,7 @@ class NotificationService {
   static const _channelName = 'Episode Alerts';
   static const _channelDesc = 'Notifications when new anime episodes are available';
 
-  static const _friendChannelId = 'friend_activity';
-  static const _friendChannelName = 'Friend Activity';
-  static const _friendChannelDesc = 'Notifications when friends are active on AniList';
-
-  static const _friendNotifId = 99999;
+  // Left behind by the friend activity alert AniSpark no longer has.
   static const _prefLastActivityKey = 'last_seen_activity_at';
 
   Future<void> init() async {
@@ -58,8 +54,7 @@ class NotificationService {
     if (prefs.getBool('notification_asked') ?? false) return;
     await prefs.setBool('notification_asked', true);
     final granted = await requestPermission();
-    await settings.setPushNotifications(granted);
-    await settings.setNewEpisodeAlerts(granted);
+    await settings.setEpisodeAlerts(granted);
   }
 
   /// Returns true if permission was granted (or already granted).
@@ -85,7 +80,7 @@ class NotificationService {
     Map<String, List<dynamic>> lists,
     SettingsProvider settings,
   ) async {
-    if (!settings.pushNotifications || !settings.newEpisodeAlerts) return;
+    if (!settings.episodeAlerts) return;
     if (!_initialized) return;
     if (kIsWeb) return;
     if (defaultTargetPlatform != TargetPlatform.android &&
@@ -160,88 +155,6 @@ class NotificationService {
     }
   }
 
-  /// Checks if there is new friend activity since the last time the feed was seen.
-  /// If [settings.friendActivityAlerts] is enabled and new activity exists, fires a notification.
-  /// Returns the number of new activities so the caller can update the last-seen timestamp.
-  Future<void> checkFriendActivity(
-    List<dynamic> activities,
-    SettingsProvider settings,
-  ) async {
-    if (!settings.pushNotifications || !settings.friendActivityAlerts) return;
-    if (!_initialized || kIsWeb) return;
-    if (defaultTargetPlatform != TargetPlatform.android &&
-        defaultTargetPlatform != TargetPlatform.iOS) { return; }
-    if (activities.isEmpty) return;
-
-    final prefs = await SharedPreferences.getInstance();
-    final lastSeenAt = prefs.getInt(_prefLastActivityKey) ?? 0;
-
-    final newActivities = activities
-        .where((a) => ((a['createdAt'] as int?) ?? 0) > lastSeenAt)
-        .toList();
-
-    if (newActivities.isEmpty) return;
-
-    // Persist the most recent timestamp so we don't notify again for the same events
-    final newestAt = newActivities
-        .map((a) => (a['createdAt'] as int?) ?? 0)
-        .reduce((a, b) => a > b ? a : b);
-    await prefs.setInt(_prefLastActivityKey, newestAt);
-
-    final count = newActivities.length;
-    final lang = settings.language;
-    final body = count == 1
-        ? _activitySummary(newActivities.first, settings)
-        : trf('notif_friends_active', lang, {'count': count});
-
-    try {
-      await _plugin.show(
-        _friendNotifId,
-        tr('notif_friend_activity_title', lang),
-        body,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            _friendChannelId,
-            _friendChannelName,
-            channelDescription: _friendChannelDesc,
-            importance: Importance.defaultImportance,
-            priority: Priority.defaultPriority,
-            icon: '@mipmap/ic_launcher',
-          ),
-          iOS: DarwinNotificationDetails(
-            presentAlert: true,
-            presentBadge: false,
-            presentSound: false,
-          ),
-        ),
-      );
-    } catch (e) {
-      debugPrint('[Notifications] Failed to show friend activity: $e');
-    }
-  }
-
-  String _activitySummary(dynamic activity, SettingsProvider settings) {
-    final lang = settings.language;
-    final user = activity['user'] as Map?;
-    final name = user?['name'] as String? ?? tr('notif_a_friend', lang);
-    final type = activity['type'] as String?;
-    if (type == 'TEXT') return trf('notif_status_update', lang, {'name': name});
-    // AniList sends the status already worded ("watched episode"); this
-    // fallback only stands in for it, so it stays in the same vocabulary.
-    final status = activity['status'] as String? ?? 'updated';
-    final media = activity['media'] as Map<String, dynamic>?;
-    final titleMap = media?['title'] as Map<String, dynamic>?;
-    final title = titleMap == null
-        ? tr('notif_something', lang)
-        : settings.resolveTitle(titleMap);
-    final progress = activity['progress'];
-    if (progress != null) {
-      return trf('notif_activity_progress', lang,
-          {'name': name, 'status': status, 'progress': progress, 'title': title});
-    }
-    return trf('notif_activity_status', lang, {'name': name, 'status': status, 'title': title});
-  }
-
   Future<String?> _downloadImage(String url) async {
     try {
       final file = await DefaultCacheManager().getSingleFile(url);
@@ -257,7 +170,7 @@ class NotificationService {
   }
 
   /// Forgets everything tied to the signed-in account: scheduled episode
-  /// alerts and the last friend activity that was notified.
+  /// alerts, and what the old friend activity alert had kept.
   Future<void> resetForLogout() async {
     if (_initialized) await cancelAll();
     final prefs = await SharedPreferences.getInstance();

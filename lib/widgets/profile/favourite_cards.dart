@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -8,6 +7,7 @@ import '../../screens/detail_screen.dart';
 import '../motion/cover_hero.dart';
 import '../motion/pressable.dart';
 import '../motion/rounded_hero.dart';
+import '../app_image.dart';
 
 /// A favourite anime or manga in a profile's horizontal row: shrinks while
 /// pressed and its cover flies into the detail page. [heroScope] must be
@@ -29,15 +29,7 @@ class FavouriteMediaCard extends StatelessWidget {
     final cover = RoundedHero(
       tag: heroTag,
       borderRadius: BorderRadius.circular(8),
-      child: image != null
-          ? CachedNetworkImage(
-              imageUrl: image,
-              width: 100,
-              height: 140,
-              fit: BoxFit.cover,
-              memCacheWidth: 200,
-            )
-          : Container(width: 100, height: 140, color: Theme.of(context).colorScheme.surfaceContainerHighest),
+      child: AppImage(url: image, cacheWidth: 200, width: 100, height: 140),
     );
     return Padding(
       padding: const EdgeInsets.only(right: 10),
@@ -79,6 +71,7 @@ class FavouriteCharacterCard extends StatelessWidget {
     final id = character['id'] as int?;
     final image = (character['image'] as Map?)?['medium'] as String?;
     final name = (character['name'] as Map?)?['full'] as String? ?? '';
+    final heroTag = id == null ? null : personHeroTag('favourite-characters', id);
     return Padding(
       padding: const EdgeInsets.only(right: 10),
       child: Pressable(
@@ -87,7 +80,7 @@ class FavouriteCharacterCard extends StatelessWidget {
             : () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (_) => CharacterScreen(characterId: id, name: name, imageUrl: image),
+                    builder: (_) => CharacterScreen(characterId: id, name: name, imageUrl: image, heroTag: heroTag),
                   ),
                 ),
         child: SizedBox(
@@ -95,17 +88,10 @@ class FavouriteCharacterCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: image != null
-                    ? CachedNetworkImage(
-                        imageUrl: image,
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 160,
-                      )
-                    : Container(width: 80, height: 80, color: Theme.of(context).colorScheme.surfaceContainerHighest),
+              SizedBox(
+                width: 80,
+                height: 80,
+                child: RoundedHero(tag: heroTag, child: AppImage(url: image, cacheWidth: 160)),
               ),
               const SizedBox(height: 4),
               Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10)),

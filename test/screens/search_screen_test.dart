@@ -55,6 +55,26 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(offline.requests, 2);
+    final badge = tester.widget<Badge>(find.byType(Badge));
+    expect(badge.isLabelVisible, isTrue);
+    expect(find.descendant(of: find.byType(Badge), matching: find.text('1')), findsOneWidget,
+        reason: 'the filter button counts the genres picked');
+  });
+
+  testWidgets('the content type and the sort are pickers of the same shape, and no filter is counted yet',
+      (tester) async {
+    await tester.pumpWidget(screenApp(const SearchScreen(), cache: ApiCache(MemoryCacheStore())));
+    await tester.pump();
+
+    BoxDecoration pillOf(String label) => tester
+        .widget<Container>(find.ancestor(of: find.text(label), matching: find.byType(Container)).first)
+        .decoration! as BoxDecoration;
+    final type = pillOf('All');
+    final sort = pillOf('Popularity');
+    expect(type.color, isNotNull);
+    expect(type.color, sort.color);
+    expect(type.borderRadius, sort.borderRadius);
+    expect(tester.widget<Badge>(find.byType(Badge)).isLabelVisible, isFalse);
   });
 
   testWidgets('clearing the query dismisses the error', (tester) async {
@@ -65,5 +85,76 @@ void main() {
 
     expect(find.text(loadErrorText), findsNothing);
     expect(find.text('Search for anime or manga'), findsOneWidget);
+  });
+
+  testWidgets('Cancel stays and the field keeps its place; with nothing to cancel it leaves', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(screenApp(
+      Builder(
+        builder: (context) => TextButton(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
+          child: const Text('open search'),
+        ),
+      ),
+      cache: ApiCache(MemoryCacheStore()),
+    ));
+    await tester.tap(find.text('open search'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'bebop');
+    await tester.pump();
+    final field = tester.getRect(find.byType(TextField));
+    expect(field.right, lessThan(tester.getTopLeft(find.text('Cancel')).dx));
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Cancel'), findsOneWidget, reason: 'it does not go away');
+    expect(tester.getRect(find.byType(TextField)), field, reason: 'the field does not stretch');
+    expect(find.text('bebop'), findsNothing);
+
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(find.byType(SearchScreen), findsNothing);
+  });
+
+  testWidgets('Cancel is plain text at the page margin, and the field never draws an outline', (tester) async {
+    tester.view.physicalSize = const Size(400, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(screenApp(const SearchScreen(), cache: ApiCache(MemoryCacheStore())));
+    await tester.pumpAndSettle();
+
+    expect(tester.getTopRight(find.text('Cancel')).dx, closeTo(400 - 16, 0.5), reason: 'lined up with the page margin');
+    expect(find.ancestor(of: find.text('Cancel'), matching: find.byType(TextButton)), findsNothing,
+        reason: 'no button box flashing under it');
+    final gap = tester.getTopLeft(find.text('Cancel')).dx - tester.getRect(find.byType(TextField)).right;
+    expect(gap, closeTo(12, 0.5));
+
+    final decoration = tester.widget<TextField>(find.byType(TextField)).decoration!;
+    for (final border in [decoration.enabledBorder, decoration.focusedBorder]) {
+      expect(border, isNotNull);
+      expect(border!.borderSide, BorderSide.none);
+    }
+  });
+
+  testWidgets('a recent search is removed with a cross that has a whole finger of room', (tester) async {
+    SharedPreferences.setMockInitialValues({recentSearchesPrefsKey: ['frieren', 'bebop']});
+    await tester.pumpWidget(screenApp(const SearchScreen(), cache: ApiCache(MemoryCacheStore())));
+    await tester.pumpAndSettle();
+    expect(find.text('frieren'), findsOneWidget);
+
+    final cross = find.bySemanticsLabel('Remove from recent searches').first;
+    expect(tester.getSize(cross).width, greaterThanOrEqualTo(36));
+    expect(tester.getSize(cross).height, greaterThanOrEqualTo(36));
+
+    // Near the edge of its area, well away from the drawn cross.
+    await tester.tapAt(tester.getTopLeft(cross) + const Offset(3, 3));
+    await tester.pumpAndSettle();
+
+    expect(find.text('frieren'), findsNothing);
+    expect(find.text('bebop'), findsOneWidget);
+    expect(offline.requests, 0, reason: 'removing it does not search for it');
   });
 }

@@ -1,10 +1,9 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
-import '../../theme/app_motion.dart';
 import '../motion/cover_hero.dart';
 import '../motion/pressable.dart';
 import '../motion/rounded_hero.dart';
+import '../app_image.dart';
 
 /// A media in a [DetailMediaRow].
 class DetailMediaItem {
@@ -45,8 +44,6 @@ class DetailMediaRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
-    final fadeIn = AppMotion.of(context, AppMotion.short);
     return SizedBox(
       height: height,
       child: ListView.builder(
@@ -72,17 +69,7 @@ class DetailMediaRow extends StatelessWidget {
                       child: RoundedHero(
                         tag: heroTag,
                         borderRadius: _coverRadius,
-                        child: cover == null
-                            ? placeholder
-                            : CachedNetworkImage(
-                                imageUrl: cover,
-                                fit: BoxFit.cover,
-                                memCacheWidth: 220,
-                                fadeInDuration: fadeIn,
-                                fadeOutDuration: Duration.zero,
-                                placeholder: (_, _) => placeholder,
-                                errorWidget: (_, _, _) => placeholder,
-                              ),
+                        child: AppImage(url: cover, cacheWidth: 220),
                       ),
                     ),
                     const SizedBox(height: 4),

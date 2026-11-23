@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:anispark/screens/user_profile_screen.dart';
@@ -6,6 +7,8 @@ import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import '../helpers/fake_auth_service.dart';
 import '../helpers/memory_cache_store.dart';
@@ -32,30 +35,46 @@ void main() {
     AffinityApi.clearViewerMemo();
   });
 
-  AniListService aniList({required bool isFollower}) => AniListService(
-        client: mockAniList(log, (request) {
-          if (request.query.contains('ToggleFollow')) {
-            following = !following;
-            return jsonResponse({
-              'data': {
-                'ToggleFollow': {'id': _otherId, 'isFollowing': following},
-              },
-            });
-          }
-          if (request.query.contains('activities')) {
-            return jsonResponse({
-              'data': {
-                'Page': {'activities': []},
-              },
-            });
-          }
-          return jsonResponse({
-            'data': {
-              'User': {'id': _otherId, 'name': 'Faye Valentine', 'isFollowing': following, 'isFollower': isFollower},
-            },
-          });
-        }),
-      );
+  http.Response answer(RecordedRequest request, {required bool isFollower}) {
+      if (request.query.contains('ToggleFollow')) {
+        following = !following;
+        return jsonResponse({
+          'data': {
+            'ToggleFollow': {'id': _otherId, 'isFollowing': following},
+          },
+        });
+      }
+      if (request.query.contains('activities')) {
+        return jsonResponse({
+          'data': {
+            'Page': {'activities': []},
+          },
+        });
+      }
+      return jsonResponse({
+        'data': {
+          'User': {'id': _otherId, 'name': 'Faye Valentine', 'isFollowing': following, 'isFollower': isFollower},
+        },
+      });
+  }
+
+  MockClient aniListClient({required bool isFollower}) =>
+      mockAniList(log, (request) => answer(request, isFollower: isFollower));
+
+  AniListService aniList({required bool isFollower}) => AniListService(client: aniListClient(isFollower: isFollower));
+
+  /// Answers like AniList; the profile and the activity wait for
+  /// [profileGate] and [activityGate] when given.
+  AniListService slowAniList({Future<void>? profileGate, Future<void>? activityGate}) {
+    return AniListService(
+      client: MockClient((request) async {
+        final recorded = RecordedRequest(request);
+        await (recorded.query.contains('activities') ? activityGate : profileGate);
+        log.add(recorded);
+        return answer(recorded, isFollower: false);
+      }),
+    );
+  }
 
   Future<void> pumpProfile(WidgetTester tester, {int userId = _otherId, bool isFollower = false}) async {
     tester.view.physicalSize = const Size(800, 1600);
@@ -91,6 +110,7 @@ void main() {
     following = true;
     await pumpProfile(tester, isFollower: true);
     expect(find.text('Follows You'), findsOneWidget);
+    expect(find.bySemanticsLabel('More options'), findsNothing, reason: 'Following already opens the same actions');
 
     await tester.tap(find.text('Following'));
     await tester.pumpAndSettle();
@@ -103,12 +123,13 @@ void main() {
     expect(toggles(), 1);
     expect(following, isFalse);
     expect(find.text('Follow'), findsOneWidget);
+    expect(find.bySemanticsLabel('More options'), findsOneWidget, reason: 'back once not following');
   });
 
   testWidgets('the more button offers Block and Report, not Unfollow, when not following', (tester) async {
     await pumpProfile(tester);
 
-    await tester.tap(find.byTooltip('More options'));
+    await tester.tap(find.bySemanticsLabel('More options'));
     await tester.pumpAndSettle();
 
     expect(find.text('Block'), findsOneWidget);
@@ -121,6 +142,60 @@ void main() {
 
     expect(find.text('Faye Valentine'), findsOneWidget);
     expect(find.text('Follow'), findsNothing);
-    expect(find.byTooltip('More options'), findsNothing);
+    expect(find.bySemanticsLabel('More options'), findsNothing);
+  });
+
+  testWidgets('the follow button is there from the start, and acts once AniList has confirmed it', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await cache.write(ApiCache.userKey(_viewerId, 'profile:$_otherId'), {
+      'id': _otherId,
+      'name': 'Faye Valentine',
+      'isFollowing': false,
+      'isFollower': false,
+    });
+    await cache.write(ApiCache.userKey(_viewerId, 'activity:$_otherId'), <dynamic>[]);
+    final fresh = Completer<void>();
+    await tester.pumpWidget(appWith(
+      UserProfileScreen(userId: _otherId, name: 'faye', service: slowAniList(profileGate: fresh.future)),
+      cache: cache,
+      auth: FakeAuthService(fakeToken: 'tok', fakeUser: {'id': _viewerId}),
+    ));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('Faye Valentine'), findsOneWidget, reason: 'the cached profile');
+    expect(find.text('Follow'), findsOneWidget, reason: 'its room is taken from the first frame');
+    await tester.tap(find.text('Follow'));
+    await tester.pump();
+    expect(toggles(), 0, reason: 'a cached follow state is not trusted');
+
+    fresh.complete();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Follow'));
+    await tester.pumpAndSettle();
+    expect(toggles(), 1);
+  });
+
+  testWidgets('the page arrives with its activity, not before it', (tester) async {
+    tester.view.physicalSize = const Size(800, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final activity = Completer<void>();
+    await tester.pumpWidget(appWith(
+      UserProfileScreen(userId: _otherId, name: 'faye', service: slowAniList(activityGate: activity.future)),
+      cache: cache,
+      auth: FakeAuthService(fakeToken: 'tok', fakeUser: {'id': _viewerId}),
+    ));
+    await tester.pump();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Faye Valentine'), findsNothing, reason: 'still the placeholder');
+
+    activity.complete();
+    await tester.pumpAndSettle();
+    expect(find.text('Faye Valentine'), findsOneWidget);
   });
 }

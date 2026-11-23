@@ -6,7 +6,10 @@ import 'package:provider/provider.dart';
 import '../services/anilist_service.dart';
 import '../services/api_cache.dart';
 import '../services/auth_service.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_layout.dart';
 import '../theme/app_motion.dart';
+import '../theme/app_text.dart';
 import '../utils/haptics.dart';
 import '../utils/refresh_notifier.dart';
 import '../utils/external_url.dart';
@@ -14,24 +17,32 @@ import '../utils/score_utils.dart';
 import '../widgets/overlay_button.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/detail/detail_header.dart';
+import '../widgets/detail/detail_labels.dart';
+import '../widgets/detail/list_action_button.dart';
 import '../widgets/detail/following_section.dart';
 import '../widgets/detail/media_row.dart';
 import '../widgets/detail/reviews_section.dart';
+import '../widgets/detail/section_title.dart';
 import '../widgets/detail/staff_section.dart';
 import '../widgets/detail/studio_links.dart';
 import '../utils/fuzzy_date.dart' show FuzzyDate, formatFuzzyDate;
 import '../widgets/entry_editor/entry_draft.dart' show entryStatusKey;
 import '../widgets/entry_editor/entry_editor_api.dart' show loadCustomListNames;
 import '../widgets/entry_editor/entry_editor_sheet.dart';
+import '../widgets/motion/collapsing_title_bar.dart';
+import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pop_on_change.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
+import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/motion/stretchy_banner.dart';
 import '../widgets/blurred_backdrop.dart';
 import '../utils/translations.dart';
 import '../providers/settings_provider.dart';
 import 'character_screen.dart';
+import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 class DetailScreen extends StatefulWidget {
   final int animeId;
@@ -205,32 +216,19 @@ class _DetailScreenState extends State<DetailScreen> {
     // loads; only a failed load replaces the whole page.
     return FadeSwitcher(
       child: !_loading && data == null
-          ? _buildError(settings.language)
+          ? _buildError()
           : _buildPage(context, data, settings),
     );
   }
 
-  Widget _buildError(String lang) => Scaffold(
+  Widget _buildError() => Scaffold(
         key: const ValueKey('error'),
         appBar: AppBar(),
-        body: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-              const SizedBox(height: 12),
-              Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
-              const SizedBox(height: 16),
-              FilledButton.icon(
-                onPressed: () {
-                  setState(() => _loading = true);
-                  _load(force: true);
-                },
-                icon: const Icon(Icons.refresh),
-                label: Text(tr('retry', lang)),
-              ),
-            ],
-          ),
+        body: LoadErrorView(
+          onRetry: () {
+            setState(() => _loading = true);
+            _load(force: true);
+          },
         ),
       );
 
@@ -245,30 +243,42 @@ class _DetailScreenState extends State<DetailScreen> {
       child: Scaffold(
         body: Stack(
           children: [
-            CustomScrollView(
-              controller: _scroll,
-              slivers: [
-                SliverToBoxAdapter(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      DetailHeader(
-                        banner: StretchyBanner(
-                          controller: _scroll,
-                          child: FadeSwitcher(child: _buildBanner(context, d)),
+            // What the data fills in cascades in when it arrives, and not
+            // again when a fresher copy replaces it.
+            EntranceGate(
+              trigger: d == null,
+              child: CustomScrollView(
+                controller: _scroll,
+                slivers: [
+                  SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        DetailHeader(
+                          banner: StretchyBanner(
+                            controller: _scroll,
+                            child: FadeSwitcher(child: _buildBanner(context, d)),
+                          ),
+                          cover: _buildCover(context, d),
+                          info: FadeSwitcher(
+                            child: d == null ? const DetailInfoSkeleton() : _buildInfo(d, settings),
+                          ),
                         ),
-                        cover: _buildCover(context, d),
-                        info: FadeSwitcher(
-                          child: d == null ? const DetailInfoSkeleton() : _buildInfo(d, settings),
+                        FadeSwitcher(
+                          child: d == null ? const DetailBodySkeleton() : _buildBody(context, d, settings),
                         ),
-                      ),
-                      FadeSwitcher(
-                        child: d == null ? const DetailBodySkeleton() : _buildBody(context, d, settings),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
+            ),
+            // The title, once the one under the cover has scrolled away.
+            CollapsingTitleBar(
+              controller: _scroll,
+              title: d == null ? '' : _titleOf(d, settings),
+              revealAt: _titleBarRevealAt - MediaQuery.paddingOf(context).top,
+              sideInset: _titleBarSideInset,
             ),
             _buildOverlayButtons(context, d, settings.language),
           ],
@@ -299,15 +309,13 @@ class _DetailScreenState extends State<DetailScreen> {
         else
           surface,
         if (banner != null)
-          CachedNetworkImage(
-            imageUrl: banner,
-            fit: BoxFit.cover,
+          AppImage(
+            url: banner,
             // Banners are ~1900 px wide; decode them at the screen's width.
-            memCacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round(),
-            fadeInDuration: AppMotion.of(context, AppMotion.long),
-            fadeOutDuration: Duration.zero,
-            placeholder: (_, _) => const SizedBox.shrink(),
-            errorWidget: (_, _, _) => const SizedBox.shrink(),
+            cacheWidth: (MediaQuery.sizeOf(context).width * MediaQuery.devicePixelRatioOf(context)).round(),
+            fadeIn: AppMotion.long,
+            // Over the blurred cover, which shows until the banner is there.
+            fill: false,
           ),
       ],
     );
@@ -333,6 +341,20 @@ class _DetailScreenState extends State<DetailScreen> {
   }
 
   /// Title, studio, next episode and the score and ranking stats.
+  /// Steps into the page's entrance cascade: the title, the studio and the
+  /// next episode come first, then the stats, then the sections under the
+  /// header in order (see `StaggeredEntrance`).
+  /// Scrolled this far (less the status bar), the page title is going
+  /// under the top bar.
+  static const _titleBarRevealAt =
+      DetailHeader.bannerHeight + DetailHeader.coverTop - CollapsingTitleBar.height + 12;
+
+  /// Clear of the three buttons at the right; the title stays centred.
+  static const _titleBarSideInset = 148.0;
+
+  static const _statsStep = 3;
+  static const _bodyStep = _statsStep + 1;
+
   Widget _buildInfo(Map<String, dynamic> d, SettingsProvider settings) {
     final lang = settings.language;
     final title = settings.resolveTitle(d['title'] as Map<String, dynamic>?);
@@ -350,7 +372,8 @@ class _DetailScreenState extends State<DetailScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
-            children: [
+            // The title leads the cascade, under the cover that just landed.
+            children: staggered([
               Text(title,
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
@@ -364,36 +387,37 @@ class _DetailScreenState extends State<DetailScreen> {
               ],
               if (nextAiring != null) ...[
                 const SizedBox(height: 8),
-                Text(
-                  trf('detail_episode_airs_in', lang, {
+                _AiringPill(
+                  text: trf('detail_episode_airs_in', lang, {
                     'n': '${nextAiring['episode']}',
                     'time': _airingCountdown(nextAiring['airingAt'] as int, lang),
                   }),
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.grey, fontSize: 13),
                 ),
               ],
-            ],
+            ]),
           ),
         ),
         const SizedBox(height: 20),
-        IntrinsicHeight(
-          child: Row(
-            children: [
-              _statCell(tr('detail_average_score', lang),
-                  score != null ? '$score%' : '—',
-                  score != null && score >= 70 ? Colors.green : Colors.grey),
-              if (highestRated != null) ...[
-                _vDivider(),
-                _statCell(tr('detail_highest_rated', lang), '#${highestRated['rank']}', null,
-                    sub: _rankingSub(highestRated, lang)),
+        StaggeredEntrance(
+          index: _statsStep,
+          child: IntrinsicHeight(
+            child: Row(
+              children: [
+                _statCell(tr('detail_average_score', lang),
+                    score != null ? '$score%' : '—',
+                    score != null && score >= 70 ? context.colors.success : context.colors.textSecondary),
+                if (highestRated != null) ...[
+                  _vDivider(),
+                  _statCell(tr('detail_highest_rated', lang), '#${highestRated['rank']}', null,
+                      sub: _rankingSub(highestRated, lang)),
+                ],
+                if (mostPopular != null) ...[
+                  _vDivider(),
+                  _statCell(tr('detail_most_popular', lang), '#${mostPopular['rank']}', null,
+                      sub: _rankingSub(mostPopular, lang)),
+                ],
               ],
-              if (mostPopular != null) ...[
-                _vDivider(),
-                _statCell(tr('detail_most_popular', lang), '#${mostPopular['rank']}', null,
-                    sub: _rankingSub(mostPopular, lang)),
-              ],
-            ],
+            ),
           ),
         ),
         const SizedBox(height: 24),
@@ -462,9 +486,8 @@ class _DetailScreenState extends State<DetailScreen> {
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+      children: staggered(from: _bodyStep, [
         const SizedBox(height: 16),
-
         // ── Action buttons ──
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -477,6 +500,8 @@ class _DetailScreenState extends State<DetailScreen> {
                     : tr('add_to_list', lang).toUpperCase(),
                 icon: inList ? Icons.bookmark_rounded : Icons.bookmark_add_outlined,
                 sublabel: tr('status', lang).toUpperCase(),
+                // Once it is in their list the button is the status chip.
+                highlighted: inList,
                 onTap: () => _openEditor(context),
               ),
               const SizedBox(width: 8),
@@ -514,7 +539,7 @@ class _DetailScreenState extends State<DetailScreen> {
         _sectionPad(Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionTitle(tr('detail_series_info', lang)),
+            DetailSectionTitle(tr('detail_series_info', lang)),
             const SizedBox(height: 12),
             _infoGrid([
               if (format != null) _InfoItem(tr('detail_type', lang), _formatLabel(format, lang)),
@@ -537,7 +562,7 @@ class _DetailScreenState extends State<DetailScreen> {
         _sectionPad(Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _sectionTitle(tr('detail_titles', lang)),
+            DetailSectionTitle(tr('detail_titles', lang)),
             const SizedBox(height: 10),
             if (d['title']?['romaji'] != null) _titleRow(tr('detail_title_romaji', lang), d['title']['romaji'] as String),
             if (d['title']?['english'] != null) _titleRow(tr('detail_title_english', lang), d['title']['english'] as String),
@@ -552,7 +577,14 @@ class _DetailScreenState extends State<DetailScreen> {
 
         // ── Tags ──
         if (tags.isNotEmpty) ...[
-          _TagsSection(tags: tags),
+          _sectionPad(Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DetailSectionTitle(tr('detail_tags', lang)),
+              const SizedBox(height: 10),
+              TagChips(tags: tags),
+            ],
+          )),
           const Divider(height: 1),
         ],
 
@@ -561,13 +593,9 @@ class _DetailScreenState extends State<DetailScreen> {
           _sectionPad(Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionTitle(tr('detail_genres', lang)),
+              DetailSectionTitle(tr('detail_genres', lang)),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: genres.map((g) => _chip(context, g)).toList(),
-              ),
+              GenreChips(genres: genres, isManga: isManga),
             ],
           )),
           const Divider(height: 1),
@@ -578,9 +606,9 @@ class _DetailScreenState extends State<DetailScreen> {
           _sectionPad(Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _sectionTitle(tr('detail_producers', lang)),
+              DetailSectionTitle(tr('detail_producers', lang)),
               const SizedBox(height: 10),
-              StudioLinks(studios: studios, isAnimationStudio: false),
+              ProducerChips(studios: studios),
             ],
           )),
           const Divider(height: 1),
@@ -588,7 +616,7 @@ class _DetailScreenState extends State<DetailScreen> {
 
         // ── Relations ──
         if (relations.isNotEmpty) ...[
-          _sectionPad(_sectionTitle(tr('detail_relations', lang))),
+          _sectionPad(DetailSectionTitle(tr('detail_relations', lang))),
           DetailMediaRow(
             heroScope: 'detail-${widget.animeId}-relations',
             items: [for (final edge in relations) _relationItem(edge, settings)],
@@ -599,22 +627,26 @@ class _DetailScreenState extends State<DetailScreen> {
 
         // ── Characters ──
         if (characters.isNotEmpty) ...[
-          _sectionPad(_sectionTitle(tr('characters', lang).toUpperCase())),
+          _sectionPad(DetailSectionTitle(tr('characters', lang).toUpperCase())),
           _CharactersSection(
             characters: characters,
-            onTap: (id, name, img) => Navigator.push(context,
+            heroScope: 'detail-${widget.animeId}-characters',
+            onTap: (id, name, img, heroTag) => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => CharacterScreen(
-                    characterId: id, name: name, imageUrl: img))),
+                    characterId: id, name: name, imageUrl: img, heroTag: heroTag))),
           ),
           const Divider(height: 1),
         ],
 
         // ── Staff ── (brings its own title and divider; hides when empty)
-        StaffSection(edges: (d['staff']?['edges'] as List?) ?? const []),
+        StaffSection(
+          edges: (d['staff']?['edges'] as List?) ?? const [],
+          heroScope: 'detail-${widget.animeId}-staff',
+        ),
 
         // ── Recommended ──
         if (recommendations.isNotEmpty) ...[
-          _sectionPad(_sectionTitle(tr('detail_recommended', lang))),
+          _sectionPad(DetailSectionTitle(tr('detail_recommended', lang))),
           DetailMediaRow(
             heroScope: 'detail-${widget.animeId}-recommended',
             height: 195,
@@ -650,10 +682,10 @@ class _DetailScreenState extends State<DetailScreen> {
 
         // ── External links ──
         if (externalLinks.isNotEmpty)
-          _ExternalLinksSection(links: externalLinks, onOpenUrl: _openUrl),
+          _sectionPad(ExternalLinks(links: externalLinks, isManga: isManga, onOpenUrl: _openUrl)),
 
         const SizedBox(height: 32),
-      ],
+      ]),
     );
   }
 
@@ -728,7 +760,7 @@ class _DetailScreenState extends State<DetailScreen> {
       coverUrl: node['coverImage']?['large'] as String?,
       subtitle: Text(
         _relationLabel(edge['relationType'] as String? ?? '', settings.language),
-        style: const TextStyle(fontSize: 10, color: Colors.grey),
+        style: TextStyle(fontSize: 10, color: context.colors.textSecondary),
       ),
     );
   }
@@ -743,9 +775,9 @@ class _DetailScreenState extends State<DetailScreen> {
       title: _titleOf(rec, settings),
       coverUrl: rec['coverImage']?['large'] as String?,
       subtitle: Row(children: [
-        const Icon(Icons.thumb_up_outlined, size: 10, color: Colors.grey),
+        Icon(Icons.thumb_up_outlined, size: 10, color: context.colors.textSecondary),
         const SizedBox(width: 3),
-        Text('$rating', style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text('$rating', style: TextStyle(fontSize: 10, color: context.colors.textSecondary)),
       ]),
     );
   }
@@ -786,7 +818,7 @@ class _DetailScreenState extends State<DetailScreen> {
           children: [
             Text(label,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 9, color: Colors.grey, fontWeight: FontWeight.w600, letterSpacing: 0.3)),
+                style: TextStyle(fontSize: 9, color: context.colors.textSecondary, fontWeight: FontWeight.w600, letterSpacing: 0.3)),
             const SizedBox(height: 4),
             Text(value,
                 style: TextStyle(
@@ -794,7 +826,7 @@ class _DetailScreenState extends State<DetailScreen> {
                     fontWeight: FontWeight.bold,
                     color: valueColor)),
             if (sub != null)
-              Text(sub, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+              Text(sub, style: TextStyle(fontSize: 10, color: context.colors.textSecondary)),
           ],
         ),
       );
@@ -806,50 +838,21 @@ class _DetailScreenState extends State<DetailScreen> {
     required VoidCallback onTap,
     required IconData icon,
     required String sublabel,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return Expanded(
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-          decoration: BoxDecoration(
-            color: cs.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: cs.outline.withValues(alpha: 0.5)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 15, color: cs.primary),
-              const SizedBox(height: 4),
-              Text(label,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: cs.onSurface)),
-              const SizedBox(height: 2),
-              Text(sublabel,
-                  style: TextStyle(
-                      fontSize: 9,
-                      color: cs.onSurface.withValues(alpha: 0.45),
-                      letterSpacing: 0.3)),
-            ],
-          ),
+    bool highlighted = false,
+  }) =>
+      Expanded(
+        child: ListActionButton(
+          icon: icon,
+          label: label,
+          sublabel: sublabel,
+          onTap: onTap,
+          highlighted: highlighted,
         ),
-      ),
-    );
-  }
+      );
 
   Widget _sectionPad(Widget child) =>
       Padding(padding: const EdgeInsets.fromLTRB(16, 16, 16, 16), child: child);
 
-  Widget _sectionTitle(String t) => Text(t,
-      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-          color: Colors.grey, letterSpacing: 0.5));
 
   Widget _infoGrid(List<_InfoItem> items) {
     final rows = <Widget>[];
@@ -866,13 +869,23 @@ class _DetailScreenState extends State<DetailScreen> {
       ));
       if (i + 2 < items.length) rows.add(const SizedBox(height: 12));
     }
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows);
+    // A card of its own, so the facts read as one block and not as loose
+    // text between the sections.
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: AppRadius.mdAll,
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
+    );
   }
 
   Widget _infoCell(String label, String value) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w600)),
+          Text(label, style: TextStyle(fontSize: 10, color: context.colors.textSecondary, fontWeight: FontWeight.w600)),
           const SizedBox(height: 2),
           Text(value, style: const TextStyle(fontSize: 13)),
         ],
@@ -883,21 +896,11 @@ class _DetailScreenState extends State<DetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w600)),
+            Text(label, style: TextStyle(fontSize: 10, color: context.colors.textSecondary, fontWeight: FontWeight.w600)),
             const SizedBox(height: 2),
             Text(value, style: const TextStyle(fontSize: 13)),
           ],
         ),
-      );
-
-  Widget _chip(BuildContext context, String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Theme.of(context).colorScheme.outline),
-        ),
-        child: Text(label, style: const TextStyle(fontSize: 11)),
       );
 
   String _airingCountdown(int airingAt, String lang) {
@@ -993,9 +996,7 @@ class _SummarySectionState extends State<_SummarySection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(tr('detail_summary', lang),
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: Colors.grey, letterSpacing: 0.5)),
+          DetailSectionTitle(tr('detail_summary', lang)),
           const SizedBox(height: 8),
           // Opens and closes smoothly instead of jumping.
           AnimatedSize(
@@ -1009,13 +1010,13 @@ class _SummarySectionState extends State<_SummarySection> {
                   onTap: () => setState(() => _expanded = !_expanded),
                   child: Text(
                     widget.description,
-                    style: const TextStyle(color: Colors.grey, height: 1.6, fontSize: 13),
+                    style: TextStyle(color: context.colors.textSecondary, height: 1.6, fontSize: 13),
                     maxLines: _expanded ? null : 4,
                     overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
                   ),
                 ),
                 if (!_expanded)
-                  GestureDetector(
+                  Pressable.dim(
                     onTap: () => setState(() => _expanded = true),
                     child: Builder(builder: (ctx) => Padding(
                       padding: const EdgeInsets.only(top: 4),
@@ -1032,99 +1033,13 @@ class _SummarySectionState extends State<_SummarySection> {
   }
 }
 
-class _TagsSection extends StatefulWidget {
-  final List<Map<String, dynamic>> tags;
-  const _TagsSection({required this.tags});
-  @override
-  State<_TagsSection> createState() => _TagsSectionState();
-}
-
-class _TagsSectionState extends State<_TagsSection> {
-  bool _showAll = false;
-  bool _showSpoilers = false;
-
-  Widget _tagChip(String name, bool spoiler) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        decoration: BoxDecoration(
-          color: spoiler
-              ? Colors.orange.withValues(alpha: 0.15)
-              : Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(20),
-          border: spoiler ? Border.all(color: Colors.orange.withValues(alpha: 0.4)) : null,
-        ),
-        child: Text(name,
-            style: TextStyle(fontSize: 11, color: spoiler ? Colors.orange : null)),
-      );
-
-  Widget _smallBtn(String label, VoidCallback onTap) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
-        ),
-      );
-
-  @override
-  Widget build(BuildContext context) {
-    final lang = context.watch<SettingsProvider>().language;
-    final spoilerCount = widget.tags.where((t) => t['isMediaSpoiler'] == true).length;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(tr('detail_tags', lang),
-                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                        color: Colors.grey, letterSpacing: 0.5)),
-              ),
-              if (spoilerCount > 0)
-                _smallBtn(
-                  _showSpoilers
-                      ? tr('detail_hide_spoiler_tags', lang)
-                      : trf('detail_show_spoiler_tags', lang, {'n': spoilerCount}),
-                  () => setState(() => _showSpoilers = !_showSpoilers),
-                ),
-              const SizedBox(width: 8),
-              _smallBtn(
-                _showAll
-                    ? tr('detail_show_less', lang)
-                    : trf('detail_show_all_tags', lang, {'n': widget.tags.length}),
-                () => setState(() => _showAll = !_showAll),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          AnimatedSize(
-            duration: AppMotion.of(context, AppMotion.medium),
-            curve: AppMotion.standard,
-            alignment: AlignmentDirectional.topStart,
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: widget.tags
-                  .where((t) => _showAll || t['isMediaSpoiler'] != true || _showSpoilers)
-                  .take(_showAll ? 999 : 9)
-                  .map((t) => _tagChip(t['name'] as String, t['isMediaSpoiler'] == true))
-                  .toList(),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _CharactersSection extends StatelessWidget {
   final List<Map<String, dynamic>> characters;
-  final void Function(int id, String name, String? imageUrl) onTap;
-  const _CharactersSection({required this.characters, required this.onTap});
+  final void Function(int id, String name, String? imageUrl, String heroTag) onTap;
+
+  /// The scope of the photos' hero tags (see `personHeroTag`).
+  final String heroScope;
+  const _CharactersSection({required this.characters, required this.heroScope, required this.onTap});
 
   String _roleLabel(String role, String lang) => switch (role) {
     'MAIN' => tr('detail_role_main', lang),
@@ -1136,8 +1051,6 @@ class _CharactersSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
-    final fadeIn = AppMotion.of(context, AppMotion.short);
     return SizedBox(
       height: 180,
       child: ListView.builder(
@@ -1151,37 +1064,30 @@ class _CharactersSection extends StatelessWidget {
           final name = node['name']?['full'] as String? ?? '';
           final img = node['image']?['medium'] as String?;
           final role = _roleLabel(edge['role'] as String? ?? '', lang);
+          // The index keeps the tags apart should a character be listed twice.
+          final heroTag = charId == null ? null : personHeroTag('$heroScope-$i', charId);
           return Padding(
             padding: const EdgeInsets.only(right: 10),
             child: Pressable(
-              onTap: charId != null ? () => onTap(charId, name, img) : null,
+              onTap: charId != null && heroTag != null ? () => onTap(charId, name, img, heroTag) : null,
               child: SizedBox(
                 width: 80,
                 child: Column(
                   children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: SizedBox(
-                        width: 80,
-                        height: 110,
-                        child: img != null
-                            ? CachedNetworkImage(
-                                imageUrl: img,
-                                fit: BoxFit.cover,
-                                memCacheWidth: 160,
-                                fadeInDuration: fadeIn,
-                                fadeOutDuration: Duration.zero,
-                                placeholder: (_, _) => placeholder,
-                                errorWidget: (_, _, _) => placeholder,
-                              )
-                            : placeholder,
+                    SizedBox(
+                      width: 80,
+                      height: 110,
+                      child: RoundedHero(
+                        tag: heroTag,
+                        borderRadius: BorderRadius.circular(6),
+                        child: AppImage(url: img, cacheWidth: 160),
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(name, maxLines: 2, overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500)),
-                    Text(role, style: const TextStyle(fontSize: 9, color: Colors.grey)),
+                    Text(role, style: TextStyle(fontSize: 9, color: context.colors.textSecondary)),
                   ],
                 ),
               ),
@@ -1198,6 +1104,9 @@ class _TrailerSection extends StatelessWidget {
   final Future<void> Function(String url) onOpenUrl;
   const _TrailerSection({required this.trailerId, required this.onOpenUrl});
 
+  /// The width YouTube serves its `hqdefault` thumbnail at.
+  static const _trailerThumbWidth = 480;
+
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
@@ -1206,9 +1115,7 @@ class _TrailerSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(tr('detail_trailer', lang),
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: Colors.grey, letterSpacing: 0.5)),
+          DetailSectionTitle(tr('detail_trailer', lang)),
           const SizedBox(height: 10),
           Pressable(
             // A full-width card only needs a hint of a press.
@@ -1219,13 +1126,11 @@ class _TrailerSection extends StatelessWidget {
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: CachedNetworkImage(
-                    imageUrl: 'https://img.youtube.com/vi/$trailerId/hqdefault.jpg',
+                  child: AppImage(
+                    url: 'https://img.youtube.com/vi/$trailerId/hqdefault.jpg',
+                    cacheWidth: _trailerThumbWidth,
                     width: double.infinity,
                     height: 200,
-                    fit: BoxFit.cover,
-                    fadeInDuration: AppMotion.of(context, AppMotion.short),
-                    fadeOutDuration: Duration.zero,
                   ),
                 ),
                 Container(
@@ -1255,16 +1160,12 @@ class _StreamingEpisodesSection extends StatelessWidget {
     final title = site != null
         ? trf('detail_streaming_episodes_on', lang, {'site': site.toUpperCase()})
         : tr('detail_streaming_episodes', lang);
-    final placeholder = ColoredBox(color: Theme.of(context).colorScheme.surfaceContainerHighest);
-    final fadeIn = AppMotion.of(context, AppMotion.short);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: Text(title,
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: Colors.grey, letterSpacing: 0.5)),
+          child: DetailSectionTitle(title),
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -1292,17 +1193,7 @@ class _StreamingEpisodesSection extends StatelessWidget {
                           child: SizedBox(
                             width: 160,
                             height: 110,
-                            child: thumb != null
-                                ? CachedNetworkImage(
-                                    imageUrl: thumb,
-                                    fit: BoxFit.cover,
-                                    memCacheWidth: 320,
-                                    fadeInDuration: fadeIn,
-                                    fadeOutDuration: Duration.zero,
-                                    placeholder: (_, _) => placeholder,
-                                    errorWidget: (_, _, _) => placeholder,
-                                  )
-                                : placeholder,
+                            child: AppImage(url: thumb, cacheWidth: 320),
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -1321,52 +1212,39 @@ class _StreamingEpisodesSection extends StatelessWidget {
   }
 }
 
-class _ExternalLinksSection extends StatelessWidget {
-  final List<Map<String, dynamic>> links;
-  final Future<void> Function(String url) onOpenUrl;
-  const _ExternalLinksSection({required this.links, required this.onOpenUrl});
+// ── Data class ────────────────────────────────────────────────────────────
+
+/// When the next episode airs, as a pill in the accent colour under the
+/// title: the one fact of a series still airing that changes every day.
+class _AiringPill extends StatelessWidget {
+  const _AiringPill({required this.text});
+
+  final String text;
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final lang = context.watch<SettingsProvider>().language;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    final accent = Theme.of(context).colorScheme.primary;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(color: accent.withValues(alpha: 0.14), borderRadius: AppRadius.pillAll),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(tr('detail_external_links', lang),
-              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                  color: Colors.grey, letterSpacing: 0.5)),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: links.map((link) {
-              final site = link['site'] as String? ?? '';
-              final url = link['url'] as String? ?? '';
-              return GestureDetector(
-                onTap: () => onOpenUrl(url),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: cs.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: cs.outline, width: 1),
-                  ),
-                  child: Text(site,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
-                ),
-              );
-            }).toList(),
+          Icon(Icons.schedule_rounded, size: 14, color: accent),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppText.caption.copyWith(color: accent, fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
     );
   }
 }
-
-// ── Data class ────────────────────────────────────────────────────────────
 
 class _InfoItem {
   final String label;
@@ -1393,6 +1271,8 @@ class _CoverViewer extends StatelessWidget {
             child: InteractiveViewer(
               minScale: 0.8,
               maxScale: 4.0,
+              // Not an AppImage: it is zoomed into, so it is decoded at full
+              // size, and nothing may be painted behind its transparent edges.
               child: CachedNetworkImage(imageUrl: imageUrl, fit: BoxFit.contain),
             ),
           ),

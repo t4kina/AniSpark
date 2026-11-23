@@ -1,27 +1,41 @@
 import 'package:flutter/material.dart';
 
-/// The app's light or dark theme, coloured with the user's [accent].
+import 'app_colors.dart';
+import 'app_layout.dart';
+import 'app_palette.dart';
+
+/// The app's light or dark theme, coloured with the user's [accent]. The
+/// dark one wears [palette], one of [appThemes] (classic by default).
 ///
 /// Both share the same structure; only the palette differs. Ink ripples
 /// stay transparent: tappable cards give feedback by shrinking instead
-/// (see `Pressable`).
-ThemeData buildAppTheme(Brightness brightness, Color accent) {
+/// (see `Pressable`), and rows (`ListTile`, `InkWell`) by darkening under
+/// the finger, with no ripple.
+ThemeData buildAppTheme(Brightness brightness, Color accent, {AppPalette? palette}) {
   final isLight = brightness == Brightness.light;
-  final background = isLight ? const Color(0xFFD8D8DC) : const Color(0xFF111113);
-  final surface = isLight ? const Color(0xFFE2E2E6) : const Color(0xFF1C1C1E);
+  final dark = palette ?? appThemes[classicTheme]!;
+  final background = isLight ? const Color(0xFFD8D8DC) : dark.background;
+  final surface = isLight ? const Color(0xFFE2E2E6) : dark.surface;
 
   OutlineInputBorder inputBorder([BorderSide side = BorderSide.none]) =>
-      OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: side);
+      OutlineInputBorder(borderRadius: AppRadius.mdAll, borderSide: side);
 
   return ThemeData(
     brightness: brightness,
+    extensions: [
+      isLight
+          ? const AppColors.light()
+          : const AppColors.dark().copyWith(textSecondary: dark.textSecondary, textTertiary: dark.textTertiary),
+    ],
     visualDensity: VisualDensity.compact,
     splashColor: Colors.transparent,
-    highlightColor: Colors.transparent,
+    highlightColor: isLight ? const Color(0x12000000) : const Color(0x16FFFFFF),
     scaffoldBackgroundColor: background,
     colorScheme: isLight
         ? ColorScheme.light(
             primary: accent,
+            // Every accent is saturated enough to carry white, in both themes.
+            onPrimary: Colors.white,
             surface: surface,
             surfaceContainerHighest: const Color(0xFFD0D0D4),
             outline: const Color(0xFFB8B8BC),
@@ -30,13 +44,14 @@ ThemeData buildAppTheme(Brightness brightness, Color accent) {
           )
         : ColorScheme.dark(
             primary: accent,
+            onPrimary: Colors.white,
             surface: surface,
             surfaceContainerLow: surface,
-            surfaceContainerHighest: const Color(0xFF2C2C2E),
-            outlineVariant: const Color(0xFF38383A),
-            outline: const Color(0xFF48484A),
-            onSurface: const Color(0xFFEAEAEA),
-            onSurfaceVariant: const Color(0xFFAAAAAA),
+            surfaceContainerHighest: dark.raised,
+            outlineVariant: dark.line,
+            outline: dark.strongLine,
+            onSurface: dark.text,
+            onSurfaceVariant: dark.textSecondary,
           ),
     appBarTheme: AppBarTheme(
       backgroundColor: background,
@@ -63,21 +78,21 @@ ThemeData buildAppTheme(Brightness brightness, Color accent) {
       indicatorColor: accent,
     ),
     chipTheme: ChipThemeData(
-      backgroundColor: isLight ? const Color(0xFFE5E7F2) : const Color(0xFF2C2C2E),
+      backgroundColor: isLight ? const Color(0xFFE5E7F2) : dark.raised,
       labelStyle: TextStyle(fontSize: 11, color: isLight ? const Color(0xFF1A1A2E) : null),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: const RoundedRectangleBorder(borderRadius: AppRadius.pillAll),
       side: isLight ? const BorderSide(color: Color(0xFFD0D2E4)) : null,
     ),
     cardTheme: CardThemeData(
       color: surface,
       elevation: 0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdAll),
       margin: EdgeInsets.zero,
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: isLight ? const Color(0xFFE8EAF4) : const Color(0xFF2C2C2E),
+      fillColor: isLight ? const Color(0xFFE8EAF4) : dark.raised,
       border: inputBorder(),
       enabledBorder: inputBorder(),
       focusedBorder: inputBorder(BorderSide(color: accent, width: 1)),
@@ -86,22 +101,23 @@ ThemeData buildAppTheme(Brightness brightness, Color accent) {
     ),
     listTileTheme: ListTileThemeData(
       tileColor: surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(8))),
+      shape: const RoundedRectangleBorder(borderRadius: AppRadius.smAll),
     ),
     dividerTheme: DividerThemeData(
-      color: isLight ? const Color(0xFFD0D2E4) : const Color(0xFF2C2C2E),
+      color: isLight ? const Color(0xFFD0D2E4) : dark.raised,
       thickness: 1,
       space: 0,
     ),
     dialogTheme: isLight
         ? const DialogThemeData(
             backgroundColor: Colors.white,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.all(Radius.circular(16))),
+            shape: RoundedRectangleBorder(borderRadius: AppRadius.lgAll),
           )
         : null,
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      shape: const RoundedRectangleBorder(borderRadius: AppRadius.mdAll),
+
     ),
     // One transition everywhere: Android follows the predictive back
     // gesture, iOS keeps its native swipe-back slide.

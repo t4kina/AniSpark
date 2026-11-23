@@ -1,15 +1,23 @@
 import 'package:anispark/providers/media_list_store.dart';
 import 'package:anispark/providers/settings_provider.dart';
+import 'package:anispark/screens/completion_celebration.dart';
 import 'package:anispark/screens/my_list_screen.dart';
+import 'package:anispark/screens/settings_screen.dart';
 import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
+import 'package:anispark/theme/app_layout.dart';
 import 'package:anispark/utils/tab_reselect.dart';
+import 'package:anispark/widgets/app_button.dart';
+import 'package:anispark/widgets/genre_filter_sheet.dart';
 import 'package:anispark/widgets/motion/animated_count.dart';
+import 'package:anispark/widgets/motion/progress_moment.dart';
 import 'package:anispark/widgets/motion/staggered_entrance.dart';
+import 'package:anispark/widgets/motion/swipe_action.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../helpers/fake_auth_service.dart';
 import '../helpers/memory_cache_store.dart';
@@ -115,6 +123,54 @@ void main() {
     expect(find.descendant(of: find.byType(BottomSheet), matching: find.text('Settings')), findsOneWidget);
   });
 
+  testWidgets('a section folds with its chevron turning to point at it', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+    double turns() => tester.widget<AnimatedRotation>(find.byType(AnimatedRotation)).turns;
+    expect(turns(), 0);
+    expect(find.text('Manga 30'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.expand_more));
+    await tester.pumpAndSettle();
+
+    expect(turns(), -0.25);
+    expect(find.text('Manga 30'), findsNothing);
+  });
+
+  testWidgets('the filter button counts the genres the list is filtered by', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+    Badge badge() => tester.widget<Badge>(find.byType(Badge));
+    expect(badge().isLabelVisible, isFalse);
+
+    await tester.tap(find.byTooltip('Filters'));
+    await tester.pumpAndSettle();
+    expect(find.byType(FilterOptionChip), findsWidgets, reason: 'the same chips as every other filter');
+    await tester.tap(find.widgetWithText(FilterOptionChip, 'Action'));
+    await tester.tap(find.widgetWithText(FilterOptionChip, 'Drama'));
+    await tester.pumpAndSettle();
+
+    expect(badge().isLabelVisible, isTrue);
+    expect(find.descendant(of: find.byType(Badge), matching: find.text('2')), findsOneWidget);
+  });
+
+  testWidgets('settings in the avatar menu opens the settings', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await pumpList(tester);
+    await tester.longPress(find.bySemanticsLabel('Profile'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.descendant(of: find.byType(BottomSheet), matching: find.text('Settings')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.byType(BottomSheet), findsNothing);
+  });
+
   testWidgets('cover hero tags are unique, even for a media also in a custom list', (tester) async {
     lists = [
       _list('Reading', [_entry(30), _entry(31)], status: 'CURRENT'),
@@ -141,6 +197,7 @@ void main() {
     await tester.pump();
     // The list is swapped for the no-match message at once, not faded out.
     expect(find.byType(ListView), findsNothing);
+    expect(find.text('No results for "zzz"'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), '');
     await tester.pump();
@@ -177,7 +234,8 @@ void main() {
     ];
     await pumpList(tester);
     expect(tester.widget<AnimatedCount>(find.byType(AnimatedCount)).value, 42);
-
+    final title = tester.getRect(find.text('Manga 30'));
+    final bar = tester.getRect(find.byType(ProgressLine));
     // The swipe is confirmed once the row has slid; the count then changes.
     await tester.drag(find.text('Manga 30'), const Offset(500, 0));
     int shown() => tester.widget<AnimatedCount>(find.byType(AnimatedCount)).value;
@@ -187,11 +245,22 @@ void main() {
     expect(shown(), 43);
     expect(find.text('42'), findsOneWidget, reason: 'the old value is still rolling out');
     expect(find.text('43'), findsOneWidget, reason: 'the new value is rolling in');
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget, reason: 'a tick says it counted');
+    await tester.pump(const Duration(milliseconds: 400));
+    // The row has slid back by now; the tick is still showing.
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+    // Up and down only: sideways the row is still easing back from the swipe.
+    final titleNow = tester.getRect(find.text('Manga 30'));
+    final barNow = tester.getRect(find.byType(ProgressLine));
+    expect((titleNow.top, titleNow.height), (title.top, title.height), reason: 'the tick moves nothing in the row');
+    expect((barNow.top, barNow.height), (bar.top, bar.height), reason: 'nor the bar under the count');
+    expect(tester.widget<ProgressLine>(find.byType(ProgressLine)).value, 43, reason: 'and the bar fills up to it');
     await tester.pumpAndSettle();
 
     expect(log.where((r) => r.query.contains('SaveMediaListEntry')).single.variables['progress'], 43);
     expect(find.text('43'), findsOneWidget);
     expect(find.text('42'), findsNothing, reason: 'the old value rolled away');
+    expect(find.byIcon(Icons.check_circle_rounded), findsNothing, reason: 'the tick has gone');
     // Let the undo snack bar time out.
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
@@ -211,5 +280,95 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
     await tester.pumpAndSettle();
     expect(find.byType(SnackBar), findsNothing);
+  });
+
+  testWidgets('an empty list says so and offers a way to fill it', (tester) async {
+    await pumpList(tester);
+
+    final empty = find.byKey(const ValueKey('list-empty'));
+    expect(find.descendant(of: empty, matching: find.text('Your manga list is empty')), findsOneWidget);
+    expect(
+      find.descendant(of: empty, matching: find.widgetWithText(AppButton, 'Discover Manga')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('adding the last chapter opens the celebration of that manga', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30, progress: 99)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+
+    await tester.drag(find.text('Manga 30'), const Offset(500, 0));
+    for (var i = 0; i < 40 && find.byType(CompletionCelebration).evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final celebration = tester.widget<CompletionCelebration>(find.byType(CompletionCelebration));
+    expect(celebration.title, 'Manga 30');
+    expect(celebration.isManga, isTrue);
+
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(CompletionCelebration), findsNothing);
+    // Let anything still pending (the undo snack bar) time out.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('taking a chapter away is answered with a tick too', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30, progress: 42)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+
+    await tester.drag(find.text('Manga 30'), const Offset(-500, 0));
+    int shown() => tester.widget<AnimatedCount>(find.byType(AnimatedCount)).value;
+    for (var i = 0; i < 20 && shown() != 41; i++) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(shown(), 41);
+    expect(find.byIcon(Icons.check_circle_rounded), findsOneWidget);
+
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.check_circle_rounded), findsNothing);
+    // Let the undo snack bar time out.
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a finished title gets a check instead of a full line', (tester) async {
+    lists = [
+      _list('Completed', [_entry(30, progress: 100)], status: 'COMPLETED'),
+      _list('Reading', [_entry(31, progress: 40)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+
+    final finished = find.ancestor(of: find.text('Manga 30'), matching: find.byType(SwipeAction));
+    final reading = find.ancestor(of: find.text('Manga 31'), matching: find.byType(SwipeAction));
+    expect(find.descendant(of: finished, matching: find.byKey(const ValueKey('progress-finished'))), findsOneWidget);
+    expect(find.descendant(of: finished, matching: find.byType(ProgressLine)), findsNothing);
+    // The icon font's baseline is not the text's: lined up by baseline the
+    // check sits higher than the count on a phone (the test font hides it).
+    final rows = tester.widgetList<Row>(
+      find.ancestor(of: find.byKey(const ValueKey('progress-finished')), matching: find.byType(Row)),
+    );
+    expect(rows.first.crossAxisAlignment, CrossAxisAlignment.center, reason: 'centred on the count');
+    expect(find.descendant(of: reading, matching: find.byKey(const ValueKey('progress-finished'))), findsNothing);
+    expect(find.descendant(of: reading, matching: find.byType(ProgressLine)), findsOneWidget);
+  });
+
+  testWidgets('what scrolls under the name filter keeps the same margin from it as on Discover', (tester) async {
+    lists = [
+      _list('Reading', [_entry(30)], status: 'CURRENT'),
+    ];
+    await pumpList(tester);
+
+    final field = tester.getRect(find.byType(TextField));
+    final list = tester.getRect(find.byType(ListView).first);
+    expect(list.top - field.bottom, AppSpace.md);
   });
 }

@@ -235,4 +235,20 @@ void main() {
       _expectOn(tester, 0);
     });
   });
+
+  testWidgets('holding a tab pops up nothing over the bar', (tester) async {
+    await tester.pumpWidget(_app());
+
+    final hold = await tester.startGesture(tester.getCenter(find.byType(NavigationDestination).at(3)));
+    await tester.pump(const Duration(seconds: 2));
+
+    final tooltips = tester.widgetList<Tooltip>(find.byType(Tooltip));
+    expect(tooltips, isNotEmpty, reason: "Flutter's bar wraps each tab in one");
+    final visibility = tester.widget<TooltipVisibility>(
+      find.ancestor(of: find.byType(NavigationBar), matching: find.byType(TooltipVisibility)).first,
+    );
+    expect(visibility.visible, isFalse, reason: 'so not even an empty bubble shows');
+    await hold.up();
+    await tester.pumpAndSettle();
+  });
 }

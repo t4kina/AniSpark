@@ -4,6 +4,8 @@ import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/discover_api.dart';
 import 'package:anispark/utils/anime_season.dart';
 import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/app_dialog.dart';
+import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -183,5 +185,34 @@ void main() {
     await settle(tester);
 
     expect(log, hasLength(2));
+  });
+
+  testWidgets('shows the shape of the grid while the season loads', (tester) async {
+    await tester.pumpWidget(appWith(SeasonScreen(initial: fall, api: apiAnswering((r) => _page(1, count: 2))), cache: cache));
+
+    expect(find.byType(GridSkeleton), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    await settle(tester);
+    // Past the cross-fade.
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(GridSkeleton), findsNothing);
+    expect(find.text('Show 1-0'), findsOneWidget);
+  });
+
+  testWidgets('the year is picked in an app dialog, and loads that year', (tester) async {
+    await pumpSeason(tester, apiAnswering((r) => _page(1, count: 2)));
+    final earlier = fall.year - 1;
+
+    await tester.tap(find.byTooltip(tr('season_pick_year', 'English')));
+    await tester.pumpAndSettle();
+    expect(find.descendant(of: find.byType(AppDialog), matching: find.byType(YearPicker)), findsOneWidget);
+
+    await tester.tap(find.descendant(of: find.byType(AppDialog), matching: find.text('$earlier')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AppDialog), findsNothing);
+    expect(log.last.variables, containsPair('seasonYear', earlier));
   });
 }

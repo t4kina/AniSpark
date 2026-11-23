@@ -1,14 +1,20 @@
+import 'dart:async';
+
 import 'package:anispark/screens/character_screen.dart';
 import 'package:anispark/screens/staff_screen.dart';
 import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/people_api.dart';
 import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/motion/collapsing_title_bar.dart';
 import 'package:anispark/widgets/people/media_cover_tile.dart';
 import 'package:anispark/widgets/people/voiced_character_tile.dart';
+import 'package:anispark/widgets/skeletons.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 
 import '../helpers/fake_auth_service.dart';
 import '../helpers/memory_cache_store.dart';
@@ -182,5 +188,120 @@ void main() {
     await settle(tester);
 
     expect(log, hasLength(2));
+  });
+
+  group('opened from a photo', () {
+    const tag = 'person:test:1';
+
+    Hero portrait(WidgetTester tester) => tester.widget<Hero>(
+          find.descendant(of: find.byType(StaffScreen), matching: find.byType(Hero)).first,
+        );
+
+    testWidgets('shows that photo and name in place while it loads', (tester) async {
+      final answer = Completer<http.Response>();
+      final api = PeopleApi(service: AniListService(client: MockClient((_) => answer.future)));
+
+      await tester.pumpWidget(appWith(
+        StaffScreen(staffId: 1, name: 'Kouichi Yamadera', imageUrl: 'https://img.example/1.jpg', heroTag: tag, api: api),
+        cache: cache,
+      ));
+      await tester.pump();
+
+      expect(find.byType(Skeleton), findsOneWidget, reason: 'still loading');
+      expect(find.text('Kouichi Yamadera'), findsOneWidget);
+      expect(portrait(tester).tag, tag);
+      final photo = tester.widget<CachedNetworkImage>(
+        find.descendant(of: find.byType(Hero), matching: find.byType(CachedNetworkImage)),
+      );
+      expect(photo.imageUrl, 'https://img.example/1.jpg');
+      final loadingRect = tester.getRect(find.byType(Hero));
+
+      answer.complete(_staff());
+      await settle(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byType(Skeleton), findsNothing);
+      expect(find.text('Native Name'), findsOneWidget);
+      expect(tester.getRect(find.byType(Hero).first), loadingRect, reason: 'the portrait does not move when the page loads');
+    });
+
+    testWidgets('keeps the landing spot until the page has arrived, even when it loads at once', (tester) async {
+      final api = apiAnswering((_) => _staff());
+      await tester.pumpWidget(appWith(
+        Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => StaffScreen(staffId: 1, name: 'Kouichi Yamadera', heroTag: tag, api: api),
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+        cache: cache,
+      ));
+
+      await tester.tap(find.text('open'));
+      await settle(tester);
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(log, hasLength(1), reason: 'loaded already');
+      expect(find.text('Native Name'), findsNothing, reason: 'the placeholder holds the landing spot');
+      final landing = tester.state(find.descendant(of: find.byType(StaffScreen), matching: find.byType(Hero)));
+
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.state(find.descendant(of: find.byType(StaffScreen), matching: find.byType(Hero))), same(landing));
+
+      // The page arrives; the content then fades in over the placeholder.
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.text('Native Name'), findsOneWidget);
+      expect(portrait(tester).tag, tag, reason: 'so the photo can fly back');
+      expect(find.descendant(of: find.byType(StaffScreen), matching: find.byType(Hero)), findsOneWidget);
+    });
+
+    testWidgets('without a photo to fly from, the page shows its content as soon as it has it', (tester) async {
+      final api = apiAnswering((_) => _staff());
+      await tester.pumpWidget(appWith(
+        Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(builder: (_) => StaffScreen(staffId: 1, api: api)),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+        cache: cache,
+      ));
+
+      await tester.tap(find.text('open'));
+      await settle(tester);
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Native Name'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 600));
+    });
+  });
+
+  testWidgets('scrolled past their name, the page shows it in a bar at the top', (tester) async {
+    tester.view.physicalSize = const Size(400, 500);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await pumpStaff(
+      tester,
+      apiAnswering((_) => _staff(characters: [for (var i = 1; i <= 6; i++) _voiced(i, 10 + i)])),
+    );
+    await tester.pump(const Duration(milliseconds: 400));
+    final barName = find.descendant(of: find.byType(CollapsingTitleBar), matching: find.text('Kouichi Yamadera'));
+    expect(barName, findsNothing);
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+    await tester.pump();
+
+    expect(barName, findsOneWidget);
   });
 }

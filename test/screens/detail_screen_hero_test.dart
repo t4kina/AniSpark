@@ -3,7 +3,11 @@ import 'dart:io';
 
 import 'package:anispark/screens/detail_screen.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/utils/translations.dart';
+import 'package:anispark/widgets/detail/list_action_button.dart';
+import 'package:anispark/widgets/motion/collapsing_title_bar.dart';
 import 'package:anispark/widgets/motion/cover_hero.dart';
+import 'package:anispark/widgets/motion/staggered_entrance.dart';
 import 'package:anispark/widgets/skeletons.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -134,5 +138,154 @@ void main() {
     final next = tester.widget<DetailScreen>(find.byType(DetailScreen).last);
     expect(next.animeId, 2);
     expect(next.heroTag, relationTag);
+  });
+
+  group('what the data fills in', () {
+    Finder entranceOf(Finder content) => find.ancestor(of: content, matching: find.byType(StaggeredEntrance)).first;
+
+    int step(WidgetTester tester, Finder content) => tester.widget<StaggeredEntrance>(entranceOf(content)).index;
+
+    double opacity(WidgetTester tester, Finder content) => tester
+        .widget<FadeTransition>(find.descendant(of: entranceOf(content), matching: find.byType(FadeTransition)).first)
+        .opacity
+        .value;
+
+    final title = find.text('Cowboy Bebop').first;
+    final stats = find.text(tr('detail_average_score', 'English'));
+    final actions = find.text(tr('progress', 'English').toUpperCase());
+    final seriesInfo = find.text(tr('detail_series_info', 'English'));
+
+    Future<void> pumpLoaded(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(800, 3000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final cache = ApiCache(MemoryCacheStore());
+      await cache.write('anon:media:1', _media());
+      await tester.pumpWidget(appWith(const DetailScreen(animeId: 1), cache: cache));
+      await tester.pump();
+    }
+
+    testWidgets('cascades in from the title down', (tester) async {
+      await pumpLoaded(tester);
+
+      expect(step(tester, title), 0);
+      expect(step(tester, stats), greaterThan(step(tester, title)));
+      expect(step(tester, actions), greaterThan(step(tester, stats)));
+      expect(step(tester, seriesInfo), greaterThan(step(tester, actions)));
+
+      await tester.pump(const Duration(milliseconds: 80));
+      expect(opacity(tester, title), greaterThan(0), reason: 'the title leads');
+      expect(opacity(tester, actions), 0, reason: 'the sections wait their turn');
+
+      // The later steps start on a timer; a second frame plays them out.
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(opacity(tester, title), 1);
+      expect(opacity(tester, actions), 1);
+      expect(opacity(tester, seriesInfo), 1);
+    });
+
+    testWidgets('does not cascade again when the page is rebuilt later', (tester) async {
+      await pumpLoaded(tester);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      final entrance = tester.state(entranceOf(actions));
+
+      // A fresher copy of the data, or anything else, rebuilds the page.
+      tester.element(find.byType(DetailScreen)).markNeedsBuild();
+      await tester.pump();
+
+      expect(tester.state(entranceOf(actions)), same(entrance));
+      expect(opacity(tester, actions), 1);
+      expect(tester.hasRunningAnimations, isFalse);
+    });
+  });
+
+  testWidgets('scrolled past its title, the page shows it in a bar at the top', (tester) async {
+    tester.view.physicalSize = const Size(400, 400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final cache = ApiCache(MemoryCacheStore());
+    await cache.write('anon:media:1', _media());
+    await tester.pumpWidget(appWith(const DetailScreen(animeId: 1), cache: cache));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+    final barTitle = find.descendant(of: find.byType(CollapsingTitleBar), matching: find.text('Cowboy Bebop'));
+    expect(barTitle, findsNothing);
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -450));
+    await tester.pump();
+
+    expect(barTitle, findsOneWidget);
+    expect(tester.getCenter(barTitle).dx, 200, reason: 'centred, clear of the buttons');
+    expect(find.bySemanticsLabel(tr('tooltip_back', 'English')), findsOneWidget,
+        reason: 'the buttons stay over the bar');
+    expect(find.byTooltip(tr('tooltip_back', 'English')), findsNothing,
+        reason: 'named for screen readers only: holding one shows no label');
+
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 450));
+    await tester.pump();
+    expect(barTitle, findsNothing);
+  });
+
+  testWidgets('the add button is the status chip once the series is in the list', (tester) async {
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    Future<List<bool>> highlights(Map<String, dynamic>? entry) async {
+      final cache = ApiCache(MemoryCacheStore());
+      await cache.write('anon:media:1', {..._media(), 'mediaListEntry': entry});
+      await tester.pumpWidget(appWith(DetailScreen(key: UniqueKey(), animeId: 1), cache: cache));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump(const Duration(seconds: 1));
+      return [for (final button in tester.widgetList<ListActionButton>(find.byType(ListActionButton))) button.highlighted];
+    }
+
+    expect(await highlights(null), [false, false, false]);
+    expect(find.text(tr('add_to_list', 'English').toUpperCase()), findsOneWidget);
+
+    expect(await highlights({'id': 5, 'status': 'CURRENT', 'progress': 3, 'score': 0}), [true, false, false]);
+    expect(find.text(tr('add_to_list', 'English').toUpperCase()), findsNothing);
+  });
+
+  testWidgets('a series still airing says when the next episode is, in an accent pill under the title', (tester) async {
+    tester.view.physicalSize = const Size(800, 3000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final cache = ApiCache(MemoryCacheStore());
+    final airingAt = DateTime.now().add(const Duration(days: 2, hours: 3)).millisecondsSinceEpoch ~/ 1000;
+    await cache.write('anon:media:1', {
+      ..._media(),
+      'format': 'TV',
+      'nextAiringEpisode': {'episode': 5, 'airingAt': airingAt},
+    });
+    await tester.pumpWidget(appWith(const DetailScreen(animeId: 1), cache: cache));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(seconds: 1));
+
+    final clock = find.byIcon(Icons.schedule_rounded);
+    expect(clock, findsOneWidget);
+    final accent = Theme.of(tester.element(clock)).colorScheme.primary;
+    expect(tester.widget<Icon>(clock).color, accent);
+    final pill = find.ancestor(of: clock, matching: find.byType(Row)).first;
+    final label = tester.widget<Text>(find.descendant(of: pill, matching: find.byType(Text)));
+    expect(label.data, contains('5'));
+    expect(label.style?.color, accent);
+    expect(tester.getTopLeft(clock).dy, greaterThan(tester.getTopLeft(find.text('Cowboy Bebop').first).dy));
+
+    // The facts of the series sit together in one card.
+    final type = find.text('TV');
+    expect(
+      find.ancestor(
+        of: type,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is Container && (widget.decoration as BoxDecoration?)?.borderRadius != null,
+        ),
+      ),
+      findsWidgets,
+    );
   });
 }

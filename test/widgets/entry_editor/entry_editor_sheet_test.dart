@@ -4,6 +4,7 @@ import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/services/auth_service.dart';
 import 'package:anispark/widgets/entry_editor/entry_editor_sheet.dart';
+import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -623,6 +624,20 @@ void main() {
     },
   );
 
+  testWidgets(
+    'shows the shape of the form, not a spinner, while it looks the entry up',
+    (tester) async {
+      await _open(tester, api, settle: false);
+
+      expect(_inside('entry-editor-loading', find.byType(Skeleton)), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      await tester.pumpAndSettle();
+      expect(find.byType(Skeleton), findsNothing);
+      expect(_chipSelected(tester, 'PLANNING'), isTrue);
+    },
+  );
+
   group('opened without an entry (the caller thinks it isn\'t listed)', () {
     testWidgets('a media listed since then is edited, keeping its status', (
       tester,
@@ -699,6 +714,23 @@ void main() {
     expect(find.text("Couldn't save. Please try again."), findsOneWidget);
     expect(_key('entry-editor-form'), findsOneWidget);
     expect(_results, isEmpty);
+    expect(_inside('entry-editor-save', find.byType(CircularProgressIndicator)), findsNothing,
+        reason: 'the button offers the save again');
+  });
+
+  testWidgets('the save button carries the wait itself', (tester) async {
+    await _open(tester, api, entry: _entry());
+    final size = tester.getSize(_key('entry-editor-save'));
+    expect(_inside('entry-editor-save', find.byType(CircularProgressIndicator)), findsNothing);
+
+    await tester.tap(_inside('entry-editor-progress', find.byIcon(Icons.add)));
+    await tester.pump();
+    await tester.tap(_key('entry-editor-save'));
+    await tester.pump();
+
+    expect(_inside('entry-editor-save', find.byType(CircularProgressIndicator)), findsOneWidget);
+    expect(tester.getSize(_key('entry-editor-save')), size);
+    await tester.pumpAndSettle();
   });
 
   testWidgets(

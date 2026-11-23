@@ -6,13 +6,17 @@ import '../services/api_cache.dart';
 import '../services/browse_api.dart';
 import '../theme/app_motion.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_sheet.dart';
 import '../widgets/anime_card.dart';
 import '../widgets/genre_filter_sheet.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart';
+import '../widgets/app_button.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
+import '../widgets/load_error_view.dart';
 
 /// A Discover row's "See all": the row's [query] as a grid that loads more
 /// as it scrolls, under a bar of sort, rating, genre and format filters.
@@ -218,16 +222,8 @@ class _BrowseScreenState extends State<BrowseScreen> with PagedLoading<BrowseScr
 
   void _clearFilters() => _apply(_query.defaults);
 
-  Future<T?> _showSheet<T>(WidgetBuilder builder) => showModalBottomSheet<T>(
-        context: context,
-        isScrollControlled: true,
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.85),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        builder: builder,
-      );
+  Future<T?> _showSheet<T>(WidgetBuilder builder) =>
+      showAppSheet<T>(context: context, maxHeightFraction: 0.85, builder: builder);
 
   Future<void> _pickSort(String lang) async {
     final sort = await _showSheet<String>((_) => _ChoiceSheet(
@@ -399,10 +395,13 @@ class _BrowseScreenState extends State<BrowseScreen> with PagedLoading<BrowseScr
     final items = _paged.items;
     if (items.isEmpty) {
       if (_loadingFirst || _paged.loading || _paged.canLoadMore) {
-        return const _GridSkeleton(key: ValueKey('loading'));
+        return const GridSkeleton(key: ValueKey('loading'), gridDelegate: _gridDelegate, padding: _gridPadding);
       }
       if (_firstFailed || _paged.failed) {
-        return KeyedSubtree(key: const ValueKey('error'), child: _buildError(lang));
+        return LoadErrorView(
+          key: const ValueKey('error'),
+          onRetry: _firstFailed ? _retryFirstPage : () => _loadMore(retry: true),
+        );
       }
       return KeyedSubtree(key: ValueKey('empty-${_query.filterKey}'), child: _buildEmpty(lang));
     }
@@ -444,64 +443,19 @@ class _BrowseScreenState extends State<BrowseScreen> with PagedLoading<BrowseScr
     );
   }
 
-  Widget _buildError(String lang) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _firstFailed ? _retryFirstPage : () => _loadMore(retry: true),
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
-            ),
-          ],
-        ),
-      );
-
   Widget _buildEmpty(String lang) {
     final filtered = !_query.isDefault;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              filtered ? Icons.filter_alt_off_outlined : Icons.search_off_rounded,
-              size: 48,
-              color: Colors.grey,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              tr(filtered ? 'browse_empty' : 'no_results', lang),
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-            if (filtered) ...[
-              const SizedBox(height: 6),
-              Text(
-                tr('browse_empty_hint', lang),
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 16),
-              FilledButton.tonalIcon(
-                key: const ValueKey('browse-empty-clear'),
-                // Tinted like the active filters it clears.
-                style: FilledButton.styleFrom(
-                  backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.15),
-                  foregroundColor: Theme.of(context).colorScheme.primary,
-                ),
-                onPressed: _clearFilters,
-                icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
-                label: Text(tr('browse_clear_filters', lang)),
-              ),
-            ],
-          ],
-        ),
+    if (!filtered) return StateMessage(icon: Icons.search_off_rounded, message: tr('no_results', lang));
+    return StateMessage(
+      icon: Icons.filter_alt_off_outlined,
+      title: tr('browse_empty', lang),
+      message: tr('browse_empty_hint', lang),
+      action: AppButton(
+        key: const ValueKey('browse-empty-clear'),
+        kind: AppButtonKind.tonal,
+        label: tr('browse_clear_filters', lang),
+        icon: Icons.filter_alt_off_outlined,
+        onPressed: _clearFilters,
       ),
     );
   }
@@ -604,19 +558,8 @@ class _SheetFrame extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            const SizedBox(height: 8),
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey[600],
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
+              padding: const EdgeInsets.fromLTRB(20, 0, 8, 0),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(minHeight: 48),
                 child: Row(
@@ -716,29 +659,4 @@ class _MultiChoiceSheetState extends State<_MultiChoiceSheet> {
       child: widget.chips(_selected, _toggle),
     );
   }
-}
-
-/// Placeholder shaped like the grid of cards.
-class _GridSkeleton extends StatelessWidget {
-  const _GridSkeleton({super.key});
-
-  @override
-  Widget build(BuildContext context) => Skeleton(
-        child: GridView.builder(
-          physics: const NeverScrollableScrollPhysics(),
-          padding: _gridPadding,
-          gridDelegate: _gridDelegate,
-          itemCount: 12,
-          itemBuilder: (_, _) => const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: SkeletonBox(height: double.infinity, radius: 8)),
-              SizedBox(height: 6),
-              SkeletonBox(height: 12),
-              SizedBox(height: 4),
-              SkeletonBox(width: 40, height: 10),
-            ],
-          ),
-        ),
-      );
 }

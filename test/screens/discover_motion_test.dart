@@ -4,6 +4,7 @@ import 'package:anispark/screens/detail_screen.dart';
 import 'package:anispark/screens/home_screen.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/utils/tab_reselect.dart';
+import 'package:anispark/widgets/anime_card.dart';
 import 'package:anispark/widgets/motion/cover_hero.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -43,7 +44,8 @@ void main() {
     expect(tags, containsAll([coverHeroTag('home-trending', 1), coverHeroTag('home-top-airing', 1)]));
     expect(tags.toSet(), hasLength(tags.length), reason: 'no two heroes share a tag');
 
-    await tester.tap(find.text('Cowboy Bebop').first);
+    // The first row's card (the spotlight above it has the title too).
+    await tester.tap(find.byType(AnimeCard).first);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 

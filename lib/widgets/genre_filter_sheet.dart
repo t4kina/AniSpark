@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../providers/settings_provider.dart';
 import '../theme/app_motion.dart';
+import 'motion/pressable.dart';
 import 'sheet_list_surface.dart';
 import '../utils/translations.dart' show tr;
 
@@ -63,8 +64,7 @@ class FilterOptionChip extends StatelessWidget {
     return Semantics(
       button: true,
       selected: selected,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
+      child: Pressable(
         onTap: onTap,
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: minTapHeight),
@@ -172,7 +172,7 @@ class _GenreFilterSheetState extends State<GenreFilterSheet> {
         children: [
           // Header
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             child: Row(
               children: [
                 TextButton(

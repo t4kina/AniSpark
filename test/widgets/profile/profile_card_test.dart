@@ -1,4 +1,5 @@
 import 'package:anispark/widgets/blurred_backdrop.dart';
+import 'package:anispark/widgets/profile/avatar_viewer.dart';
 import 'package:anispark/widgets/profile/profile_card.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -53,11 +54,53 @@ void main() {
   Iterable<String> networkImages(WidgetTester tester) =>
       tester.widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage)).map((image) => image.imageUrl);
 
+  testWidgets('the banner itself dissolves under the buttons, showing what is behind, with little room after',
+      (tester) async {
+    await pumpCard(tester);
+
+    final page = Theme.of(tester.element(find.byType(ProfileCard))).scaffoldBackgroundColor;
+    expect(
+      find.byWidgetPredicate((widget) =>
+          widget is DecoratedBox &&
+          widget.decoration is BoxDecoration &&
+          (widget.decoration as BoxDecoration).gradient?.colors.last == page),
+      findsNothing,
+      reason: 'no band painted in the page colour: the colour behind the card shows instead',
+    );
+    expect(
+      find.descendant(
+        of: find.byWidgetPredicate((widget) => widget is ShaderMask && widget.blendMode == BlendMode.dstIn),
+        matching: find.byType(BlurredBackdrop),
+      ),
+      findsOneWidget,
+      reason: 'the background is what fades out',
+    );
+
+    final card = tester.getRect(find.byType(ProfileCard));
+    final textBottoms = [
+      for (final text in find.descendant(of: find.byType(ProfileCard), matching: find.byType(Text)).evaluate())
+        tester.getRect(find.byElementPredicate((element) => element == text)).bottom,
+    ];
+    expect(card.bottom - textBottoms.reduce((a, b) => a > b ? a : b), lessThan(56),
+        reason: 'what follows comes soon after the last thing on the card');
+  });
+
   testWidgets('sits on the person\'s banner when they have one', (tester) async {
     await pumpCard(tester, banner: _banner);
 
     expect(networkImages(tester), [_banner]);
     expect(find.byType(BlurredBackdrop), findsNothing);
+  });
+
+  testWidgets('the banner runs edge to edge from the top, not as a card', (tester) async {
+    await pumpCard(tester, banner: _banner);
+
+    final banner = tester.getRect(find.byType(CachedNetworkImage));
+    expect(banner.left, 0);
+    expect(banner.right, 800);
+    expect(banner.top, 0);
+    expect(find.ancestor(of: find.byType(CachedNetworkImage), matching: find.byType(ClipRRect)), findsNothing,
+        reason: 'no rounded card corners');
   });
 
   testWidgets('without a banner, sits on their avatar blurred into colour', (tester) async {
@@ -122,5 +165,35 @@ void main() {
     await tester.tap(find.text('321 anime'));
 
     expect(tapped, ['MANGA', 'ANIME']);
+  });
+
+  testWidgets('a tap on the avatar opens it large, and a tap closes it', (tester) async {
+    await pumpCard(tester);
+
+    await tester.tap(find.byType(CircleAvatar));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(AvatarViewer), findsOneWidget);
+    final image = tester.widget<CachedNetworkImage>(
+      find.descendant(of: find.byType(AvatarViewer), matching: find.byType(CachedNetworkImage)),
+    );
+    expect(image.imageUrl, _avatar);
+    expect(
+      tester.getSize(find.descendant(of: find.byType(AvatarViewer), matching: find.byType(CachedNetworkImage))).width,
+      greaterThan(ProfileCard.avatarSize * 4),
+      reason: 'as large as the screen allows',
+    );
+
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.byType(AvatarViewer), findsNothing);
+  });
+
+  testWidgets('without a picture there is nothing to open', (tester) async {
+    await pumpCard(tester, avatar: null);
+
+    await tester.tap(find.byType(CircleAvatar));
+    await tester.pumpAndSettle();
+    expect(find.byType(AvatarViewer), findsNothing);
   });
 }

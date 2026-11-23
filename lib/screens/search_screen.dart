@@ -1,20 +1,27 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart';
-import '../theme/app_motion.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_layout.dart';
+import '../theme/app_text.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_sheet.dart';
 import '../widgets/genre_filter_sheet.dart';
+import '../widgets/media_preview.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/option_sheet.dart';
+import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import 'detail_screen.dart';
+import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// SharedPreferences key of the recent searches; cleared on logout.
 const recentSearchesPrefsKey = 'recent_searches';
@@ -32,6 +39,9 @@ class SearchScreen extends StatefulWidget {
 }
 
 class _SearchScreenState extends State<SearchScreen> {
+  /// The tap area of a recent search's remove cross.
+  static const _removeTapSize = 36.0;
+
   late final _service = widget.service ?? AniListService();
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
@@ -207,15 +217,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _showFilters() {
     final draft = Set<String>.from(_selectedGenres);
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      isScrollControlled: true,
-      // Dragged all the way up it stops under the status bar.
-      useSafeArea: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
       builder: (_) => GenreFilterSheet(
         selected: draft,
         onApply: (genres) {
@@ -232,6 +235,28 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
+  static const _cancelGap = 12.0;
+  static const _fieldBorder = OutlineInputBorder(borderRadius: AppRadius.mdAll, borderSide: BorderSide.none);
+
+  /// Clears and closes the keyboard; with nothing left to cancel, leaves the
+  /// search.
+  void _cancel() {
+    if (!_focused && _controller.text.isEmpty) {
+      Navigator.maybePop(context);
+      return;
+    }
+    _debounce?.cancel();
+    _focusNode.unfocus();
+    _controller.clear();
+    setState(() {
+      _results = [];
+      _searched = false;
+      _focused = false;
+      _loading = false;
+      _hasError = false;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final lang = context.watch<SettingsProvider>().language;
@@ -242,15 +267,21 @@ class _SearchScreenState extends State<SearchScreen> {
       appBar: AppBar(
         titleSpacing: 0,
         title: Padding(
-          padding: const EdgeInsets.only(left: 16, right: 8),
+          // Cancel is always there at the right, so the field never
+          // changes width.
+          padding: const EdgeInsets.only(left: AppSpace.page, right: _cancelGap),
           child: TextField(
             controller: _controller,
             focusNode: _focusNode,
             autofocus: true,
             decoration: InputDecoration(
               hintText: tr('search_hint', lang),
-              border: InputBorder.none,
-              contentPadding: EdgeInsets.zero,
+              // A filled box like Discover's search bar, with no outline when
+              // it takes the keyboard either.
+              enabledBorder: _fieldBorder,
+              focusedBorder: _fieldBorder,
+              prefixIcon: Icon(Icons.search, size: 20, color: context.colors.textSecondary),
+              contentPadding: const EdgeInsets.symmetric(vertical: 10),
               suffixIcon: _controller.text.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.clear, size: 18),
@@ -271,21 +302,19 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ),
         actions: [
-          if (_focused || _controller.text.isNotEmpty)
-            TextButton(
-              onPressed: () {
-                _focusNode.unfocus();
-                _controller.clear();
-                setState(() {
-                  _results = [];
-                  _searched = false;
-                  _focused = false;
-                  _loading = false;
-                  _hasError = false;
-                });
-              },
-              child: Text(tr('cancel', lang)),
+          // Plain text that dims under the finger, at the page margin.
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpace.page),
+            child: Center(
+              child: Pressable.dim(
+                onTap: _cancel,
+                child: Text(
+                  tr('cancel', lang),
+                  style: TextStyle(color: accentColor, fontSize: 16, fontWeight: FontWeight.w500),
+                ),
+              ),
             ),
+          ),
         ],
       ),
       body: Column(
@@ -307,31 +336,18 @@ class _SearchScreenState extends State<SearchScreen> {
                     current: _contentType,
                     onSelected: _onContentTypeChanged,
                   ),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.grey.withValues(alpha: 0.4)),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          _typeLabel(_contentType, lang),
-                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-                        ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.keyboard_arrow_down, size: 16),
-                      ],
-                    ),
-                  ),
+                  child: _controlPill(_typeLabel(_contentType, lang)),
                 ),
                 const Spacer(),
                 // Filter button
                 IconButton(
-                  icon: Icon(
-                    Icons.tune,
-                    color: hasFilters ? accentColor : Colors.grey,
+                  // Counts the genres the results are filtered by.
+                  icon: Badge(
+                    isLabelVisible: hasFilters,
+                    label: Text('${_selectedGenres.length}'),
+                    backgroundColor: accentColor,
+                    textColor: Theme.of(context).colorScheme.onPrimary,
+                    child: Icon(Icons.tune, color: hasFilters ? accentColor : context.colors.textSecondary),
                   ),
                   onPressed: _showFilters,
                   tooltip: tr('filters', lang),
@@ -348,19 +364,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     current: _sort,
                     onSelected: _onSortChanged,
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          tr(_sortLabelKeys[_sort] ?? 'search_sort', lang),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                        const Icon(Icons.keyboard_arrow_down, size: 16),
-                      ],
-                    ),
-                  ),
+                  child: _controlPill(tr(_sortLabelKeys[_sort] ?? 'search_sort', lang)),
                 ),
               ],
             ),
@@ -388,16 +392,40 @@ class _SearchScreenState extends State<SearchScreen> {
         child: Pressable(onTap: onTap, child: ExcludeSemantics(child: child)),
       );
 
+  /// What a picker of the control row shows: its current choice in a pill,
+  /// the same for the content type and the sort.
+  Widget _controlPill(String label) => Container(
+        padding: const EdgeInsets.fromLTRB(14, 7, 10, 7),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: AppRadius.pillAll,
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: AppText.footnote.copyWith(fontWeight: FontWeight.w600)),
+            const SizedBox(width: 2),
+            Icon(Icons.keyboard_arrow_down, size: 16, color: context.colors.textSecondary),
+          ],
+        ),
+      );
+
   /// The area under the controls; each state has its own key so changing
   /// state (or getting new results) cross-fades.
   Widget _buildResults(String lang) {
     if (_loading) {
-      return const Center(key: ValueKey('loading'), child: CircularProgressIndicator());
+      return const _ResultsSkeleton(key: ValueKey('loading'));
     }
-    if (_hasError) return KeyedSubtree(key: const ValueKey('error'), child: _buildError());
+    if (_hasError) {
+      return LoadErrorView(key: const ValueKey('error'), onRetry: () => _search(_controller.text.trim()));
+    }
     if (!_searched) return KeyedSubtree(key: const ValueKey('start'), child: _buildEmptyState(lang));
     if (_results.isEmpty) {
-      return Center(key: const ValueKey('no-results'), child: Text(tr('no_results', lang)));
+      return StateMessage(
+        key: const ValueKey('no-results'),
+        icon: Icons.search_off_rounded,
+        message: tr('no_results', lang),
+      );
     }
     final heroScope = 'search-$_resultsVersion';
     final results = _results;
@@ -415,40 +443,9 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildError() {
-    final lang = context.watch<SettingsProvider>().language;
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text(tr('load_error', lang),
-              style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () => _search(_controller.text.trim()),
-            icon: const Icon(Icons.refresh),
-            label: Text(tr('retry', lang)),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildEmptyState(String lang) {
     if (_recentSearches.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.search, size: 64, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('search_for', lang),
-                style: const TextStyle(color: Colors.grey)),
-          ],
-        ),
-      );
+      return StateMessage(icon: Icons.search, message: tr('search_for', lang));
     }
 
     final cs = Theme.of(context).colorScheme;
@@ -464,7 +461,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     color: cs.onSurface.withValues(alpha: 0.55),
                     letterSpacing: 0.3)),
             const Spacer(),
-            GestureDetector(
+            Pressable.dim(
               onTap: _clearRecentSearches,
               child: Text(tr('search_clear_all', lang),
                   style: TextStyle(fontSize: 12, color: cs.primary)),
@@ -476,7 +473,7 @@ class _SearchScreenState extends State<SearchScreen> {
           spacing: 8,
           runSpacing: 8,
           children: _recentSearches.map((q) {
-            return GestureDetector(
+            return Pressable(
               onTap: () {
                 _controller.text = q;
                 _controller.selection = TextSelection.fromPosition(
@@ -484,7 +481,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 _search(q);
               },
               child: Container(
-                padding: const EdgeInsets.fromLTRB(12, 7, 6, 7),
+                padding: const EdgeInsets.only(left: 12),
                 decoration: BoxDecoration(
                   color: cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(20),
@@ -499,11 +496,17 @@ class _SearchScreenState extends State<SearchScreen> {
                     Text(q,
                         style: TextStyle(
                             fontSize: 13, color: cs.onSurface.withValues(alpha: 0.85))),
-                    const SizedBox(width: 4),
-                    GestureDetector(
-                      onTap: () => _removeRecentSearch(q),
-                      child: Icon(Icons.close_rounded, size: 14,
-                          color: cs.onSurface.withValues(alpha: 0.35)),
+                    // A whole finger's room to remove it, not just the cross.
+                    Semantics(
+                      button: true,
+                      label: tr('search_remove_recent', lang),
+                      child: Pressable.dim(
+                        onTap: () => _removeRecentSearch(q),
+                        child: SizedBox.square(
+                          dimension: _removeTapSize,
+                          child: Icon(Icons.close_rounded, size: 16, color: cs.onSurface.withValues(alpha: 0.5)),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -517,6 +520,26 @@ class _SearchScreenState extends State<SearchScreen> {
 }
 
 // ── Result card ──────────────────────────────────────────────────────────────
+
+/// Placeholder shaped like the result cards.
+class _ResultsSkeleton extends StatelessWidget {
+  const _ResultsSkeleton({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Skeleton(
+      child: ListView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 8),
+        itemCount: 6,
+        itemBuilder: (_, _) => const Padding(
+          padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
+          child: SkeletonBox(height: 140, radius: 10),
+        ),
+      ),
+    );
+  }
+}
 
 class _ResultCard extends StatelessWidget {
   final dynamic data;
@@ -554,12 +577,12 @@ class _ResultCard extends StatelessWidget {
       if (score != null) '★ ${(score / 10).toStringAsFixed(1)}',
     ];
     final heroTag = id == null ? null : coverHeroTag(heroScope, id);
-    final fadeIn = AppMotion.of(context, AppMotion.short);
-    final coverPlaceholder = ColoredBox(color: Colors.grey[800]!);
+
 
     return Pressable(
       // A full-width card only needs a hint of a press.
       pressedScale: 0.98,
+      onLongPress: id == null ? null : () => showMediaPreview(context, media: data as Map<String, dynamic>),
       onTap: id == null
           ? null
           : () => Navigator.push(
@@ -580,15 +603,7 @@ class _ResultCard extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             // Banner background
-            if (banner != null)
-              CachedNetworkImage(
-                imageUrl: banner,
-                fit: BoxFit.cover,
-                memCacheWidth: 600,
-                fadeInDuration: fadeIn,
-                fadeOutDuration: Duration.zero,
-                errorWidget: (_, _, _) => const SizedBox.shrink(),
-              ),
+            if (banner != null) AppImage(url: banner, cacheWidth: 600, fill: false),
             // Dark overlay
             Container(
               decoration: BoxDecoration(
@@ -615,16 +630,7 @@ class _ResultCard extends StatelessWidget {
                     child: RoundedHero(
                       tag: heroTag,
                       borderRadius: const BorderRadius.all(Radius.circular(6)),
-                      child: cover != null
-                          ? CachedNetworkImage(
-                              imageUrl: cover,
-                              fit: BoxFit.cover,
-                              memCacheWidth: 160,
-                              fadeInDuration: fadeIn,
-                              fadeOutDuration: Duration.zero,
-                              errorWidget: (_, _, _) => coverPlaceholder,
-                            )
-                          : coverPlaceholder,
+                      child: AppImage(url: cover, cacheWidth: 160),
                     ),
                   ),
                   const SizedBox(width: 12),

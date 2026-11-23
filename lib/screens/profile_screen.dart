@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/dev_badge.dart';
 import '../providers/settings_provider.dart';
 import '../services/auth_service.dart';
 import '../services/anilist_service.dart';
@@ -11,10 +12,18 @@ import '../utils/translations.dart' show tr, trf;
 import '../utils/refresh_notifier.dart';
 import '../theme/app_motion.dart';
 import '../utils/tab_reselect.dart';
+import '../widgets/app_refresh_indicator.dart';
+import '../widgets/app_sheet.dart';
+import '../widgets/motion/arrival_builder.dart';
 import '../widgets/motion/fade_switcher.dart';
+import '../widgets/motion/drawn_on_sight.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
+import '../widgets/profile/profile_tint.dart';
 import '../widgets/sheet_list_surface.dart';
+import '../widgets/skeletons.dart';
+import '../widgets/load_error_view.dart';
+import '../widgets/state_message.dart';
 import '../main.dart' show MainNavigation;
 import 'settings_screen.dart';
 import 'user_profile_screen.dart';
@@ -62,6 +71,11 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
   bool _statsLoaded = false;
   Map<String, int> _activityDays = {};
   List<dynamic> _following = [];
+
+  /// Loaded with the profile, like [_following], so the followers sheet
+  /// opens with its people instead of fetching them and changing height.
+  /// Null until known (an older cache did not keep them).
+  List<dynamic>? _followers;
   bool _animeGenresExpanded = false;
   bool _mangaGenresExpanded = false;
   bool _scoreDistributionExpanded = false;
@@ -90,6 +104,14 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
+  /// The preloaded followers, unless they disagree with the count (an
+  /// answer AniList refused comes back empty): then the sheet asks again.
+  List<dynamic>? get _followersToShow {
+    final followers = _followers;
+    if (followers == null || (followers.isEmpty && _followersCount > 0)) return null;
+    return followers;
+  }
+
   void _loadFromCache(Map<String, dynamic> cached) {
     if (!mounted) return;
     setState(() {
@@ -101,6 +123,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       _activityDays = (cached['activityDays'] as Map<String, dynamic>? ?? {})
           .map((k, v) => MapEntry(k, (v as num).toInt()));
       _following = List<dynamic>.from(cached['following'] as List? ?? []);
+      final followers = cached['followers'] as List?;
+      _followers = followers == null ? null : List<dynamic>.from(followers);
       _statsLoaded = true;
     });
   }
@@ -132,6 +156,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         _service.getUserFollowCounts(userId, auth.token!),
         _service.getUserActivityDays(userId, auth.token!),
         _service.getFollowing(userId, auth.token!),
+        _service.getFollowers(userId, auth.token!),
       ]);
     } on Exception catch (e) {
       // Keep whatever is already on screen (cached stats) and try next time.
@@ -144,6 +169,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final followResult = results[1] as Map<String, int>;
     final activityResult = results[2] as Map<String, int>;
     final followingResult = results[3] as List<dynamic>;
+    final followersResult = results[4] as List<dynamic>;
 
     final user = statsResult['user'] as Map<String, dynamic>?;
     final newBanner = (user?['bannerImage'] as String?) ?? _bannerImage;
@@ -160,6 +186,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       _followingCount = newFollowing;
       _activityDays = activityResult;
       _following = followingResult;
+      _followers = followersResult;
       _statsLoaded = true;
     });
 
@@ -173,6 +200,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
       'followingCount': newFollowing,
       'activityDays': activityResult,
       'following': followingResult,
+      'followers': followersResult,
     });
   }
 
@@ -182,7 +210,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     final lang = context.watch<SettingsProvider>().language;
     final user = auth.user;
     if (user == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: ProfileSkeleton());
     }
     final animeStats =
         user['statistics']?['anime'] as Map<String, dynamic>?;
@@ -195,92 +223,99 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     return Scaffold(
       body: Stack(
         children: [
-          RefreshIndicator(
+          AppRefreshIndicator(
         onRefresh: _fetchStats,
         child: CustomScrollView(
           controller: _scrollController,
           slivers: [
-            // ── Who you are and your stats, on your banner ──────────────
-            SliverToBoxAdapter(
-              child: ProfileCard(
-                name: name,
-                lang: lang,
-                avatarUrl: avatar,
-                bannerUrl: _bannerImage,
-                animeStats: animeStats,
-                mangaStats: mangaStats,
-                scoreFormat: scoreFormat,
-                onCountTap: (type) => MainNavigation.navigateToTab(type == 'MANGA' ? 1 : 0),
-                cornerButton: ProfileCard.roundButton(
-                  icon: Icons.settings_outlined,
-                  tooltip: tr('tooltip_settings', lang),
-                  onPressed: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            // Your banner, its colour behind your favourite anime, then the page.
+            ProfileTintZone(
+              bannerUrl: _bannerImage,
+              avatarUrl: avatar,
+              slivers: [
+                // ── Who you are and your stats, on your banner ──────────────
+                SliverToBoxAdapter(
+                  child: ProfileCard(
+                    name: name,
+                    lang: lang,
+                    avatarUrl: avatar,
+                    bannerUrl: _bannerImage,
+                    animeStats: animeStats,
+                    mangaStats: mangaStats,
+                    scoreFormat: scoreFormat,
+                    onCountTap: (type) => MainNavigation.navigateToTab(type == 'MANGA' ? 1 : 0),
+                    cornerButton: ProfileCard.roundButton(
+                      icon: Icons.settings_outlined,
+                      tooltip: tr('tooltip_settings', lang),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                      ),
+                    ),
+                    actions: [
+                      // Two counts side by side, so both glass: white is for the
+                      // one action a card leads with (Follow on a friend's).
+                      ProfileCard.secondaryButton(
+                        label: '$_followersCount ${tr('followers', lang)}',
+                        onPressed: () => _showFollowSheet(
+                          context,
+                          tr('followers', lang),
+                          preloaded: _followersToShow,
+                          expected: _followersCount,
+                        ),
+                      ),
+                      ProfileCard.secondaryButton(
+                        label: '$_followingCount ${tr('following', lang)}',
+                        onPressed: () => _showFollowSheet(context, tr('following', lang), preloaded: _following),
+                      ),
+                    ],
                   ),
                 ),
-                actions: [
-                  // Two counts side by side, so both glass: white is for the
-                  // one action a card leads with (Follow on a friend's).
-                  ProfileCard.secondaryButton(
-                    label: '$_followersCount ${tr('followers', lang)}',
-                    onPressed: () => _showFollowSheet(context, tr('followers', lang)),
-                  ),
-                  ProfileCard.secondaryButton(
-                    label: '$_followingCount ${tr('following', lang)}',
-                    onPressed: () => _showFollowSheet(context, tr('following', lang), preloaded: _following),
-                  ),
-                ],
-              ),
-            ),
 
-            const SliverToBoxAdapter(child: SizedBox(height: 16)),
-            SliverToBoxAdapter(
-              child: Builder(builder: (ctx) => Divider(height: 1, color: Theme.of(ctx).colorScheme.outline)),
-            ),
-
-            // ── Favorite Anime ─────────────────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 10),
-                child: Text(tr('favorite_anime', lang),
-                    style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey,
-                        letterSpacing: 0.5)),
-              ),
-            ),
-            // The favourites fade in once the stats arrive.
-            SliverToBoxAdapter(
-              child: FadeSwitcher(
-                child: !_statsLoaded
-                    ? const SizedBox(key: ValueKey('fav-anime-pending'), height: 170)
-                    : _favoriteAnime.isEmpty
-                        ? Container(
-                            key: const ValueKey('fav-anime-none'),
-                            // Full width, so the message stays left-aligned.
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            child: Text(tr('no_favourites', lang),
-                                style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                          )
-                        : SizedBox(
-                            key: const ValueKey('fav-anime'),
-                            width: double.infinity,
-                            height: 170,
-                            child: ListView.builder(
-                              scrollDirection: Axis.horizontal,
-                              padding:
-                                  const EdgeInsets.symmetric(horizontal: 16),
-                              itemCount: _favoriteAnime.length,
-                              itemBuilder: (_, i) => FavouriteMediaCard(
-                                media: _favoriteAnime[i] as Map<String, dynamic>,
-                                heroScope: _favsHeroScope,
+                // ── Favorite Anime ─────────────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(16, ProfileCard.followingGap, 16, 10),
+                    child: Text(tr('favorite_anime', lang),
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey,
+                            letterSpacing: 0.5)),
+                  ),
+                ),
+                // The favourites fade in once the stats arrive.
+                SliverToBoxAdapter(
+                  child: FadeSwitcher(
+                    child: !_statsLoaded
+                        ? const SizedBox(key: ValueKey('fav-anime-pending'), height: 170)
+                        : _favoriteAnime.isEmpty
+                            ? Container(
+                                key: const ValueKey('fav-anime-none'),
+                                // Full width, so the message stays left-aligned.
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                child: Text(tr('no_favourites', lang),
+                                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                              )
+                            : SizedBox(
+                                key: const ValueKey('fav-anime'),
+                                width: double.infinity,
+                                height: 170,
+                                child: ListView.builder(
+                                  scrollDirection: Axis.horizontal,
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 16),
+                                  itemCount: _favoriteAnime.length,
+                                  itemBuilder: (_, i) => FavouriteMediaCard(
+                                    media: _favoriteAnime[i] as Map<String, dynamic>,
+                                    heroScope: _favsHeroScope,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-              ),
+                  ),
+                ),
+              ],
             ),
 
             // ── Favorite Characters ─────────────────────────────────────
@@ -347,20 +382,18 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  void _showFollowSheet(BuildContext context, String title,
-      {List<dynamic>? preloaded}) {
+  /// [expected] is how many people the sheet will list once it has loaded
+  /// them, so it can open at that height; not needed with a [preloaded] list.
+  void _showFollowSheet(BuildContext context, String title, {List<dynamic>? preloaded, int expected = 0}) {
     final auth = context.read<AuthService>();
     final userId = auth.user?['id'] as int?;
-    showModalBottomSheet(
+    showAppSheet<void>(
       context: context,
-      isScrollControlled: true,
-      // Dragged all the way up it stops under the status bar, with nothing
-      // behind it showing above.
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
+      maxHeightFraction: _followSheetMaxHeightFraction,
       builder: (_) => _FollowSheet(
         title: title,
         preloaded: preloaded,
+        expected: expected,
         userId: userId,
         token: auth.token,
         service: _service,
@@ -382,6 +415,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     'profile_month_jul', 'profile_month_aug', 'profile_month_sep',
     'profile_month_oct', 'profile_month_nov', 'profile_month_dec',
   ];
+
+  static const _heatmapSweep = Duration(milliseconds: 900);
 
   Widget _buildActivityGraph(String lang) {
     // Build a 52-week heatmap (oldest left → newest right)
@@ -426,7 +461,8 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                   color: Colors.grey,
                   letterSpacing: 0.5)),
           const SizedBox(height: 12),
-          Builder(builder: (ctx) {
+          // The weeks appear in a sweep, latest first, when the map is seen.
+          DrawnOnSight(duration: _heatmapSweep, builder: (ctx, drawn) {
             return StatefulBuilder(builder: (ctx, setLocal) {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -469,6 +505,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                             cellColor: (count) => cellColor(count, ctx),
                             cellSize: cellSize,
                             gap: gap,
+                            drawn: drawn,
                           ),
                         ),
                       ),
@@ -613,24 +650,35 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
 
   /// A rounded bar filled to [ratio], the accent brightening toward its
   /// end: the one mark the genre and era rows share.
-  Widget _dashboardBar(double ratio) {
+  ///
+  /// It grows to its length the first time it is seen, [order] steps after
+  /// the first bar of its chart, so a chart fills in from the top down.
+  Widget _dashboardBar(double ratio, {int order = 0}) {
     final colors = Theme.of(context).colorScheme;
+    final fill = DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(4),
+        gradient: LinearGradient(colors: [colors.primary.withValues(alpha: 0.55), colors.primary]),
+      ),
+      child: const SizedBox.expand(),
+    );
     return Container(
       height: 8,
       alignment: Alignment.centerLeft,
       decoration: BoxDecoration(color: colors.surface, borderRadius: BorderRadius.circular(4)),
-      child: FractionallySizedBox(
-        widthFactor: ratio.clamp(0.0, 1.0),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(4),
-            gradient: LinearGradient(colors: [colors.primary.withValues(alpha: 0.55), colors.primary]),
-          ),
-          child: const SizedBox.expand(),
+      child: DrawnOnSight(
+        delay: _barStep * order,
+        builder: (_, drawn) => AnimatedBuilder(
+          animation: drawn,
+          builder: (_, fill) => FractionallySizedBox(widthFactor: ratio.clamp(0.0, 1.0) * drawn.value, child: fill),
+          child: fill,
         ),
       ),
     );
   }
+
+  /// The wait between one bar of a chart starting to grow and the next.
+  static const _barStep = Duration(milliseconds: 50);
 
   /// A statistics score (AniList sends them on 0–100) in the user's score
   /// format, like every other score in the app.
@@ -664,7 +712,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
             for (final (i, g) in top.indexed)
               Padding(
                 padding: EdgeInsets.only(top: i == 0 ? 0 : 12),
-                child: _genreRow(g, maxCount, countKey, lang, scoreFormat),
+                child: _genreRow(g, maxCount, countKey, lang, scoreFormat, order: i),
               ),
           ],
         );
@@ -672,7 +720,14 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     );
   }
 
-  Widget _genreRow(Map<String, dynamic> genre, double maxCount, String countKey, String lang, String? scoreFormat) {
+  Widget _genreRow(
+    Map<String, dynamic> genre,
+    double maxCount,
+    String countKey,
+    String lang,
+    String? scoreFormat, {
+    required int order,
+  }) {
     final count = (genre['count'] as num?)?.toInt() ?? 0;
     final mean = (genre['meanScore'] as num?) ?? 0;
     var details = trf(countKey, lang, {'n': count});
@@ -698,7 +753,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
           ],
         ),
         const SizedBox(height: 6),
-        _dashboardBar(maxCount > 0 ? count / maxCount : 0),
+        _dashboardBar(maxCount > 0 ? count / maxCount : 0, order: order),
       ],
     );
   }
@@ -768,6 +823,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
               labelWidth: 40,
               ratio: bar.value / maxCount,
               count: bar.value,
+              order: i,
             ),
           ),
       ],
@@ -781,13 +837,14 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
     required double labelWidth,
     required double ratio,
     required int count,
+    required int order,
   }) {
     const style = TextStyle(fontSize: 11, color: Colors.grey, fontFeatures: [FontFeature.tabularFigures()]);
     return Row(
       children: [
         SizedBox(width: labelWidth, child: Text(label, maxLines: 1, style: style)),
         const SizedBox(width: 8),
-        Expanded(child: _dashboardBar(ratio)),
+        Expanded(child: _dashboardBar(ratio, order: order)),
         const SizedBox(width: 8),
         SizedBox(
           width: 30,
@@ -833,6 +890,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                 labelWidth: 72,
                 ratio: entry.value / maxCount,
                 count: entry.value,
+                order: i,
               ),
             ),
         ],
@@ -851,7 +909,14 @@ class _HeatmapPainter extends CustomPainter {
   final double cellSize;
   final double gap;
 
-  const _HeatmapPainter({
+  /// How much of the map has been drawn in (0 none, 1 all): the weeks come
+  /// in one after the other from the latest back.
+  final Animation<double> drawn;
+
+  /// How many weeks are fading in at once at the edge of the sweep.
+  static const _sweepEdge = 6;
+
+  _HeatmapPainter({
     required this.startDay,
     required this.today,
     required this.totalWeeks,
@@ -859,14 +924,18 @@ class _HeatmapPainter extends CustomPainter {
     required this.cellColor,
     required this.cellSize,
     required this.gap,
-  });
+    required this.drawn,
+  }) : super(repaint: drawn);
 
   @override
   void paint(Canvas canvas, Size size) {
     final step = cellSize + gap;
     final paint = Paint();
 
+    final swept = drawn.value * (totalWeeks + _sweepEdge);
     for (int week = 0; week < totalWeeks; week++) {
+      final shown = ((swept - (totalWeeks - 1 - week)) / _sweepEdge).clamp(0.0, 1.0);
+      if (shown == 0) continue;
       for (int dow = 0; dow < 7; dow++) {
         final day = startDay.add(Duration(days: week * 7 + dow));
         if (day.isAfter(today)) continue;
@@ -875,7 +944,8 @@ class _HeatmapPainter extends CustomPainter {
             '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
         final count = activityDays[key] ?? 0;
 
-        paint.color = cellColor(count);
+        final color = cellColor(count);
+        paint.color = shown == 1 ? color : color.withValues(alpha: color.a * shown);
         final rect = RRect.fromRectAndRadius(
           Rect.fromLTWH(
             week * step,
@@ -892,14 +962,20 @@ class _HeatmapPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_HeatmapPainter old) =>
-      old.activityDays != activityDays || old.today != today;
+      old.activityDays != activityDays || old.today != today || old.drawn != drawn;
 }
 
 // ── Follow sheet ──────────────────────────────────────────────────────────────
 
+/// The most of the screen the followers sheet takes; past it the list scrolls.
+const _followSheetMaxHeightFraction = 0.7;
+
 class _FollowSheet extends StatefulWidget {
   final String title;
   final List<dynamic>? preloaded;
+
+  /// How many people are about to be loaded, for the placeholder's height.
+  final int expected;
   final int? userId;
   final String? token;
   final AniListService service;
@@ -908,6 +984,7 @@ class _FollowSheet extends StatefulWidget {
     required this.title,
     required this.service,
     this.preloaded,
+    this.expected = 0,
     this.userId,
     this.token,
   });
@@ -917,8 +994,11 @@ class _FollowSheet extends StatefulWidget {
 }
 
 class _FollowSheetState extends State<_FollowSheet> {
+  static const _listBottomPadding = 24.0;
+
   List<dynamic>? _users;
   bool _loading = false;
+  bool _hasError = false;
 
   @override
   void initState() {
@@ -935,82 +1015,79 @@ class _FollowSheetState extends State<_FollowSheet> {
       setState(() => _users = []);
       return;
     }
-    setState(() => _loading = true);
-    final result = await widget.service.getFollowers(widget.userId!, widget.token!);
-    if (mounted) setState(() { _users = result; _loading = false; });
+    setState(() { _loading = true; _hasError = false; });
+    try {
+      final result = await widget.service.getFollowers(widget.userId!, widget.token!);
+      if (mounted) setState(() { _users = result; _loading = false; });
+    } on Exception catch (e) {
+      debugPrint('[ProfileScreen] Loading followers failed: $e');
+      if (mounted) setState(() { _loading = false; _hasError = true; });
+    }
   }
 
-  /// The most of the screen the sheet takes; past it the list scrolls.
-  static const _maxHeightFraction = 0.7;
-
-  /// Room for the spinner or "nobody here" while there's no list.
-  static const _placeholderHeight = 160.0;
-
-  /// Like the app's other pickers (the Sort sheet): as tall as its people,
-  /// up to [_maxHeightFraction] of the screen, and a drag scrolls the list
+  /// Like the other pickers (the Sort sheet): as tall as its people, up to
+  /// [_followSheetMaxHeightFraction] of the screen, and a drag scrolls the list
   /// inside it rather than raising the whole sheet.
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    // What loads while the sheet is still sliding up waits for it to
+    // arrive: changing height mid-slide shows as a step in the animation.
+    return ArrivalBuilder(builder: (context, arrived) => _buildSheet(context, arrived: arrived));
+  }
+
+  /// Rows the placeholder shows when nobody is expected: about what "nobody
+  /// here" takes, so the sheet barely moves between the two.
+  static const _fewRows = 3;
+
+  /// More placeholder rows than this never fit under the sheet's height.
+  static const _manyRows = 12;
+
+  Widget _buildSheet(BuildContext context, {required bool arrived}) {
     final lang = context.watch<SettingsProvider>().language;
     final Widget body;
-    if (_loading) {
-      body = const SizedBox(height: _placeholderHeight, child: Center(child: CircularProgressIndicator()));
-    } else if (_users == null || _users!.isEmpty) {
-      body = SizedBox(
-        height: _placeholderHeight,
-        child: Center(
-          child: Text(tr('profile_nobody_here', lang),
-              style: TextStyle(color: cs.onSurface.withValues(alpha: 0.4))),
+    if (_loading || (!arrived && widget.preloaded == null)) {
+      // A row per person on the way, so the sheet opens as tall as it will
+      // be and the list replaces the placeholder without moving it.
+      body = Flexible(
+        child: SingleChildScrollView(
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: _listBottomPadding),
+          child: PeopleSkeleton(
+            rows: widget.expected > 0 ? math.min(widget.expected, _manyRows) : _fewRows,
+            avatarSize: 44,
+            // As tall as a row of the list, the avatar where it will be.
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+          ),
         ),
       );
+    } else if (_hasError) {
+      body = LoadErrorView(onRetry: _fetchFollowers);
+    } else if (_users == null || _users!.isEmpty) {
+      body = StateMessage(icon: Icons.people_outline_rounded, message: tr('profile_nobody_here', lang));
     } else {
       body = Flexible(
         child: SheetListSurface(
           child: ListView.builder(
             shrinkWrap: true,
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, _listBottomPadding),
             itemCount: _users!.length,
             itemBuilder: (_, i) => _UserTile(user: _users![i]),
           ),
         ),
       );
     }
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFraction),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: AnimatedSize(
-            duration: AppMotion.of(context, AppMotion.short),
-            curve: AppMotion.standard,
-            alignment: Alignment.bottomCenter,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 12, bottom: 8),
-                  child: Container(
-                    width: 36, height: 4,
-                    decoration: BoxDecoration(
-                      color: cs.outlineVariant,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
-                  child: Text(widget.title,
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
-                ),
-                body,
-              ],
-            ),
-          ),
+    return SafeArea(
+      top: false,
+      child: AnimatedSize(
+        duration: AppMotion.of(context, AppMotion.short),
+        curve: AppMotion.standard,
+        alignment: Alignment.bottomCenter,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SheetTitle(widget.title),
+            body,
+          ],
         ),
       ),
     );
@@ -1035,7 +1112,7 @@ class _UserTile extends StatelessWidget {
         backgroundImage: avatar != null ? CachedNetworkImageProvider(avatar) : null,
         child: avatar == null ? const Icon(Icons.person, size: 22) : null,
       ),
-      title: Text(name, style: const TextStyle(fontWeight: FontWeight.w500)),
+      title: BadgedName(name, style: const TextStyle(fontWeight: FontWeight.w500)),
       onTap: id != null
           ? () => Navigator.push(context, MaterialPageRoute(
                 builder: (_) => UserProfileScreen(

@@ -7,7 +7,8 @@ import '../providers/settings_provider.dart';
 import '../services/api_cache.dart';
 import '../services/people_api.dart';
 import '../utils/translations.dart';
-import '../widgets/detail/load_error_view.dart';
+import '../widgets/app_refresh_indicator.dart';
+import '../widgets/load_error_view.dart';
 import '../widgets/detail/section_title.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
@@ -17,6 +18,7 @@ import '../widgets/people/paged_items.dart';
 import '../widgets/people/people_labels.dart';
 import '../widgets/people/people_routes.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 
 /// A studio's page: its productions as a cover grid, most popular first,
 /// those it was the main studio of before the rest, loading more on scroll.
@@ -147,7 +149,7 @@ class _StudioScreenState extends State<StudioScreen> with PagedLoading {
     return Scaffold(
       body: FadeSwitcher(
         child: switch ((studio, _loading)) {
-          (final StudioDetail studio, _) => RefreshIndicator(
+          (final StudioDetail studio, _) => AppRefreshIndicator(
               key: const ValueKey('content'),
               onRefresh: _refresh,
               child: _page(name, lang, controller: _scroll, slivers: _content(studio, lang)),
@@ -156,7 +158,16 @@ class _StudioScreenState extends State<StudioScreen> with PagedLoading {
               name,
               lang,
               key: const ValueKey('loading'),
-              slivers: const [SliverToBoxAdapter(child: _GridSkeleton())],
+              slivers: const [
+                SliverToBoxAdapter(
+                  child: GridSkeleton(
+                    gridDelegate: mediaCoverGridDelegate,
+                    padding: EdgeInsets.fromLTRB(12, 8, 12, 0),
+                    count: 9,
+                    shrinkWrap: true,
+                  ),
+                ),
+              ],
             ),
           (null, false) => _page(
               name,
@@ -231,7 +242,7 @@ class _StudioScreenState extends State<StudioScreen> with PagedLoading {
       if (_main.items.isEmpty && _other.items.isEmpty)
         SliverFillRemaining(
           hasScrollBody: false,
-          child: Center(child: Text(tr('nothing_here', lang), style: const TextStyle(color: Colors.grey))),
+          child: StateMessage(icon: Icons.inbox_outlined, message: tr('nothing_here', lang)),
         ),
       if (showsTitles && _main.items.isNotEmpty) _title(tr('studio_main_productions', lang)),
       _grid(_main.items, lang, heroScope: 'studio-${widget.studioId}-main'),
@@ -271,32 +282,6 @@ class _StudioScreenState extends State<StudioScreen> with PagedLoading {
               heroTag: heroTag,
             );
           },
-        ),
-      );
-}
-
-/// Placeholder shaped like the cover grid.
-class _GridSkeleton extends StatelessWidget {
-  const _GridSkeleton();
-
-  @override
-  Widget build(BuildContext context) => Skeleton(
-        child: GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          gridDelegate: mediaCoverGridDelegate,
-          itemCount: 9,
-          itemBuilder: (_, _) => const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: SkeletonBox(height: double.infinity, radius: 8)),
-              SizedBox(height: 5),
-              SkeletonBox(height: 12),
-              SizedBox(height: 4),
-              SkeletonBox(width: 60, height: 10),
-            ],
-          ),
         ),
       );
 }

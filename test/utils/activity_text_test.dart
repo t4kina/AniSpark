@@ -125,4 +125,30 @@ void main() {
           '0m ago');
     });
   });
+
+  group('feedDayLabel', () {
+    final now = DateTime(2026, 11, 16, 10, 30);
+    int at(DateTime time) => time.millisecondsSinceEpoch ~/ 1000;
+
+    test('names today and yesterday', () {
+      expect(feedDayLabel(at(DateTime(2026, 11, 16, 0, 5)), 'English', now: now), 'Today');
+      expect(feedDayLabel(at(DateTime(2026, 11, 15, 23, 59)), 'English', now: now), 'Yesterday',
+          reason: 'by the calendar, not by 24 hours');
+      expect(feedDayLabel(at(DateTime(2026, 11, 15, 0, 1)), 'Spanish', now: now), 'Ayer');
+    });
+
+    test('dates older days, with the year only when it is another one', () {
+      expect(feedDayLabel(at(DateTime(2026, 11, 3, 18)), 'English', now: now), 'Nov 3');
+      expect(feedDayLabel(at(DateTime(2025, 12, 31, 18)), 'English', now: now), 'Dec 31, 2025');
+    });
+
+    test('a time slightly in the future is today', () {
+      expect(feedDayLabel(at(DateTime(2026, 11, 16, 10, 31)), 'English', now: now), 'Today');
+    });
+
+    test('tells whether two times fall on the same day', () {
+      expect(sameFeedDay(at(DateTime(2026, 11, 16, 0, 5)), at(DateTime(2026, 11, 16, 23, 50))), isTrue);
+      expect(sameFeedDay(at(DateTime(2026, 11, 16, 0, 5)), at(DateTime(2026, 11, 15, 23, 50))), isFalse);
+    });
+  });
 }

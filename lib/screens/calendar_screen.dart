@@ -1,4 +1,3 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show CustomSemanticsAction;
@@ -10,18 +9,27 @@ import '../services/api_cache.dart';
 import '../services/auth_service.dart';
 import '../services/device_calendar.dart';
 import '../services/discover_api.dart';
+import '../theme/app_colors.dart';
+import '../theme/app_layout.dart';
 import '../theme/app_motion.dart';
+import '../theme/app_text.dart';
+import '../widgets/media_preview.dart';
 import '../utils/airing_calendar.dart';
 import '../utils/airing_event.dart';
 import '../utils/haptics.dart';
 import '../utils/translations.dart' show tr, trf;
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/motion/cover_hero.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/pressable.dart';
 import '../widgets/motion/rounded_hero.dart';
 import '../widgets/motion/staggered_entrance.dart';
+import '../widgets/app_button.dart';
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import 'detail_screen.dart';
+import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// Episodes airing today and over the next six days, grouped by local day.
 /// Logged-in users can narrow it to what they're watching or planning, and
@@ -243,7 +251,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Widget _buildState(String lang, {required bool myListOnly}) {
     if (_loading) return const _CalendarSkeleton();
-    if (_hasError) return _buildError(lang);
+    if (_hasError) return LoadErrorView(onRetry: _load);
     final now = DateTime.now();
     final today = localDay(now);
     final days = groupByLocalDay([
@@ -262,7 +270,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       next += 1 + day.episodes.length;
     }
 
-    return RefreshIndicator(
+    return AppRefreshIndicator(
       key: ValueKey(heroScope),
       onRefresh: () => _load(force: true),
       child: days.isEmpty
@@ -277,6 +285,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
                         child: StaggeredEntrance(
                           index: firstIndexOfDay[d],
                           child: _DayHeader(
+                            isToday: calendarDaysBetween(today, day.date) == 0,
+                            count: day.episodes.length,
                             label: _dayLabel(day.date, today, lang),
                             date: trf('cal_month_day', lang, {
                               'month': tr('detail_month_${day.date.month}', lang),
@@ -313,53 +323,40 @@ class _CalendarScreenState extends State<CalendarScreen> {
         _ => tr(_weekdayKeys[day.weekday - 1], lang),
       };
 
-  Widget _buildEmpty(String lang, {required bool myListOnly}) => ListView(
+  /// Fills the page, so it is centred and can still be pulled to refresh.
+  Widget _buildEmpty(String lang, {required bool myListOnly}) => CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(32, 96, 32, 32),
-        children: [
-          const Icon(Icons.event_busy_outlined, size: 48, color: Colors.grey),
-          const SizedBox(height: 12),
-          Text(
-            tr(myListOnly ? 'cal_empty_my_list' : 'cal_empty_all', lang),
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.grey),
+        slivers: [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: StateMessage(
+              icon: Icons.event_busy_outlined,
+              message: tr(myListOnly ? 'cal_empty_my_list' : 'cal_empty_all', lang),
+              action: myListOnly
+                  ? AppButton(
+                      kind: AppButtonKind.tonal,
+                      label: tr('cal_show_all', lang),
+                      onPressed: () => setState(() => _myListOnly = false),
+                    )
+                  : null,
+            ),
           ),
-          if (myListOnly) ...[
-            const SizedBox(height: 12),
-            Center(
-              child: TextButton(
-                onPressed: () => setState(() => _myListOnly = false),
-                child: Text(tr('cal_show_all', lang)),
-              ),
-            ),
-          ],
         ],
-      );
-
-  Widget _buildError(String lang) => Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.wifi_off_rounded, size: 48, color: Colors.grey),
-            const SizedBox(height: 12),
-            Text(tr('load_error', lang), style: const TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            FilledButton.icon(
-              onPressed: _load,
-              icon: const Icon(Icons.refresh),
-              label: Text(tr('retry', lang)),
-            ),
-          ],
-        ),
       );
 }
 
 /// Sticky "Today · Oct 10" header above one day's episodes.
 class _DayHeader extends StatelessWidget {
-  const _DayHeader({required this.label, required this.date});
+  const _DayHeader({required this.label, required this.date, required this.isToday, required this.count});
 
   final String label;
   final String date;
+
+  /// Today stands out in the accent colour.
+  final bool isToday;
+
+  /// How many episodes air that day.
+  final int count;
 
   @override
   Widget build(BuildContext context) => Semantics(
@@ -372,10 +369,29 @@ class _DayHeader extends StatelessWidget {
             children: [
               Text(
                 label,
-                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                style: AppText.subhead.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: isToday ? Theme.of(context).colorScheme.primary : null,
+                ),
               ),
               const SizedBox(width: 8),
-              Text(date, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+              Expanded(child: Text(date, style: AppText.footnote.copyWith(color: context.colors.textSecondary))),
+              // How busy the day is, at a glance.
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  borderRadius: AppRadius.pillAll,
+                ),
+                child: Text(
+                  '$count',
+                  style: AppText.caption.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: context.colors.textSecondary,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -442,6 +458,7 @@ class _EpisodeRow extends StatelessWidget {
     final row = Pressable(
       // A full-width row only needs a hint of a press.
       pressedScale: 0.98,
+      onLongPress: id == null ? null : () => showMediaPreview(context, media: media),
       onTap: id == null
           ? null
           : () => Navigator.push(
@@ -460,19 +477,15 @@ class _EpisodeRow extends StatelessWidget {
               child: RoundedHero(
                 tag: heroTag,
                 borderRadius: const BorderRadius.all(Radius.circular(6)),
-                child: cover == null
-                    ? placeholder
-                    : CachedNetworkImage(
-                        imageUrl: cover,
-                        fit: BoxFit.cover,
-                        memCacheWidth: 92,
-                        color: dim,
-                        colorBlendMode: dim == null ? null : BlendMode.modulate,
-                        fadeInDuration: AppMotion.of(context, AppMotion.short),
-                        fadeOutDuration: Duration.zero,
-                        placeholder: (_, _) => placeholder,
-                        errorWidget: (_, _, _) => placeholder,
-                      ),
+                child: AppImage(
+                  url: cover,
+                  cacheWidth: 92,
+                  color: dim,
+                  colorBlendMode: dim == null ? null : BlendMode.modulate,
+                  // A dimmed cover is see-through, and so is what stands in for it.
+                  fill: false,
+                  placeholder: placeholder,
+                ),
               ),
             ),
             const SizedBox(width: 12),
@@ -500,7 +513,7 @@ class _EpisodeRow extends StatelessWidget {
                               if (episode != null)
                                 Text(
                                   trf('list_episode_n', lang, {'n': episode}),
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  style: TextStyle(fontSize: 12, color: context.colors.textSecondary),
                                 ),
                               if (statusKey != null) _ListBadge(label: tr(statusKey, lang)),
                             ],
@@ -518,13 +531,13 @@ class _EpisodeRow extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w600,
-                              color: aired ? Colors.grey : cs.primary,
+                              color: aired ? context.colors.textSecondary : cs.primary,
                             ),
                           ),
                         if (aired)
                           Text(
                             tr('cal_aired', lang),
-                            style: const TextStyle(fontSize: 11, color: Colors.grey),
+                            style: TextStyle(fontSize: 11, color: context.colors.textSecondary),
                           ),
                       ],
                     ),

@@ -184,6 +184,21 @@ void main() {
       expect(_opacityOf(tester, find.text('first')), 1);
     });
 
+    test('a column of sections takes a step each, its gaps and rules none', () {
+      const title = Text('title');
+      const body = Text('body');
+      const gap = SizedBox(height: 8);
+      const rule = Divider();
+
+      final children = staggered(const [gap, title, rule, body], from: 3);
+
+      expect(children[0], same(gap));
+      expect(children[2], same(rule));
+      final sections = children.whereType<StaggeredEntrance>().toList();
+      expect([for (final section in sections) section.index], [3, 4]);
+      expect([for (final section in sections) section.child], [title, body]);
+    });
+
     testWidgets('plays again when the gate gets new data', (tester) async {
       Widget list(String trigger) => _app(EntranceGate(
             trigger: trigger,

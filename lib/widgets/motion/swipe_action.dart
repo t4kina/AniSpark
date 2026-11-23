@@ -51,9 +51,6 @@ class SwipeAction extends StatefulWidget {
 }
 
 class _SwipeActionState extends State<SwipeAction> with SingleTickerProviderStateMixin {
-  /// Soft and quick, without a wobble.
-  static const _spring = SpringDescription(mass: 1, stiffness: 420, damping: 32);
-
   /// How much of a drag past the trigger point still moves the row.
   static const _resistance = 0.3;
 
@@ -118,7 +115,7 @@ class _SwipeActionState extends State<SwipeAction> with SingleTickerProviderStat
     }
     // A spring settles within a hair of its end; land exactly on it unless a
     // new drag took over.
-    _offset.animateWith(SpringSimulation(_spring, _offset.value, 0, velocity)).then((_) {
+    _offset.animateWith(SpringSimulation(AppMotion.snap, _offset.value, 0, velocity)).then((_) {
       if (mounted && _drag == 0) _offset.value = 0;
     });
   }

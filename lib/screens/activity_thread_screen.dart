@@ -1,9 +1,9 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../widgets/dev_badge.dart';
 import '../providers/settings_provider.dart';
 import '../services/anilist_service.dart' show AniListRequestException;
 import '../services/api_cache.dart';
@@ -12,12 +12,16 @@ import '../services/social_api.dart';
 import '../utils/activity_status.dart';
 import '../utils/activity_text.dart';
 import '../utils/translations.dart' show tr;
+import '../widgets/app_refresh_indicator.dart';
 import '../widgets/motion/animated_count.dart';
 import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/staggered_entrance.dart';
 import '../widgets/people/paged_items.dart' show LoadMoreFooter;
 import '../widgets/skeletons.dart';
+import '../widgets/state_message.dart';
 import '../widgets/social/social_widgets.dart';
+import '../widgets/load_error_view.dart';
+import '../widgets/app_image.dart';
 
 /// An activity with its replies and a field to reply.
 class ActivityThreadScreen extends StatefulWidget {
@@ -329,21 +333,15 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
   /// cross-fades.
   Widget _content(Map<String, dynamic>? activity, String lang) {
     if (_notFound) {
-      return _CenteredMessage(
+      return StateMessage(
         key: const ValueKey('thread-not-found'),
         icon: Icons.speaker_notes_off_outlined,
-        text: tr('social_activity_not_found', lang),
+        message: tr('social_activity_not_found', lang),
       );
     }
     if (activity == null) {
       if (_loading) return const FeedSkeleton(key: ValueKey('thread-skeleton'), cards: 3);
-      return _CenteredMessage(
-        key: const ValueKey('thread-error'),
-        icon: Icons.wifi_off_rounded,
-        text: tr('load_error', lang),
-        onRetry: _load,
-        retryLabel: tr('retry', lang),
-      );
+      return LoadErrorView(key: const ValueKey('thread-error'), onRetry: _load);
     }
     // Header, replies status row, the replies and a paging indicator.
     final itemCount = 2 + _replies.length + (_hasMore ? 1 : 0);
@@ -353,7 +351,7 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
       trigger: _sentReplyIds.length,
       child: NotificationListener<ScrollNotification>(
         onNotification: _onScrollNotification,
-        child: RefreshIndicator(
+        child: AppRefreshIndicator(
           onRefresh: () => _load(force: true),
           child: ListView.builder(
             controller: _scrollController,
@@ -399,10 +397,7 @@ class _ActivityThreadScreenState extends State<ActivityThreadScreen> {
     if (_hasError) {
       status = _InlineError(onRetry: _load, lang: lang);
     } else if (_loading && _replies.isEmpty) {
-      status = const Padding(
-        padding: EdgeInsets.all(16),
-        child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-      );
+      status = const PeopleSkeleton(avatarSize: 32, lines: 2, padding: EdgeInsets.fromLTRB(16, 6, 8, 6));
     } else if (_replies.isEmpty) {
       status = Padding(
         padding: const EdgeInsets.all(24),
@@ -422,6 +417,8 @@ class _ActivityHeader extends StatelessWidget {
   final String lang;
   final VoidCallback onToggleLike;
 
+  static const _authorHeroScope = 'thread-author';
+
   @override
   Widget build(BuildContext context) {
     final type = activity['type'] as String?;
@@ -436,7 +433,7 @@ class _ActivityHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              ProfileAvatar(user: author, radius: 22),
+              ProfileAvatar(user: author, radius: 22, heroScope: _authorHeroScope),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -445,7 +442,7 @@ class _ActivityHeader extends StatelessWidget {
                     Wrap(
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
-                        _UserName(user: author, style: nameStyle, lang: lang),
+                        _UserName(user: author, style: nameStyle, lang: lang, heroScope: _authorHeroScope),
                         if (recipient != null) ...[
                           const Icon(Icons.arrow_right, size: 20, color: Colors.grey),
                           _UserName(user: recipient, style: nameStyle, lang: lang),
@@ -489,16 +486,20 @@ class _ActivityHeader extends StatelessWidget {
 }
 
 class _UserName extends StatelessWidget {
-  const _UserName({required this.user, required this.style, required this.lang});
+  const _UserName({required this.user, required this.style, required this.lang, this.heroScope});
 
   final Map<String, dynamic>? user;
   final TextStyle style;
   final String lang;
 
+  /// The scope of their avatar beside the name, which then flies to the
+  /// profile (see `ProfileAvatar`).
+  final String? heroScope;
+
   @override
   Widget build(BuildContext context) => TappableUserName(
-        onTap: () => openUserProfile(context, user),
-        child: Text(user?['name'] as String? ?? tr('feed_unknown', lang), style: style),
+        onTap: () => openUserProfile(context, user, heroScope: heroScope),
+        child: BadgedName(user?['name'] as String? ?? tr('feed_unknown', lang), style: style),
       );
 }
 
@@ -542,7 +543,7 @@ class _ListActivityBody extends StatelessWidget {
           if (cover != null) ...[
             ClipRRect(
               borderRadius: BorderRadius.circular(6),
-              child: CachedNetworkImage(imageUrl: cover, width: 60, height: 85, fit: BoxFit.cover, memCacheWidth: 120),
+              child: AppImage(url: cover, cacheWidth: 120, width: 60, height: 85),
             ),
             const SizedBox(width: 12),
           ],
@@ -572,12 +573,14 @@ class _ReplyTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final user = asJsonMap(reply['user']);
+    // Tells this reply's avatar apart from the person's other replies.
+    final heroScope = 'thread-reply-${reply['id']}';
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 6, 8, 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ProfileAvatar(user: user, radius: 16),
+          ProfileAvatar(user: user, radius: 16, heroScope: heroScope),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -590,6 +593,7 @@ class _ReplyTile extends StatelessWidget {
                     _UserName(
                       user: user,
                       lang: lang,
+                      heroScope: heroScope,
                       style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 13,
@@ -687,35 +691,6 @@ class _LockedNotice extends StatelessWidget {
               const Icon(Icons.lock_outline, size: 16, color: Colors.grey),
               const SizedBox(width: 6),
               Text(tr('social_replies_locked', lang), style: const TextStyle(color: Colors.grey)),
-            ],
-          ),
-        ),
-      );
-}
-
-/// Full-screen message, with a retry button when [retryLabel] is given.
-class _CenteredMessage extends StatelessWidget {
-  const _CenteredMessage({super.key, required this.icon, required this.text, this.onRetry, this.retryLabel});
-
-  final IconData icon;
-  final String text;
-  final VoidCallback? onRetry;
-  final String? retryLabel;
-
-  @override
-  Widget build(BuildContext context) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, size: 48, color: Colors.grey),
-              const SizedBox(height: 12),
-              Text(text, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
-              if (retryLabel case final label?) ...[
-                const SizedBox(height: 16),
-                FilledButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh), label: Text(label)),
-              ],
             ],
           ),
         ),

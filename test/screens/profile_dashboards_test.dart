@@ -1,5 +1,7 @@
 import 'package:anispark/screens/profile_screen.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/widgets/profile/profile_card.dart';
+import 'package:anispark/widgets/profile/profile_tint.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -57,6 +59,24 @@ Future<void> _expand(WidgetTester tester, String title) async {
 }
 
 void main() {
+  testWidgets('the header melts into the page, with no line drawn under it', (tester) async {
+    await _pumpProfile(tester, _StatsAuth(scoreFormat: 'POINT_10', animeScores: const []));
+
+    final headerEnd = tester.getRect(find.byType(ProfileCard)).bottom;
+    final linesBelow = [
+      for (final line in find.byType(Divider).evaluate())
+        tester.getRect(find.byElementPredicate((element) => element == line)).top,
+    ].where((top) => top >= headerEnd - 1 && top <= headerEnd + 48);
+    expect(linesBelow, isEmpty);
+    expect(tester.getTopLeft(find.text('FAVORITE ANIME')).dy - headerEnd, lessThanOrEqualTo(8),
+        reason: 'what follows sits right at the end of the fade');
+    expect(find.ancestor(of: find.text('FAVORITE ANIME'), matching: find.byType(ProfileTintZone)), findsOneWidget,
+        reason: 'the colour of the banner runs on behind the favourite anime');
+    expect(find.ancestor(of: find.byType(ProfileCard), matching: find.byType(ProfileTintZone)), findsOneWidget);
+    expect(find.ancestor(of: find.text('FAVORITE CHARACTERS'), matching: find.byType(ProfileTintZone)), findsNothing,
+        reason: 'and has melted into the page by the characters');
+  });
+
   testWidgets('score bars are labelled once each, in the user\'s score format', (tester) async {
     await _pumpProfile(
       tester,
@@ -168,5 +188,33 @@ void main() {
     final late = tester.getTopLeft(find.text('2020–2024'));
     expect(late.dy, lessThan(early.dy));
     expect(find.text('4'), findsOneWidget);
+  });
+
+  testWidgets('the bars of a chart grow in when it is first seen, from the top down', (tester) async {
+    await _pumpProfile(
+      tester,
+      _StatsAuth(scoreFormat: 'POINT_10_DECIMAL', animeScores: [
+        {'score': 60, 'count': 1},
+        {'score': 100, 'count': 2},
+      ]),
+    );
+    double fill(String label) => tester
+        .widget<FractionallySizedBox>(find.descendant(
+          of: find.ancestor(of: find.text(label), matching: find.byType(Row)).first,
+          matching: find.byType(FractionallySizedBox),
+        ))
+        .widthFactor!;
+
+    await tester.tap(find.text('SCORE DISTRIBUTION'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 16));
+    await tester.pump(const Duration(milliseconds: 90));
+
+    expect(fill('10.0'), inExclusiveRange(0, 1), reason: 'the first bar is on its way');
+    expect(fill('6.0'), lessThan(fill('10.0')), reason: 'the next one starts a step later');
+
+    await tester.pumpAndSettle();
+    expect(fill('10.0'), 1);
+    expect(fill('6.0'), 0.5);
   });
 }

@@ -1,5 +1,5 @@
 import 'text_scan.dart';
-import 'translations.dart' show trf;
+import 'translations.dart' show tr, trf;
 
 // AniList's media embeds: img220(url), img(url), img50%(url), webm(url),
 // youtube(id).
@@ -111,4 +111,36 @@ String relativeTime(int createdAt, String lang, {DateTime? now}) {
   }
   if (diff.inHours < 24) return trf('feed_hours_ago', lang, {'n': diff.inHours});
   return trf('feed_days_ago', lang, {'n': diff.inDays});
+}
+
+const _monthKeys = [
+  'profile_month_jan', 'profile_month_feb', 'profile_month_mar',
+  'profile_month_apr', 'profile_month_may', 'profile_month_jun',
+  'profile_month_jul', 'profile_month_aug', 'profile_month_sep',
+  'profile_month_oct', 'profile_month_nov', 'profile_month_dec',
+];
+
+/// The calendar day of an AniList `createdAt` (Unix seconds), in local time.
+DateTime _dayOf(int createdAt) {
+  final time = DateTime.fromMillisecondsSinceEpoch(createdAt * 1000);
+  // In UTC so that days are always 24 hours apart, daylight saving or not.
+  return DateTime.utc(time.year, time.month, time.day);
+}
+
+/// Whether two AniList `createdAt` times fall on the same local day.
+bool sameFeedDay(int a, int b) => _dayOf(a) == _dayOf(b);
+
+/// The day a `createdAt` falls on, as a heading of the feed: "Today",
+/// "Yesterday", or its date ("Nov 3", with the year when it is not this one).
+String feedDayLabel(int createdAt, String lang, {DateTime? now}) {
+  final current = now ?? DateTime.now();
+  final today = DateTime.utc(current.year, current.month, current.day);
+  final day = _dayOf(createdAt);
+  final daysAgo = today.difference(day).inDays;
+  if (daysAgo <= 0) return tr('cal_today', lang);
+  if (daysAgo == 1) return tr('feed_yesterday', lang);
+  final month = tr(_monthKeys[day.month - 1], lang);
+  return day.year == today.year
+      ? trf('cal_month_day', lang, {'month': month, 'day': day.day})
+      : trf('profile_date', lang, {'month': month, 'day': day.day, 'year': day.year});
 }

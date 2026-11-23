@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:anispark/screens/search_screen.dart';
 import 'package:anispark/services/anilist_service.dart';
 import 'package:anispark/services/api_cache.dart';
+import 'package:anispark/widgets/skeletons.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../helpers/memory_cache_store.dart';
@@ -62,5 +67,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(log.last.variables['type'], 'ANIME');
+  });
+
+  testWidgets('shows the shape of the results, not a spinner, while it searches', (tester) async {
+    final response = Completer<http.Response>();
+    final service = AniListService(client: MockClient((_) => response.future));
+    await tester.pumpWidget(screenApp(SearchScreen(service: service), cache: ApiCache(MemoryCacheStore())));
+    await tester.enterText(find.byType(TextField), 'frieren');
+    // Past the 400 ms debounce.
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pump();
+
+    final loading = find.byKey(const ValueKey('loading'));
+    expect(find.descendant(of: loading, matching: find.byType(Skeleton)), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+
+    response.complete(jsonResponse({
+      'data': {
+        'Page': {
+          'media': [
+            {'id': 1, 'type': 'ANIME', 'format': 'TV', 'title': {'english': 'Frieren'}, 'episodes': 28},
+          ],
+        },
+      },
+    }));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Frieren'), findsOneWidget);
+    expect(find.byType(Skeleton), findsNothing);
   });
 }
