@@ -54,35 +54,33 @@ void main() {
   Iterable<String> networkImages(WidgetTester tester) =>
       tester.widgetList<CachedNetworkImage>(find.byType(CachedNetworkImage)).map((image) => image.imageUrl);
 
-  testWidgets('the banner itself dissolves under the buttons, showing what is behind, with little room after',
-      (tester) async {
+  testWidgets('the banner dissolves into the page over a long, gentle stretch below everything', (tester) async {
     await pumpCard(tester);
 
     final page = Theme.of(tester.element(find.byType(ProfileCard))).scaffoldBackgroundColor;
-    expect(
-      find.byWidgetPredicate((widget) =>
-          widget is DecoratedBox &&
-          widget.decoration is BoxDecoration &&
-          (widget.decoration as BoxDecoration).gradient?.colors.last == page),
-      findsNothing,
-      reason: 'no band painted in the page colour: the colour behind the card shows instead',
-    );
-    expect(
-      find.descendant(
-        of: find.byWidgetPredicate((widget) => widget is ShaderMask && widget.blendMode == BlendMode.dstIn),
-        matching: find.byType(BlurredBackdrop),
-      ),
-      findsOneWidget,
-      reason: 'the background is what fades out',
-    );
-
+    final fadeFinder = find.byWidgetPredicate((widget) =>
+        widget is DecoratedBox &&
+        widget.decoration is BoxDecoration &&
+        ((widget.decoration as BoxDecoration).gradient?.colors.last == page));
+    expect(fadeFinder, findsOneWidget);
+    final fade = tester.getRect(fadeFinder);
     final card = tester.getRect(find.byType(ProfileCard));
+    expect(fade.bottom, card.bottom);
+    expect(fade.height, greaterThanOrEqualTo(100), reason: 'long, not a line');
+
+    final alphas = (tester.widget<DecoratedBox>(fadeFinder).decoration as BoxDecoration).gradient!.colors.map((c) => c.a).toList();
+    expect(alphas.first, 0);
+    expect(alphas.last, 1);
+    expect(alphas.length, greaterThanOrEqualTo(8));
+    expect(alphas[1], lessThan(0.05), reason: 'starts softly');
+    expect(alphas[alphas.length - 2], greaterThan(0.95), reason: 'ends softly, with no edge');
+
     final textBottoms = [
       for (final text in find.descendant(of: find.byType(ProfileCard), matching: find.byType(Text)).evaluate())
         tester.getRect(find.byElementPredicate((element) => element == text)).bottom,
     ];
-    expect(card.bottom - textBottoms.reduce((a, b) => a > b ? a : b), lessThan(56),
-        reason: 'what follows comes soon after the last thing on the card');
+    expect(fade.top, greaterThanOrEqualTo(textBottoms.reduce((a, b) => a > b ? a : b) + 16),
+        reason: 'the banner stays whole past everything on it, and only then fades');
   });
 
   testWidgets('sits on the person\'s banner when they have one', (tester) async {

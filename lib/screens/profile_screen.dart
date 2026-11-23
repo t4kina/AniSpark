@@ -19,7 +19,6 @@ import '../widgets/motion/fade_switcher.dart';
 import '../widgets/motion/drawn_on_sight.dart';
 import '../widgets/profile/favourite_cards.dart';
 import '../widgets/profile/profile_card.dart';
-import '../widgets/profile/profile_tint.dart';
 import '../widgets/sheet_list_surface.dart';
 import '../widgets/skeletons.dart';
 import '../widgets/load_error_view.dart';
@@ -228,94 +227,87 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
         child: CustomScrollView(
           controller: _scrollController,
           slivers: [
-            // Your banner, its colour behind your favourite anime, then the page.
-            ProfileTintZone(
-              bannerUrl: _bannerImage,
-              avatarUrl: avatar,
-              slivers: [
-                // ── Who you are and your stats, on your banner ──────────────
-                SliverToBoxAdapter(
-                  child: ProfileCard(
-                    name: name,
-                    lang: lang,
-                    avatarUrl: avatar,
-                    bannerUrl: _bannerImage,
-                    animeStats: animeStats,
-                    mangaStats: mangaStats,
-                    scoreFormat: scoreFormat,
-                    onCountTap: (type) => MainNavigation.navigateToTab(type == 'MANGA' ? 1 : 0),
-                    cornerButton: ProfileCard.roundButton(
-                      icon: Icons.settings_outlined,
-                      tooltip: tr('tooltip_settings', lang),
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const SettingsScreen()),
-                      ),
+            // ── Who you are and your stats, on your banner ──────────────
+            SliverToBoxAdapter(
+              child: ProfileCard(
+                name: name,
+                lang: lang,
+                avatarUrl: avatar,
+                bannerUrl: _bannerImage,
+                animeStats: animeStats,
+                mangaStats: mangaStats,
+                scoreFormat: scoreFormat,
+                onCountTap: (type) => MainNavigation.navigateToTab(type == 'MANGA' ? 1 : 0),
+                cornerButton: ProfileCard.roundButton(
+                  icon: Icons.settings_outlined,
+                  tooltip: tr('tooltip_settings', lang),
+                  onPressed: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                  ),
+                ),
+                actions: [
+                  // Two counts side by side, so both glass: white is for the
+                  // one action a card leads with (Follow on a friend's).
+                  ProfileCard.secondaryButton(
+                    label: '$_followersCount ${tr('followers', lang)}',
+                    onPressed: () => _showFollowSheet(
+                      context,
+                      tr('followers', lang),
+                      preloaded: _followersToShow,
+                      expected: _followersCount,
                     ),
-                    actions: [
-                      // Two counts side by side, so both glass: white is for the
-                      // one action a card leads with (Follow on a friend's).
-                      ProfileCard.secondaryButton(
-                        label: '$_followersCount ${tr('followers', lang)}',
-                        onPressed: () => _showFollowSheet(
-                          context,
-                          tr('followers', lang),
-                          preloaded: _followersToShow,
-                          expected: _followersCount,
-                        ),
-                      ),
-                      ProfileCard.secondaryButton(
-                        label: '$_followingCount ${tr('following', lang)}',
-                        onPressed: () => _showFollowSheet(context, tr('following', lang), preloaded: _following),
-                      ),
-                    ],
                   ),
-                ),
+                  ProfileCard.secondaryButton(
+                    label: '$_followingCount ${tr('following', lang)}',
+                    onPressed: () => _showFollowSheet(context, tr('following', lang), preloaded: _following),
+                  ),
+                ],
+              ),
+            ),
 
-                // ── Favorite Anime ─────────────────────────────────────────
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, ProfileCard.followingGap, 16, 10),
-                    child: Text(tr('favorite_anime', lang),
-                        style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.grey,
-                            letterSpacing: 0.5)),
-                  ),
-                ),
-                // The favourites fade in once the stats arrive.
-                SliverToBoxAdapter(
-                  child: FadeSwitcher(
-                    child: !_statsLoaded
-                        ? const SizedBox(key: ValueKey('fav-anime-pending'), height: 170)
-                        : _favoriteAnime.isEmpty
-                            ? Container(
-                                key: const ValueKey('fav-anime-none'),
-                                // Full width, so the message stays left-aligned.
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(horizontal: 16),
-                                child: Text(tr('no_favourites', lang),
-                                    style: const TextStyle(color: Colors.grey, fontSize: 13)),
-                              )
-                            : SizedBox(
-                                key: const ValueKey('fav-anime'),
-                                width: double.infinity,
-                                height: 170,
-                                child: ListView.builder(
-                                  scrollDirection: Axis.horizontal,
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 16),
-                                  itemCount: _favoriteAnime.length,
-                                  itemBuilder: (_, i) => FavouriteMediaCard(
-                                    media: _favoriteAnime[i] as Map<String, dynamic>,
-                                    heroScope: _favsHeroScope,
-                                  ),
-                                ),
+            // ── Favorite Anime ─────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, ProfileCard.followingGap, 16, 10),
+                child: Text(tr('favorite_anime', lang),
+                    style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey,
+                        letterSpacing: 0.5)),
+              ),
+            ),
+            // The favourites fade in once the stats arrive.
+            SliverToBoxAdapter(
+              child: FadeSwitcher(
+                child: !_statsLoaded
+                    ? const SizedBox(key: ValueKey('fav-anime-pending'), height: 170)
+                    : _favoriteAnime.isEmpty
+                        ? Container(
+                            key: const ValueKey('fav-anime-none'),
+                            // Full width, so the message stays left-aligned.
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(tr('no_favourites', lang),
+                                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                          )
+                        : SizedBox(
+                            key: const ValueKey('fav-anime'),
+                            width: double.infinity,
+                            height: 170,
+                            child: ListView.builder(
+                              scrollDirection: Axis.horizontal,
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 16),
+                              itemCount: _favoriteAnime.length,
+                              itemBuilder: (_, i) => FavouriteMediaCard(
+                                media: _favoriteAnime[i] as Map<String, dynamic>,
+                                heroScope: _favsHeroScope,
                               ),
-                  ),
-                ),
-              ],
+                            ),
+                          ),
+              ),
             ),
 
             // ── Favorite Characters ─────────────────────────────────────

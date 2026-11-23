@@ -1,7 +1,6 @@
 import 'package:anispark/screens/profile_screen.dart';
 import 'package:anispark/services/api_cache.dart';
 import 'package:anispark/widgets/profile/profile_card.dart';
-import 'package:anispark/widgets/profile/profile_tint.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -70,11 +69,6 @@ void main() {
     expect(linesBelow, isEmpty);
     expect(tester.getTopLeft(find.text('FAVORITE ANIME')).dy - headerEnd, lessThanOrEqualTo(8),
         reason: 'what follows sits right at the end of the fade');
-    expect(find.ancestor(of: find.text('FAVORITE ANIME'), matching: find.byType(ProfileTintZone)), findsOneWidget,
-        reason: 'the colour of the banner runs on behind the favourite anime');
-    expect(find.ancestor(of: find.byType(ProfileCard), matching: find.byType(ProfileTintZone)), findsOneWidget);
-    expect(find.ancestor(of: find.text('FAVORITE CHARACTERS'), matching: find.byType(ProfileTintZone)), findsNothing,
-        reason: 'and has melted into the page by the characters');
   });
 
   testWidgets('score bars are labelled once each, in the user\'s score format', (tester) async {
