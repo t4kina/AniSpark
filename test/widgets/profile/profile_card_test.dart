@@ -83,6 +83,43 @@ void main() {
         reason: 'the banner stays whole past everything on it, and only then fades');
   });
 
+  testWidgets('pulled down past the top, the background stretches up instead of leaving a gap', (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final scroll = ScrollController();
+    addTearDown(scroll.dispose);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: CustomScrollView(
+          controller: scroll,
+          physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
+          slivers: [
+            SliverToBoxAdapter(
+              child: ProfileCard(name: 'Faye', lang: 'en', avatarUrl: _avatar, scrollController: scroll),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 2000)),
+          ],
+        ),
+      ),
+    ));
+    await tester.pump();
+    final resting = tester.getRect(find.byType(BlurredBackdrop));
+
+    final gesture = await tester.startGesture(const Offset(400, 300));
+    await gesture.moveBy(const Offset(0, 160));
+    await tester.pump();
+
+    final card = tester.getRect(find.byType(ProfileCard));
+    final pulled = tester.getRect(find.byType(BlurredBackdrop));
+    expect(card.top, greaterThan(20), reason: 'the page was pulled down');
+    expect(pulled.top, lessThanOrEqualTo(0.5), reason: 'the background reaches the top of the screen');
+    expect(pulled.bottom, closeTo(card.bottom, 0.5));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(tester.getRect(find.byType(BlurredBackdrop)), resting, reason: 'and settles back');
+  });
+
   testWidgets('sits on the person\'s banner when they have one', (tester) async {
     await pumpCard(tester, banner: _banner);
 

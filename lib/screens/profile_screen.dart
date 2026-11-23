@@ -234,6 +234,7 @@ class _LoggedInProfileState extends State<_LoggedInProfile> {
                 lang: lang,
                 avatarUrl: avatar,
                 bannerUrl: _bannerImage,
+                scrollController: _scrollController,
                 animeStats: animeStats,
                 mangaStats: mangaStats,
                 scoreFormat: scoreFormat,

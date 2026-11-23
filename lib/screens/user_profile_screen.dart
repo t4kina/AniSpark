@@ -369,6 +369,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             avatarUrl: avatar,
             avatarHeroTag: widget.heroTag,
             bannerUrl: banner,
+            scrollController: _scroll,
             animeStats: animeStats,
             mangaStats: mangaStats,
             scoreFormat: scoreFormatOf(auth.user),

@@ -1,6 +1,7 @@
 import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../theme/app_motion.dart';
@@ -37,6 +38,7 @@ class ProfileCard extends StatefulWidget {
     this.topGap = 8,
     this.actions = const [],
     this.onCountTap,
+    this.scrollController,
   });
 
   final String name;
@@ -72,6 +74,10 @@ class ProfileCard extends StatefulWidget {
 
   /// Tapping "N anime" / "N manga" under the name, with `ANIME` or `MANGA`.
   final ValueChanged<String>? onCountTap;
+
+  /// The scroll view the card heads. Pulled down past its top, the banner
+  /// stretches up to fill the room instead of leaving a gap above it.
+  final ScrollController? scrollController;
 
   /// The avatar's diameter.
   static const avatarSize = 78.0;
@@ -138,6 +144,39 @@ const _avatarRing = 3.0;
 class _ProfileCardState extends State<ProfileCard> {
   bool _manga = false;
 
+  /// How far the page is pulled down past its top (see
+  /// [ProfileCard.scrollController]).
+  final _stretch = ValueNotifier<double>(0);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.scrollController?.addListener(_followScroll);
+  }
+
+  @override
+  void didUpdateWidget(ProfileCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scrollController != widget.scrollController) {
+      oldWidget.scrollController?.removeListener(_followScroll);
+      widget.scrollController?.addListener(_followScroll);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.scrollController?.removeListener(_followScroll);
+    _stretch.dispose();
+    super.dispose();
+  }
+
+  void _followScroll() {
+    final scroll = widget.scrollController;
+    if (scroll == null || scroll.positions.length != 1) return;
+    final pixels = scroll.position.pixels;
+    _stretch.value = pixels < 0 ? -pixels : 0;
+  }
+
   /// Flies the avatar into the viewer when the page was not opened from one.
   final _viewerTag = Object();
 
@@ -166,20 +205,31 @@ class _ProfileCardState extends State<ProfileCard> {
     final genre = _topGenre;
     final page = Theme.of(context).scaffoldBackgroundColor;
     return ClipRect(
+        clipper: _StretchClipper(_stretch),
         child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            Positioned.fill(child: _background(context)),
-            // Keeps white text readable on any banner, darker toward the
-            // stats and buttons.
-            Positioned.fill(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Colors.black.withValues(alpha: 0.25), Colors.black.withValues(alpha: 0.62)],
+            // The banner, with the veil that keeps white text readable on
+            // it (darker toward the stats and buttons). Pulled down past
+            // the top, both reach up to fill the room.
+            ValueListenableBuilder<double>(
+              valueListenable: _stretch,
+              builder: (context, stretch, background) =>
+                  Positioned(left: 0, right: 0, top: -stretch, bottom: 0, child: background!),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _background(context),
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [Colors.black.withValues(alpha: 0.25), Colors.black.withValues(alpha: 0.62)],
+                      ),
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
             // No edge where the header ends: it fades into the page.
@@ -604,4 +654,18 @@ class _Glass extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Clips to the card, but for the room above it while the page is pulled
+/// down past its top, which the stretched banner fills.
+class _StretchClipper extends CustomClipper<Rect> {
+  _StretchClipper(this.stretch) : super(reclip: stretch);
+
+  final ValueListenable<double> stretch;
+
+  @override
+  Rect getClip(Size size) => Rect.fromLTRB(0, -stretch.value, size.width, size.height);
+
+  @override
+  bool shouldReclip(_StretchClipper oldClipper) => oldClipper.stretch != stretch;
 }
