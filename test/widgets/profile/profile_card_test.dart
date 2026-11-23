@@ -66,7 +66,7 @@ void main() {
     final fade = tester.getRect(fadeFinder);
     final card = tester.getRect(find.byType(ProfileCard));
     expect(fade.bottom, card.bottom);
-    expect(fade.height, greaterThanOrEqualTo(100), reason: 'long, not a line');
+    expect(fade.height, closeTo(20, 0.5), reason: 'a short, soft fade');
 
     final alphas = (tester.widget<DecoratedBox>(fadeFinder).decoration as BoxDecoration).gradient!.colors.map((c) => c.a).toList();
     expect(alphas.first, 0);

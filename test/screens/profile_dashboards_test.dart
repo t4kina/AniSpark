@@ -67,8 +67,8 @@ void main() {
         tester.getRect(find.byElementPredicate((element) => element == line)).top,
     ].where((top) => top >= headerEnd - 1 && top <= headerEnd + 48);
     expect(linesBelow, isEmpty);
-    expect(tester.getTopLeft(find.text('FAVORITE ANIME')).dy - headerEnd, lessThanOrEqualTo(8),
-        reason: 'what follows sits right at the end of the fade');
+    expect(tester.getTopLeft(find.text('FAVORITE ANIME')).dy - headerEnd, closeTo(16, 0.5),
+        reason: 'what follows sits a short way after the header');
   });
 
   testWidgets('score bars are labelled once each, in the user\'s score format', (tester) async {
